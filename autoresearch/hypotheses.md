@@ -89,3 +89,12 @@ after online SGD the residuals carry ~no exploitable persistent gain/offset. NOT
 7 candidates, none admissible. Further tuning on the same dev data = forking paths. EXPLORATORY sealed tests
 (not winner-selection) on TWO candidates fixed now: V3-1 (best real dev) and V3-6 (closest to admissible). Both
 are reported regardless of outcome; neither is "selected" on test.
+
+## EXPLORATORY SEALED TESTS (official TEST, 3 seeds, 15 records, EMPS excluded) -- results/sealed_v3_*/
+- V3-1 hybrid: 10-step vs forward 0.817 (geomean), vs online SGD 1.001; 1-step vs SGD 0.999.
+  10-step vs SGD: significantly better 4/45 seed-records, significantly worse 25/45 (effects 0.5-1%).
+- V3-6 hybrid: 10-step vs forward 0.819, vs SGD 1.003; vs SGD sig better 3/45, sig worse 18/45.
+- Online SGD alone: 10-step vs forward 0.817.
+Verdict: outcome-conditioned adaptation beats forward by ~18% at the planning horizon on real systems; the explicit
+gain/offset posterior adds nothing on top of online weight adaptation (slightly negative). Dev predictions of
+"ties SGD" held on test.
