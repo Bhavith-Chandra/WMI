@@ -10,3 +10,4 @@ papers/**/*.pdf
 papers/**/*.bbl
 papers/**/*.blg
 logs/
+results/_smoke*/

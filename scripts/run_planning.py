@@ -44,9 +44,11 @@ def main():
     ap.add_argument("--tasks", type=int, default=100)
     ap.add_argument("--max_steps", type=int, default=25)
     ap.add_argument("--plan_horizon", type=int, default=10)
+    ap.add_argument("--exp", default="planning", help="results subdir; use _smoke for throwaway runs")
     args = ap.parse_args()
     cfg = {"experiment": "planning", **vars(args)}
 
+    rec = run_record(cfg)  # captured BEFORE running
     rng = set_seed(args.seed)
     env = KeyGrid()
     traj = collect(env, args.episodes, args.horizon, rng)
@@ -102,8 +104,7 @@ def main():
     results["oracle_mean_shortest_path"] = float(d_true.mean())
     print(model_quality, results["random"], flush=True)
 
-    rec = run_record(cfg)
-    path = save_result("planning", rec, {"model_quality": model_quality, "planning": results},
+    path = save_result(args.exp, rec, {"model_quality": model_quality, "planning": results},
                        extra={"train_history": {"wm": h_wm, "dist": h_d},
                               "leakage": {"episode_split_sizes": {k: int(len(v)) for k, v in split.items()},
                                           "eval_tasks": "fresh start/goal pairs from independent RNG"}})

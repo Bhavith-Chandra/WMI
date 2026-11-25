@@ -45,14 +45,19 @@ def probe_table():
                      f"{ms([p['shuffled']['test'] for p in P])} & {ms([p['majority']['test'] for p in P])} \\\\\n")
     lines.append("\\bottomrule\n\\end{tabular}\n")
 
-    iv = ["\n" + provenance_note(runs), "\\begin{tabular}{llccc}\n\\toprule\n",
-          "Intervention & Condition & $p(\\text{key at cell})$ & Blocked-channel acc. & $n$ \\\\\n\\midrule\n"]
-    for name in runs[0]["metrics"]["interventions"]:
-        for cond in ("clean", "probe_edit", "random_edit"):
-            I = [r["metrics"]["interventions"][name] for r in runs]
-            iv.append(f"{name.replace('_', chr(92) + '_')} & {cond.replace('_', chr(92) + '_')} & "
-                      f"{ms([i[cond]['p_key_at_cell'] for i in I])} & {ms([i[cond]['blocked_channel_acc'] for i in I])} & "
-                      f"{ms([i['n'] for i in I], '{:.0f}')} \\\\\n")
+    iv = ["\n" + provenance_note(runs), "\\begin{tabular}{lllcc}\n\\toprule\n",
+          "Intervention & Direction & $\\alpha$ & $p(\\text{key at cell})$ & Blocked-channel acc. \\\\\n\\midrule\n"]
+    conds = runs[0]["metrics"]["interventions"]["conditions"]
+    for name in conds:
+        for dname in ("probe", "diff_means", "random"):
+            for i, c in enumerate(conds[name][dname]):
+                vals = [r["metrics"]["interventions"]["conditions"][name][dname][i] for r in runs]
+                iv.append(f"{name.replace('_', chr(92) + '_')} & {dname.replace('_', chr(92) + '_')} & {c['alpha']:g} & "
+                          f"{ms([v['p_key_at_cell'] for v in vals])} & {ms([v['blocked_channel_acc'] for v in vals])} \\\\\n")
+        iv.append("\\midrule\n")
+    I = [r["metrics"]["interventions"] for r in runs]
+    iv.append(f"\\multicolumn{{5}}{{l}}{{$D$ = {ms([i['D_between_class'] for i in I])}; "
+              f"cos(probe, diff-means) = {ms([i['cos_probe_vs_diff_means'] for i in I])}}} \\\\\n")
     iv.append("\\bottomrule\n\\end{tabular}\n")
     return "".join(lines), "".join(iv)
 

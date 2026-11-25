@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from wmi.data import collect, split_episodes  # noqa: E402
 from wmi.env import N_ACTIONS, KeyGrid  # noqa: E402
 from wmi.harness import observation_overlap, run_record, save_result, set_seed  # noqa: E402
-from wmi.interventions import logistic_direction, matched_random, set_logit  # noqa: E402
+from wmi.interventions import logistic_direction  # noqa: E402
 from wmi.models import RecurrentWorldModel  # noqa: E402
 from wmi.probing import probe_with_controls  # noqa: E402
 from wmi.train import recurrent_loss, train_recurrent  # noqa: E402
@@ -43,9 +43,12 @@ def main():
     ap.add_argument("--boot", type=int, default=1000)
     ap.add_argument("--probe_train_n", type=int, default=15000, help="random subsample of train timesteps for probes")
     ap.add_argument("--probe_val_n", type=int, default=5000)
+    ap.add_argument("--alphas", type=float, nargs="+", default=[0.0, 0.25, 0.5, 1.0, 2.0, 4.0])
+    ap.add_argument("--exp", default="probes", help="results subdir; use _smoke for throwaway runs")
     args = ap.parse_args()
     cfg = {"experiment": "probes", **vars(args), "env": {"size": 7, "wall_x": 3, "gap_y": 3, "key_pos": [5, 1]}}
 
+    rec = run_record(cfg)  # captured BEFORE running, so the commit/dirty flag describe the code that ran
     rng = set_seed(args.seed)
     env = KeyGrid()
     traj = collect(env, args.episodes, args.horizon, rng)
@@ -92,9 +95,7 @@ def main():
     fit = fits[("trained", "h", "has_key")]
     w, b = logistic_direction(fit["model"], fit["scaler"])
     h_tr = acts["trained"]["train"]["h"]
-    logits_tr = h_tr @ w + b
     hk_tr = states["train"][:, 2]
-    tgt_on, tgt_off = float(np.median(logits_tr[hk_tr == 1])), float(np.median(logits_tr[hk_tr == 0]))
 
     te = S["test"]
     h_te = torch.from_numpy(acts["trained"]["test"]["h"])
@@ -111,31 +112,45 @@ def main():
         with torch.no_grad():
             return torch.sigmoid(model.predict_from_h(torch.from_numpy(h).float(), torch.from_numpy(a))).numpy()
 
-    interventions = {}
-    # (A) agent does NOT have the key, key visible next step -> push to has_key=1, key should vanish
+    # Directions (unit norm, raw h space). Edit size is in units of D = ||mu1 - mu0||, the actual
+    # between-class distance, swept as a dose-response curve. Random control: per-row random unit
+    # direction at the same norm.
+    mu1, mu0 = h_tr[hk_tr == 1].mean(0), h_tr[hk_tr == 0].mean(0)
+    D = float(np.linalg.norm(mu1 - mu0))
+    dirs = {"probe": w / np.linalg.norm(w), "diff_means": (mu1 - mu0) / D}
+    cos_probe_dm = float(dirs["probe"] @ dirs["diff_means"])
+
+    interventions = {"D_between_class": D, "cos_probe_vs_diff_means": cos_probe_dm,
+                     "alphas": list(args.alphas), "conditions": {}}
+    # (A) agent lacks key, key visible next step -> push toward has_key=1: key should vanish
     vis = env.render_local(s_next)[:, key_slot]
     selA = (s_now[:, 2] == 0) & (s_next[:, 2] == 0) & (vis.sum(1) == 1)
-    # (B) agent HAS the key; where the key *would* be visible -> push to has_key=0, key should appear
+    # (B) agent HAS key; cell where the key would be visible -> push toward has_key=0: key should appear
     s_cf = s_next.copy(); s_cf[:, 2] = 0
     vis_cf = env.render_local(s_cf)[:, key_slot]
     selB = (s_now[:, 2] == 1) & (vis_cf.sum(1) == 1)
-    for name, sel, target, vmask in (("remove_key_belief", selA, tgt_on, vis), ("insert_key_belief", selB, tgt_off, vis_cf)):
+    for name, sel, sign, vmask in (("remove_key_belief", selA, +1.0, vis), ("insert_key_belief", selB, -1.0, vis_cf)):
         h0, a0, m = h_al[sel], a_al[sel], vmask[sel].astype(bool)
-        h_edit = set_logit(h0, w, b, target)
-        h_rand = matched_random(h0, h_edit, rng)
-        res = {}
-        for lbl, hh in (("clean", h0), ("probe_edit", h_edit), ("random_edit", h_rand)):
-            p = key_prob(hh, a0)
-            blocked_true = env.render_local(s_next[sel])[:, :9]
-            res[lbl] = {"p_key_at_cell": float(p[:, key_slot][m].mean()),
-                        "blocked_channel_acc": float(((p[:, :9] > 0.5) == (blocked_true > 0.5)).mean())}
-        res["n"] = int(sel.sum())
-        res["edit_norm_mean"] = float(np.linalg.norm(h_edit - h0, axis=1).mean())
-        interventions[name] = res
-        print(name, res, flush=True)
+        blocked_true = env.render_local(s_next[sel])[:, :9] > 0.5
+        res = {"n": int(sel.sum())}
+        for dname in ("probe", "diff_means", "random"):
+            curve = []
+            for alpha in args.alphas:
+                if dname == "random":
+                    r = rng.standard_normal(h0.shape)
+                    r /= np.linalg.norm(r, axis=1, keepdims=True)
+                    hh = h0 + alpha * D * r
+                else:
+                    hh = h0 + sign * alpha * D * dirs[dname][None, :]
+                p = key_prob(hh.astype(np.float32), a0)
+                curve.append({"alpha": alpha, "p_key_at_cell": float(p[:, key_slot][m].mean()),
+                              "blocked_channel_acc": float(((p[:, :9] > 0.5) == blocked_true).mean())})
+            res[dname] = curve
+        interventions["conditions"][name] = res
+        for dname in ("probe", "diff_means", "random"):
+            print(name, dname, [round(c["p_key_at_cell"], 4) for c in res[dname]], flush=True)
 
-    rec = run_record(cfg)
-    path = save_result("probes", rec, {"world_model": wm_metrics, "probes": probes, "interventions": interventions},
+    path = save_result(args.exp, rec, {"world_model": wm_metrics, "probes": probes, "interventions": interventions},
                        extra={"leakage": leak, "train_history": hist})
     print("wrote", path)
 
