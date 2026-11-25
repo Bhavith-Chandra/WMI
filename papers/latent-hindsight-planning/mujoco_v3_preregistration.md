@@ -30,3 +30,13 @@ R3 E2: latent_pf's relative gain over forward is larger at K=40 than at K=1, and
 R4 E3: latent_pf's gain over forward is monotone in rho (0 < 0.9 < 0.99 < 1.0); no significant gain at rho=0.
 R5 E3: residual reuse is worse than forward at rho = 0 and rho = 0.9.
 R6 E1: on fresh, no hindsight method beats forward.
+
+## GATE OUTCOME + DIAGNOSIS + logged DEVIATION (before any main/sweep run)
+Gate failed at every beta (oracle/forward on none: 1.23, 1.21, 1.06). Diagnosis (scripts/diag_oracle*.py):
+(1) single plans from rest: oracle better (4.96 vs 5.74) and its model accurate (pred 4.97 vs true 4.96) -> not
+exploitation, not search failure; (2) warm start irrelevant; (3) from the SAME real t=40 state the oracle replans better
+(11.73 vs 12.61; 14.58 vs 15.36), but the episodes reach DIFFERENT t=40 states: oracle parks on the old goal
+(0.018 m), forward stops 0.145 m off with residual velocity, a better staging point for the unseen next goal.
+The loss is a benchmark artefact (chained random goals reward imprecision), not a property of hindsight.
+DEVIATION: reset the puck to a fresh random start at each 40-step goal segment; phi and every planner's memory
+persist across segments. Gate re-run with the same beta ladder and pass rule.

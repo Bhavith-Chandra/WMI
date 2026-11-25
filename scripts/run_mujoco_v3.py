@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 GATE_FILE = ROOT / "results" / "mujoco_v3_gate.json"
 BASE = {"pop": 300, "elites": 30, "iters": 3, "sgd_lr": 1e-3, "forget": 0.98, "window": 30, "latent_steps": 10,
         "n_particles": 256, "E": 20, "T": 160, "train_batches": 20, "train_E": 200, "train_T": 50, "fit_steps": 6000,
-        "wind_sd": 1.0}
+        "wind_sd": 1.0, "reset_each_segment": True}
 ALL = ["forward", "residual", "online_sgd", "hindsight_posterior", "hybrid", "hindsight_latent", "hindsight_latent_pf", "oracle_latent"]
 
 

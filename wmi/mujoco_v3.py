@@ -113,6 +113,8 @@ class Planner3:
     @torch.no_grad()
     def act(self, s, goal):
         c = self.cfg; E, H, P = self.E, c["H"], c["pop"]
+        if not c.get("warm", True):
+            self.mu = np.zeros((E, H, 2))
         std = np.full((E, H, 2), 0.6); g = torch.tensor(goal, dtype=torch.float32)
         for _ in range(c["iters"]):
             A = np.clip(self.mu[:, None] + std[:, None] * self.rng.standard_normal((E, P, H, 2)), -1, 1)
@@ -186,11 +188,15 @@ class Planner3:
 
 def run_regime3(kind, Mu, Mc, goals, sched, cfg, seed):
     T, E = sched.shape[:2]
-    env = PuckBatch(E); s = env.reset()
+    env = PuckBatch(E)
+    starts = np.random.default_rng(seed + 1).uniform(-1, 1, (T // 40 + 1, E, 2))   # identical for every planner
+    s = env.reset(starts[0]) if cfg.get("reset_each_segment") else env.reset()
     pl = Planner3(kind, Mu, Mc, E, cfg, np.random.default_rng(seed))
     cost = np.zeros((T, E)); K = cfg["K"]
     for t in range(T):
         env.set_phi(sched[t]); pl.phi_true = sched[t]
+        if cfg.get("reset_each_segment") and t > 0 and t % 40 == 0:
+            s = env.reset(starts[t // 40]); pl.mu[:] = 0
         if t % K == 0:
             plan = pl.act(s, goals[t])
         a = np.clip(plan[:, t % K], -1, 1)

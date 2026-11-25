@@ -1,0 +1,58 @@
+{
+  "provenance": {
+    "config": {
+      "experiment": "mujoco_v3_gate",
+      "seed": 99,
+      "pop": 300,
+      "elites": 30,
+      "iters": 3,
+      "sgd_lr": 0.001,
+      "forget": 0.98,
+      "window": 30,
+      "latent_steps": 10,
+      "n_particles": 256,
+      "E": 20,
+      "T": 160,
+      "train_batches": 20,
+      "train_E": 200,
+      "train_T": 50,
+      "fit_steps": 6000,
+      "wind_sd": 1.0
+    },
+    "config_hash": "410e5a459a",
+    "git_commit": "a86e0c7ebc476ee517783eb7823eafff94ec75f4",
+    "git_dirty": false,
+    "timestamp_utc": "2026-11-25T14:48:39.281432+00:00",
+    "python": "3.13.18",
+    "numpy": "2.5.5",
+    "torch": "2.15.0+cpu",
+    "machine": "x86_64"
+  },
+  "ladder": [
+    {
+      "beta": 0.1,
+      "none": 1.2263005829758504,
+      "gain": 1.169502861945255,
+      "wind": 0.3854528796056951,
+      "both": 0.7347059216806717,
+      "pass": false
+    },
+    {
+      "beta": 1.0,
+      "none": 1.2074210709631368,
+      "gain": 1.1479349342402139,
+      "wind": 0.39123892682464356,
+      "both": 0.736118481953818,
+      "pass": false
+    },
+    {
+      "beta": 10.0,
+      "none": 1.0608524993067272,
+      "gain": 1.0520952354084725,
+      "wind": 0.4100131303636754,
+      "both": 0.7194895356584485,
+      "pass": false
+    }
+  ],
+  "beta": null
+}
