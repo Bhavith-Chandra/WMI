@@ -41,6 +41,8 @@ def main():
     ap.add_argument("--steps", type=int, default=3000)
     ap.add_argument("--latent", type=int, default=64)
     ap.add_argument("--boot", type=int, default=1000)
+    ap.add_argument("--probe_train_n", type=int, default=15000, help="random subsample of train timesteps for probes")
+    ap.add_argument("--probe_val_n", type=int, default=5000)
     args = ap.parse_args()
     cfg = {"experiment": "probes", **vars(args), "env": {"size": 7, "wall_x": 3, "gap_y": 3, "key_pos": [5, 1]}}
 
@@ -68,14 +70,17 @@ def main():
             "untrained": {k: activations(untrained, S[k]) for k in S}}
     states = {k: per_step(S[k], S[k].states) for k in S}
     groups_test = np.repeat(S["test"].episode_ids, args.horizon)
+    sub = {"train": np.sort(rng.choice(len(states["train"]), min(args.probe_train_n, len(states["train"])), replace=False)),
+           "val": np.sort(rng.choice(len(states["val"]), min(args.probe_val_n, len(states["val"])), replace=False)),
+           "test": np.arange(len(states["test"]))}  # test is never subsampled
 
     probes, fits = {}, {}
     for mname, sites in (("trained", ("obs", "enc", "h")), ("untrained", ("enc", "h"))):
         for site in sites:
             for tname, col in TARGETS.items():
-                X = {k: acts[mname][k][site] for k in S}
-                y = {k: states[k][:, col] for k in S}
-                types = {k: states[k] for k in S}
+                X = {k: acts[mname][k][site][sub[k]] for k in S}
+                y = {k: states[k][sub[k], col] for k in S}
+                types = {k: states[k][sub[k]] for k in S}
                 r = probe_with_controls(X, y, types, groups_test, "classification", rng, n_boot=args.boot)
                 fits[(mname, site, tname)] = r.pop("_real_fit")
                 probes[f"{mname}/{site}/{tname}"] = r
