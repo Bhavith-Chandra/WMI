@@ -1,0 +1,40 @@
+{
+  "provenance": {
+    "config": {
+      "experiment": "river_v2_calibration",
+      "seed": 99
+    },
+    "config_hash": "4ff862346a",
+    "git_commit": "6b3b2912242d3d5ad79148db1a162369afab2c77",
+    "git_dirty": false,
+    "timestamp_utc": "2026-11-25T16:28:56.401339+00:00",
+    "python": "3.13.18",
+    "numpy": "2.5.5",
+    "torch": "2.15.0+cpu",
+    "machine": "x86_64"
+  },
+  "rows": [
+    {
+      "waterfall": 2.0,
+      "calm": {
+        "hier_replan_oracle": 1.0,
+        "hier_replan_forward": 1.0
+      },
+      "strong": {
+        "hier_replan_oracle": 1.0,
+        "hier_replan_forward": 0.32
+      },
+      "mixed": {
+        "hier_replan_oracle": 1.0,
+        "hier_replan_forward": 0.82
+      },
+      "fresh": {
+        "hier_replan_oracle": 0.96,
+        "hier_replan_forward": 1.0
+      },
+      "pass": true
+    }
+  ],
+  "waterfall": 2.0,
+  "passed": true
+}
