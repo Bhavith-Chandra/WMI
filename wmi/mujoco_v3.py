@@ -245,3 +245,35 @@ def run_regime3(kind, Mu, Mc, goals, sched, cfg, seed):
         cost[t] = ((s2[:, :2] - goals[t]) ** 2).sum(1) + 0.01 * (a ** 2).sum(1)
         pl.observe(s, a, s2); s = s2
     return cost.mean(0)
+
+
+def run_regime_delay(kind, Mu, Mc, goals, sched, cfg, seed, delay):
+    """E-B: the planner sees the state `delay` steps late and compensates by rolling its own (believed) model
+    through the actions taken since; hindsight estimators receive transitions with the same delay."""
+    T, E = sched.shape[:2]
+    env = PuckBatch(E)
+    starts = np.random.default_rng(seed + 1).uniform(-1, 1, (T // 40 + 1, E, 2))
+    s = env.reset(starts[0])
+    pl = Planner3(kind, Mu, Mc, E, cfg, np.random.default_rng(seed))
+    cost = np.zeros((T, E)); K = cfg["K"]; S, A = [s.copy()], []; t0 = 0
+    for t in range(T):
+        env.set_phi(sched[t]); pl.phi_true = sched[t]
+        if t > 0 and t % 40 == 0:
+            s = env.reset(starts[t // 40]); pl.mu[:] = 0; S, A, t0 = [s.copy()], [], t
+        loc = t - t0                                   # index within segment; S[loc] is the true current state
+        if loc - delay - 1 >= 0:                       # deliver the newly observable transition
+            j = loc - delay - 1
+            pl.observe(S[j], A[j], S[j + 1])
+        if t % K == 0:
+            obs = max(loc - delay, 0); est = S[obs].copy()
+            with torch.no_grad():
+                for j in range(obs, loc):              # delay compensation with the believed model
+                    d, _ = pl.predict(torch.tensor(est[:, 2:], dtype=torch.float32)[:, None],
+                                      torch.tensor(A[j], dtype=torch.float32)[:, None])
+                    est = est + d[:, 0].numpy()
+            plan = pl.act(est, goals[t]); k0 = t
+        a = np.clip(plan[:, t - k0], -1, 1)
+        s2 = env.step(a)
+        cost[t] = ((s2[:, :2] - goals[t]) ** 2).sum(1) + 0.01 * (a ** 2).sum(1)
+        A.append(a); S.append(s2.copy()); s = s2
+    return cost.mean(0)

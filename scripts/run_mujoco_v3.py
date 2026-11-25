@@ -11,7 +11,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from wmi.harness import run_record, save_result, set_seed  # noqa: E402
 from wmi.mujoco_exp import collect  # noqa: E402
-from wmi.mujoco_v3 import fit_ensemble, make_schedule3, run_regime3  # noqa: E402
+from wmi.mujoco_v3 import fit_ensemble, make_schedule3, run_regime3, run_regime_delay  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 GATE_FILE = ROOT / "results" / "mujoco_v3_gate.json"
@@ -57,6 +57,9 @@ def run(mode, seed):
         settings = [("K20", 20, ["none", "gain", "wind", "both", "switching", "fresh", "ood_gain"] if gate_pass else ["wind", "both"], ALL)]
     elif mode == "ksweep":
         settings = [(f"K{K}", K, ["wind", "both"], ["forward", "online_sgd", "hindsight_posterior", "hindsight_latent_pf", "oracle_latent"]) for K in (1, 5, 10, 20, 40)]
+    elif mode == "delay":
+        settings = [(f"delay{d}", 5, ["both"], ["forward", "online_sgd", "hindsight_posterior", "hindsight_latent_pf_adapt",
+                                                "oracle_latent"]) for d in (0, 5, 10, 20)]
     elif mode == "noise2":
         settings = [(f"gust{g}", 20, ["wind"], ["forward", "residual", "hindsight_posterior", "hindsight_latent_pf",
                                                  "hindsight_latent_pf_adapt", "oracle_latent"]) for g in (0.0, 0.25, 0.5, 1.0)]
@@ -76,12 +79,15 @@ def run(mode, seed):
         for reg in regimes:
             g, s = make_schedule3(reg, test_rng, cfg["E"], cfg["T"])
             key = f"{tag}/{reg}"
-            res[key] = {k: {"per_episode_cost": run_regime3(k, Mu, Mc, g, s, cfg, 20_000 + seed).tolist()} for k in planners}
+            if tag.startswith("delay"):
+                res[key] = {k: {"per_episode_cost": run_regime_delay(k, Mu, Mc, g, s, cfg, 20_000 + seed, int(tag[5:])).tolist()} for k in planners}
+            else:
+                res[key] = {k: {"per_episode_cost": run_regime3(k, Mu, Mc, g, s, cfg, 20_000 + seed).tolist()} for k in planners}
             print(key, {k: round(float(np.mean(v["per_episode_cost"])), 4) for k, v in res[key].items()}, f"{time.time() - t0:.0f}s", flush=True)
     print("wrote", save_result(f"mujoco_v3_{mode}", rec, {"regimes": res, "models": {"Mu": iu, "Mc": ic}}))
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(); ap.add_argument("mode", choices=["gate", "main", "ksweep", "rho", "noise", "noise2"]); ap.add_argument("--seed", type=int, default=0)
+    ap = argparse.ArgumentParser(); ap.add_argument("mode", choices=["gate", "main", "ksweep", "rho", "noise", "noise2", "delay"]); ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
     gate() if a.mode == "gate" else run(a.mode, a.seed)
