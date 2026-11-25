@@ -24,3 +24,12 @@ transitions with the same delay. Planners: forward, online_sgd, hindsight_poster
 oracle_latent. 3 seeds x 20 episodes.
 D1 hindsight_posterior's gain over forward is larger at d = 20 than at d = 0, and Spearman(d, gain) > 0.
 D2 at d = 20, hindsight_posterior and pf_adapt beat forward AND online_sgd.
+
+## Execution log (deviations, not outcome-dependent)
+- E-A: the first 3-seed batch hit the 2 h background limit; seed 0 completed, seed 1 was killed in the `fresh` regime,
+  seed 2 never started. Seeds 1 and 2 were rerun from scratch (same code, same seeds) in parallel.
+- E-B: the sequential seed loop hit the same limit during seed 0 (delay0 and delay5 printed, nothing written, since results
+  are saved at the end of a seed). Fix (commit b43e5b1): ensembles are trained once per seed and cached; each
+  (seed, delay) runs as its own process. This is numerically equivalent to the original design: the test schedule RNG is
+  re-seeded per delay tag (`10_000+seed`) and the planner RNG is `20_000+seed`. `analyze_v6.py` loader changed to merge
+  per-delay files; decision rules D1/D2 untouched.
