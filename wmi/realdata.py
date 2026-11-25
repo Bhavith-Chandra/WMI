@@ -186,3 +186,72 @@ def assert_no_test_in_train(train_recs, test_recs):
         for te in test_recs:
             if len(tr[1]) == len(te[1]) and np.array_equal(tr[1], te[1]):
                 raise LeakageError("a test record is identical to a train record")
+
+
+def stream_generic(model: NARX, u_n, y_n, n, k, est_module, cfg, stride=10, max_steps=None):
+    """Causal streaming evaluation shared by autoresearch dev (eval_v3) and the sealed test.
+
+    Methods: 'forward' (frozen model), 'sgd' (AdaJEPA-style: last layer, 1 SGD step per transition),
+    'candidate' (est_module: BASE in {'frozen','sgd'} + Estimator posterior over gain/offset of the base's
+    predicted increment). k-step rollouts start every `stride` steps and use ONLY information available at the
+    start time (weights and belief frozen at t; true future inputs, own predicted outputs).
+    Returns per-step squared errors: se1[m] (N,), sek[m] (n_starts,).
+    """
+    X, Y, _ = windows(u_n, y_n, n)
+    if max_steps:
+        X, Y = X[:max_steps], Y[:max_steps]
+    N = len(Y)
+    base_kind = getattr(est_module, "BASE", "frozen")
+    lr = getattr(est_module, "SGD_LR", cfg["sgd_lr"])
+
+    def make_sgd():
+        m = NARX(n); m.load_state_dict(model.state_dict())
+        for p in m.body.parameters():
+            p.requires_grad_(False)
+        return m, torch.optim.SGD(m.head.parameters(), lr=lr)
+
+    sgd, opt_s = make_sgd()                    # reference online-SGD model
+    cand_base, opt_c = make_sgd() if base_kind == "sgd" else (model, None)
+    est = est_module.Estimator(1, np.zeros(2), np.diag([cfg["s_theta"] ** 2, cfg["s_w"] ** 2]), cfg["sigma"])
+    se1 = {m: np.zeros(N) for m in ("forward", "sgd", "candidate")}
+    starts = [t for t in range(0, N - k, stride)]
+    sek = {m: [] for m in ("forward", "sgd", "candidate")}
+    Xt = torch.from_numpy(X)
+
+    def rollout(net, t, phi=None):
+        ybuf = X[t, :n].copy()
+        for s in range(k):
+            feats = np.concatenate([ybuf, X[t + s, n:]]).astype(np.float32)[None]
+            with torch.no_grad():
+                f = float(net(torch.from_numpy(feats)))
+            yprev = ybuf[0]
+            ynext = f if phi is None else yprev + (1 + phi[0]) * (f - yprev) + phi[1]
+            ybuf = np.concatenate([[ynext], ybuf[:-1]])
+        return (ybuf[0] - Y[t + k - 1]) ** 2
+
+    for t in range(N):
+        xt = Xt[t:t + 1]
+        with torch.no_grad():
+            f_fwd = float(model(xt))
+            f_cb = float(cand_base(xt))
+        mean, _ = est.belief()
+        phi = mean[0]
+        yt = X[t, 0]
+        df = f_cb - yt
+        pred_c = yt + (1 + phi[0]) * df + phi[1]
+        out_s = sgd(xt)
+        se1["forward"][t] = (f_fwd - Y[t]) ** 2
+        se1["sgd"][t] = (float(out_s) - Y[t]) ** 2
+        se1["candidate"][t] = (pred_c - Y[t]) ** 2
+        if t % stride == 0 and t < N - k:
+            sek["forward"].append(rollout(model, t))
+            sek["sgd"].append(rollout(sgd, t))
+            sek["candidate"].append(rollout(cand_base, t, phi))
+        # ---- outcome revealed: update everything strictly after predicting
+        loss = (out_s - torch.tensor([Y[t]])).pow(2).mean()
+        opt_s.zero_grad(); loss.backward(); opt_s.step()
+        if opt_c is not None:
+            lc = (cand_base(xt) - torch.tensor([Y[t]])).pow(2).mean()
+            opt_c.zero_grad(); lc.backward(); opt_c.step()
+        est.update(np.array([[df, 1.0]]), np.array([Y[t] - f_cb]))
+    return se1, {m: np.array(v) for m, v in sek.items()}

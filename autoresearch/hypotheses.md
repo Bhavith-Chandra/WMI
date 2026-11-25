@@ -45,3 +45,14 @@ Diagnosis: the dev suite is 9/13 synthetic tasks and scores 1-step error only; t
 track high-frequency model error, which helps 1-step and compounds over a 10-step rollout.
 Next (metric v3, to be pre-registered before any further run): score the 10-step planning horizon, weight real
 dev tasks equally with synthetic ones, and add online-SGD as a second reference so a method must beat both.
+
+# ===== Metric v3 (eval_v3.py), pre-registered BEFORE running any v3 candidate =====
+Candidates (code frozen in autoresearch/candidates/ before running):
+- V3-0 static posterior + forgetting, frozen base. Prediction: synthetic fresh ~1.06-1.07 -> WORST > 1.05,
+  so NOT admissible; real 10-step ratio vs min(fwd,sgd) ~0.9-1.0.
+- V3-1 HYBRID online-SGD base + static-forget posterior. Prediction: best real 10-step ratio (<1 on most
+  datasets) because SGD fixes 1-step model error and the posterior fixes persistent gain/offset; synthetic same
+  as V3-0 (base irrelevant there) -> WORST likely > 1.05 from fresh.
+- V3-2 AR-3 IMM (control). Prediction: v3 must DETECT its sealed failure: real 10-step ratio > 1 somewhere.
+- V3-3 IMM with slow rates + fresh only. Prediction: keeps fresh ~1.01 (admissible synthetic) and loses less
+  at 10 steps than AR-3; may be the first v3-admissible candidate.
