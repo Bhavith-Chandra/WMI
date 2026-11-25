@@ -1,0 +1,71 @@
+{
+  "provenance": {
+    "config": {
+      "experiment": "mujoco_v2_calibration",
+      "seed": 99,
+      "pop": 300,
+      "elites": 30,
+      "iters": 3,
+      "sgd_lr": 0.001,
+      "forget": 0.98,
+      "window": 30,
+      "latent_steps": 10,
+      "E": 20,
+      "T": 160,
+      "train_batches": 20,
+      "train_E": 200,
+      "train_T": 50,
+      "fit_steps": 6000
+    },
+    "config_hash": "2db73565eb",
+    "git_commit": "e40a3bb58d7f3f5e3f5fd363b66e68eaec010fff",
+    "git_dirty": false,
+    "timestamp_utc": "2026-11-25T06:51:40.566049+00:00",
+    "python": "3.13.18",
+    "numpy": "2.5.5",
+    "torch": "2.15.0+cpu",
+    "machine": "x86_64"
+  },
+  "candidates": [
+    {
+      "name": "C1",
+      "K": 1,
+      "wind_sd": 1.0,
+      "forward": 1.8085797127120138,
+      "oracle": 1.7248674547767853,
+      "headroom": 0.046286186529041484
+    },
+    {
+      "name": "C2",
+      "K": 5,
+      "wind_sd": 1.0,
+      "forward": 2.889810320514647,
+      "oracle": 2.6549159567957044,
+      "headroom": 0.08128366144014265
+    },
+    {
+      "name": "C3",
+      "K": 5,
+      "wind_sd": 2.0,
+      "forward": 36.37993813885454,
+      "oracle": 34.916288966267395,
+      "headroom": 0.04023231614635259
+    },
+    {
+      "name": "C4",
+      "K": 10,
+      "wind_sd": 2.0,
+      "forward": 55.803658998522145,
+      "oracle": 50.20724006059733,
+      "headroom": 0.10028766999083394
+    }
+  ],
+  "chosen": {
+    "name": "C4",
+    "K": 10,
+    "wind_sd": 2.0,
+    "forward": 55.803658998522145,
+    "oracle": 50.20724006059733,
+    "headroom": 0.10028766999083394
+  }
+}

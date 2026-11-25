@@ -24,3 +24,11 @@ Q1 in gain/wind/both/ood_gain every hindsight method beats forward, and hindsigh
 Q2 switching: the change-detection variants beat their non-detecting versions and beat forward.
 Q3 fresh: no hindsight method beats forward; residual worse than forward.
 Q4 residual reuse is worse than hindsight_posterior on gain and ood_gain.
+
+## Calibration outcome + logged DEVIATION (before any main run)
+Headroom on 'both' (seed 99): C1 4.6%, C2 8.1%, C3 4.0%, C4 10.0% -> none >= 20%. The pre-registered fallback C4
+is degenerate: wind_sd=2 exceeds the weak actuator's force (g=0.4 -> 2 N), so forward AND oracle lose control
+(costs ~30x v1). Running the main experiment on it cannot inform the question. DEVIATION: extend the grid with
+controllable settings and longer open-loop execution, same rule (first with headroom >= 20%):
+  C5 K=20, wind_sd=1      C6 K=40, wind_sd=1   (K=40 = one plan per goal segment, the one-shot regime)
+If neither qualifies, report the experiment as headroom-limited and do not run the main experiment.

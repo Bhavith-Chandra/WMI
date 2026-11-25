@@ -18,6 +18,7 @@ from wmi.mujoco_exp import DynMLP, collect, fit, make_schedule, phi_sd, run_regi
 
 ROOT = Path(__file__).resolve().parents[1]
 CANDIDATES = [("C1", 1, 1.0), ("C2", 5, 1.0), ("C3", 5, 2.0), ("C4", 10, 2.0)]
+CANDIDATES_EXT = [("C5", 20, 1.0), ("C6", 40, 1.0)]  # logged deviation, see pre-registration
 BASE = {"pop": 300, "elites": 30, "iters": 3, "sgd_lr": 1e-3, "forget": 0.98, "window": 30, "latent_steps": 10,
         "E": 20, "T": 160, "train_batches": 20, "train_E": 200, "train_T": 50, "fit_steps": 6000}
 PLANNERS = ["forward", "residual", "online_sgd", "hindsight_posterior", "hindsight_posterior_cd", "hybrid",
@@ -36,10 +37,11 @@ def build(cfg, rng):
     return Mu, Mc, iu, ic
 
 
-def calibrate():
+def calibrate(cands=None, tag=""):
+    cands = cands or CANDIDATES
     rec = run_record({"experiment": "mujoco_v2_calibration", "seed": 99, **BASE})
     out, chosen = [], None
-    for name, K, wsd in CANDIDATES:
+    for name, K, wsd in cands:
         rng = set_seed(99)
         cfg = dict(BASE, K=K, wind_sd=wsd, H=max(10, K + 5), E=10)
         Mu, Mc, _, _ = build(cfg, rng)
@@ -52,14 +54,16 @@ def calibrate():
         if chosen is None and head >= 0.20:
             chosen = out[-1]
             break
-    if chosen is None:
+    if chosen is None and not tag:
         chosen = out[-1]
-    CAL_FILE.write_text(json.dumps({"provenance": rec, "candidates": out, "chosen": chosen}, indent=2, default=float))
+    (CAL_FILE.with_name(CAL_FILE.stem + tag + ".json") if tag else CAL_FILE).write_text(json.dumps({"provenance": rec, "candidates": out, "chosen": chosen}, indent=2, default=float))
     print("CHOSEN", chosen)
 
 
 def main(seed):
-    cal = json.loads(CAL_FILE.read_text())["chosen"]
+    ext = CAL_FILE.with_name(CAL_FILE.stem + "_ext.json")
+    cal = json.loads((ext if ext.exists() else CAL_FILE).read_text())["chosen"]
+    assert cal is not None, "no setting met the headroom rule: experiment is headroom-limited (do not run main)"
     cfg = dict(BASE, K=cal["K"], wind_sd=cal["wind_sd"], H=max(10, cal["K"] + 5))
     rec = run_record({"experiment": "mujoco_v2", "seed": seed, **cfg})
     rng = set_seed(seed); torch.set_num_threads(4)
@@ -79,7 +83,12 @@ def main(seed):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["calibrate", "main"])
+    ap.add_argument("mode", choices=["calibrate", "calibrate_ext", "main"])
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
-    calibrate() if a.mode == "calibrate" else main(a.seed)
+    if a.mode == "calibrate":
+        calibrate()
+    elif a.mode == "calibrate_ext":
+        calibrate(CANDIDATES_EXT, "_ext")
+    else:
+        main(a.seed)
