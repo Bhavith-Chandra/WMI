@@ -36,3 +36,12 @@ v2 incumbent starts empty. eval.py now also reports WORST.
 ## AR-3 = re-test of AR-2 code under rule v2
 Prediction: worst <= 1.05 (fresh ~1.01), becomes the first v2-admissible incumbent.
 Result: SCORE 0.08751, WORST 1.0114. Verdict: SUPPORTED; first v2-admissible incumbent. KEPT.
+
+## SEALED TEST of AR-3 (official real TEST splits, 3 seeds, EMPS excluded; results/realdata_sealed_AR3/)
+Verdict: FAILED TO TRANSFER. Geomean ratio vs forward over 15 test records: 1-step 0.984, 10-step 1.055
+(10-step worse than forward on 11/15). The a-priori static posterior with forgetting does better on the same
+records (1-step 0.971, 10-step 0.916), and online last-layer SGD is best at 1-step (0.903).
+Diagnosis: the dev suite is 9/13 synthetic tasks and scores 1-step error only; the IMM's fast-drift filters
+track high-frequency model error, which helps 1-step and compounds over a 10-step rollout.
+Next (metric v3, to be pre-registered before any further run): score the 10-step planning horizon, weight real
+dev tasks equally with synthetic ones, and add online-SGD as a second reference so a method must beat both.
