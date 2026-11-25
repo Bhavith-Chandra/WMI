@@ -21,7 +21,21 @@ BASE = {"pop": 300, "elites": 30, "iters": 3, "sgd_lr": 1e-3, "forget": 0.98, "w
 ALL = ["forward", "residual", "online_sgd", "hindsight_posterior", "hybrid", "hindsight_latent", "hindsight_latent_pf", "oracle_latent"]
 
 
-def build(cfg, rng):
+def build(cfg, rng, cache_seed=None):
+    """cache_seed: if given, trained ensembles are cached under data_cache/models keyed by (BASE, seed) so that
+    splitting one seed's run into several processes reuses the *identical* models instead of retraining."""
+    if cache_seed is not None:
+        import hashlib, json as _j
+        key = hashlib.sha1(_j.dumps({**BASE, "seed": cache_seed}, sort_keys=True).encode()).hexdigest()[:12]
+        f = Path(__file__).resolve().parents[1] / "data_cache" / "models" / f"v3_{key}.pt"
+        if f.exists():
+            Mu, Mc, iu, ic = torch.load(f, weights_only=False)
+            cfg["resid_sd"], cfg["resid_sd_c"] = iu["val_resid_sd"], ic["val_resid_sd"]
+            print("loaded cached models", f.name, flush=True)
+            return Mu, Mc, iu, ic
+        out = build(cfg, rng)
+        f.parent.mkdir(parents=True, exist_ok=True); torch.save(out, f)
+        return out
     V, A, PHI, D, EP = collect(rng, cfg["train_batches"], cfg["train_E"], cfg["train_T"], wind_sd=cfg["wind_sd"])
     Mu, iu = fit_ensemble(4, np.concatenate([V, A], 1), D, EP, rng, cfg["fit_steps"])
     Mc, ic = fit_ensemble(7, np.concatenate([V, A, PHI], 1), D, EP, rng, cfg["fit_steps"])
@@ -49,7 +63,7 @@ def gate():
     print("BETA", chosen)
 
 
-def run(mode, seed):
+def run(mode, seed, delays=(0, 5, 10, 20)):
     beta = json.loads(GATE_FILE.read_text())["beta"]
     gate_pass = beta is not None
     beta = 10.0 if beta is None else beta
@@ -59,7 +73,7 @@ def run(mode, seed):
         settings = [(f"K{K}", K, ["wind", "both"], ["forward", "online_sgd", "hindsight_posterior", "hindsight_latent_pf", "oracle_latent"]) for K in (1, 5, 10, 20, 40)]
     elif mode == "delay":
         settings = [(f"delay{d}", 5, ["both"], ["forward", "online_sgd", "hindsight_posterior", "hindsight_latent_pf_adapt",
-                                                "oracle_latent"]) for d in (0, 5, 10, 20)]
+                                                "oracle_latent"]) for d in delays]
     elif mode == "noise2":
         settings = [(f"gust{g}", 20, ["wind"], ["forward", "residual", "hindsight_posterior", "hindsight_latent_pf",
                                                  "hindsight_latent_pf_adapt", "oracle_latent"]) for g in (0.0, 0.25, 0.5, 1.0)]
@@ -68,10 +82,13 @@ def run(mode, seed):
                                                  "hindsight_latent_pf_bayes", "oracle_latent"]) for g in (0.0, 0.25, 0.5, 1.0)]
     else:
         settings = [("K20", 20, [f"ar{r}" for r in (0.0, 0.9, 0.99, 1.0)], ["forward", "residual", "hindsight_posterior", "hindsight_latent_pf", "oracle_latent"])]
-    rec = run_record({"experiment": f"mujoco_v3_{mode}", "seed": seed, "beta": beta, "gate_pass": gate_pass, **BASE})
+    rec = run_record({"experiment": f"mujoco_v3_{mode}", "seed": seed, "beta": beta, "gate_pass": gate_pass, **BASE,
+                      **({"delays": list(delays)} if mode == "delay" else {})})
     rng = set_seed(seed); torch.set_num_threads(4); t0 = time.time()
     cfg = dict(BASE, beta=beta, K=20, H=25)
-    Mu, Mc, iu, ic = build(cfg, rng)
+    Mu, Mc, iu, ic = build(cfg, rng, cache_seed=seed if mode == "delay" else None)
+    if not settings:                                   # --delays "" : train + cache models only, write no result
+        print("models cached", f"{time.time() - t0:.0f}s"); return
     res = {}
     for tag, K, regimes, planners in settings:
         cfg.update(K=K, H=max(10, K + 5), gust_sd=float(tag[4:]) if tag.startswith("gust") else 0.0)
@@ -89,5 +106,6 @@ def run(mode, seed):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("mode", choices=["gate", "main", "ksweep", "rho", "noise", "noise2", "delay"]); ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--delays", default="0,5,10,20")
     a = ap.parse_args()
-    gate() if a.mode == "gate" else run(a.mode, a.seed)
+    gate() if a.mode == "gate" else run(a.mode, a.seed, tuple(int(x) for x in a.delays.split(",") if x))

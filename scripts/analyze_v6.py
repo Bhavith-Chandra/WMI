@@ -32,8 +32,12 @@ if T:
 D = load_results("mujoco_v3_delay")
 if D:
     out.append(f"delay: commits {sorted({r['provenance']['git_commit'][:7] for r in D})}, seeds {len(D)}")
-    keys = D[0]["metrics"]["regimes"]
-    P = {k: {p: np.concatenate([np.array(r["metrics"]["regimes"][k][p]["per_episode_cost"]) for r in D]) for p in keys[k]} for k in keys}
+    # files may hold one seed x all delays, or one seed x one delay: merge per key, ordered by seed
+    D = sorted(D, key=lambda r: r["provenance"]["config"]["seed"])
+    keys = sorted({k for r in D for k in r["metrics"]["regimes"]})
+    P = {k: {p: np.concatenate([np.array(r["metrics"]["regimes"][k][p]["per_episode_cost"]) for r in D if k in r["metrics"]["regimes"]])
+             for p in next(r for r in D if k in r["metrics"]["regimes"])["metrics"]["regimes"][k]} for k in keys}
+    out.append("delay seeds per key: " + str({k: sum(k in r["metrics"]["regimes"] for r in D) for k in keys}))
     ds = [0, 5, 10, 20]; rel = lambda d, p, q="forward": paired_ratio(P[f"delay{d}/both"][p], P[f"delay{d}/both"][q], rng)
     for d in ds:
         out.append(f"delay {d}: " + str({p: (round(rel(d, p)[0], 3), [round(c, 3) for c in rel(d, p)[1]]) for p in P[f'delay{d}/both']}))
