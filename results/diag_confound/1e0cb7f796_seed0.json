@@ -1,0 +1,65 @@
+{
+  "metrics": {
+    "final_r2_pinned": [
+      0.9958947781948183,
+      0.9963439130552774,
+      0.9959000077080193
+    ],
+    "final_r2_standard": [
+      0.7624206951831404,
+      0.8753845909745988,
+      0.9322591021786402
+    ],
+    "pinned": {
+      "dips": [
+        0.00027490057941821037,
+        0.00014199555363726888,
+        0.00042539561816637824
+      ],
+      "final_r2_last_seed": 0.9959000077080193,
+      "mean_dip": 0.0002807639170739525
+    },
+    "standard": {
+      "dips": [
+        -0.3522533877153529,
+        -0.29672400356091433,
+        -0.2075311630626886
+      ],
+      "final_r2_last_seed": 0.9322591021786402,
+      "mean_dip": -0.28550285144631865
+    }
+  },
+  "provenance": {
+    "config": {
+      "E": 40,
+      "H": 25,
+      "K": 20,
+      "T": 160,
+      "beta": 0.1,
+      "elites": 30,
+      "experiment": "diag_confound",
+      "fit_steps": 6000,
+      "forget": 0.98,
+      "iters": 3,
+      "latent_steps": 10,
+      "n_particles": 256,
+      "pop": 300,
+      "reset_each_segment": true,
+      "seed": 0,
+      "sgd_lr": 0.001,
+      "train_E": 200,
+      "train_T": 50,
+      "train_batches": 20,
+      "wind_sd": 1.0,
+      "window": 30
+    },
+    "config_hash": "1e0cb7f796",
+    "git_commit": "eb344b9cbef42242f4999a8bcada96f2aecd7ce8",
+    "git_dirty": false,
+    "machine": "x86_64",
+    "numpy": "2.5.5",
+    "python": "3.13.18",
+    "timestamp_utc": "2026-11-25T19:37:15.052061+00:00",
+    "torch": "2.15.0+cpu"
+  }
+}

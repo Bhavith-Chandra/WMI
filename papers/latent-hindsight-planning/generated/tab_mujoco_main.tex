@@ -1,0 +1,13 @@
+\begin{tabular}{lccccccc}
+\toprule
+Regime & posterior & latent (GD) & latent (particles) & hybrid & online SGD & residual reuse & oracle \\
+\midrule
+wind & 0.755$^{\downarrow}$ & 0.749$^{\downarrow}$ & 0.790$^{\downarrow}$ & 0.751$^{\downarrow}$ & 0.867$^{\downarrow}$ & 0.750$^{\downarrow}$ & 0.652$^{\downarrow}$ \\
+both & 0.776$^{\downarrow}$ & 0.768$^{\downarrow}$ & 0.812$^{\downarrow}$ & 0.776$^{\downarrow}$ & 0.886$^{\downarrow}$ & 0.805$^{\downarrow}$ & 0.691$^{\downarrow}$ \\
+switching & 0.937$^{\downarrow}$ & 0.865$^{\downarrow}$ & 0.848$^{\downarrow}$ & 0.942$^{\downarrow}$ & 0.976$^{\downarrow}$ & 0.842$^{\downarrow}$ & 0.689$^{\downarrow}$ \\
+ood\_gain & 0.964$^{\downarrow}$ & 0.952$^{\downarrow}$ & 0.963$^{\downarrow}$ & 0.966$^{\downarrow}$ & 0.999$^{\downarrow}$ & 1.007$^{\uparrow}$ & 0.945$^{\downarrow}$ \\
+gain & 0.979$^{\downarrow}$ & 0.959$^{\downarrow}$ & 0.991 & 0.981$^{\downarrow}$ & 0.997$^{\downarrow}$ & 1.019$^{\uparrow}$ & 0.951$^{\downarrow}$ \\
+none & 1.008$^{\uparrow}$ & 0.983$^{\downarrow}$ & 1.012$^{\uparrow}$ & 1.010$^{\uparrow}$ & 0.998$^{\downarrow}$ & 0.994$^{\downarrow}$ & 0.983$^{\downarrow}$ \\
+fresh & 1.019$^{\uparrow}$ & 1.000 & 1.287$^{\uparrow}$ & 1.022$^{\uparrow}$ & 0.998$^{\downarrow}$ & 1.369$^{\uparrow}$ & 1.211$^{\uparrow}$ \\
+\bottomrule
+\end{tabular}

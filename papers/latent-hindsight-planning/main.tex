@@ -1,49 +1,167 @@
 \documentclass[11pt]{article}
 \usepackage[margin=1in]{geometry}
-\usepackage{amsmath,amssymb,booktabs,hyperref}
+\usepackage{amsmath,amssymb,amsthm,booktabs,graphicx,hyperref,xcolor}
 \usepackage[numbers]{natbib}
+\newtheorem{theorem}{Theorem}
 \newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
-\usepackage{xcolor}
-% RULE: every number in this paper is \input from generated/ (scripts/make_tables.py).
-\title{Latent Hindsight Planning in World Models}
+% RULE: every empirical number in this paper is a macro from generated/numbers.tex or a table in generated/,
+% produced by scripts/make_paper1.py from provenance-stamped results/*.json. Never type a result by hand.
+\input{generated/numbers.tex}
+
+\title{When Does Hindsight Planning Help?\\Persistence, Open-Loop Control, and Latent World Models}
 \author{\todo{authors}}
+\date{}
 \begin{document}
 \maketitle
 
 \begin{abstract}
-\todo{Write after results exist. Do not pre-commit to a headline number.}
+A world model plans with its predictions, but the world it is deployed in contains disturbances the model never saw.
+\emph{Hindsight planning} conditions the plan on what actually happened: it reads the surprise between predicted and
+observed outcomes, infers the hidden cause, and re-plans. We ask when this is provably and measurably better than
+planning forward with the model alone. Theory gives a sharp answer: a Bayes hindsight planner is never worse; it is
+strictly better only when the disturbance \emph{persists}, where its regret grows logarithmically against linearly for
+forward planning; it gains nothing when disturbances are fresh; and the popular residual-reuse rule is inconsistent for
+sequential re-planning. Experiments on a physics simulator and on real measured systems confirm each prediction and add
+a second condition the theory implies: hindsight matters when control is \emph{open-loop}. With every-step feedback its
+gain is \ksGainOne; with 40-step open-loop chunks it is \ksGainForty{} (oracle headroom \ksHeadForty). All hypotheses
+were pre-registered, including those that failed, and we report the failures.
 \end{abstract}
 
 \section{Introduction}
-\todo{Problem: latent planners score imagined states with a cost (often $\ell_2$ to a goal latent) that need not reflect reachability. Hypothesis: hindsight-relabeled structure in latent space supplies the missing signal.}
+Latent world models now plan by rolling predictions forward and optimising actions against them
+\citep{cwm_2611_24778,adajepa_2606_32026,t2z_2610_22364}. When deployment differs from training (a gust, a weak
+actuator, a miscalibrated gain) predictions drift and plans fail. Three families of fixes have appeared: reuse the
+last observed residual \citep{cwm_2611_24778}, optimise an environment latent at test time \citep{t2z_2610_22364}, or
+update the model's weights online \citep{adajepa_2606_32026}. All three condition on observed outcomes; we call this
+\emph{hindsight planning}. None of these papers proves when it beats forward planning.
 
-\section{Definition of latent hindsight planning}
-\label{sec:def}
-\todo{BLOCKING: replace with the collaborators' definition.}
-Working definition used by the current code (\texttt{wmi/train.py:train\_temporal\_distance}):
-given trajectories $(o_0,a_0,\dots,o_T)$ and a frozen encoder $z=f(o)$, relabel goals in hindsight as
-$g = z_{t+k}$ for $k\sim\mathcal{U}\{0,\dots,K\}$ and fit $d_\theta(z_t,g)$ to $k$ with an expectile loss
-($\tau=0.1$) so that $d_\theta$ tracks the lower envelope of random-walk offsets. Planning is CEM-MPC
-in latent space with cost $\min_t d_\theta(\hat z_t, z_g)$.
+\paragraph{Contributions.}
+(1) A unified view: forward planning, residual reuse and latent inference are one Kalman-style filter at gain $0$,
+gain $1$ and the Bayes-optimal gain (Section~\ref{sec:setting}).
+(2) Five theorems: dominance, no gain under fresh disturbances, linear-vs-logarithmic regret under persistence,
+inconsistency of residual reuse, and a condition for hierarchical planners (Section~\ref{sec:theory}).
+(3) Pre-registered experiments on real measured systems and an interactive MuJoCo benchmark showing where the gains
+appear, how large they are, and where they vanish (Section~\ref{sec:exp}).
+(4) Negative results: hindsight did not rescue hierarchical planning in our river-crossing task, and an autoresearch
+loop selected an estimator that failed on sealed test data (Section~\ref{sec:neg}).
 
-\section{Related work}
-Hindsight relabeling \citep{andrychowicz2017her}; hindsight for world action models \citep{hintwam_2611_24789};
-learned temporal metrics for latent planning \citep{howlong_2610_04988}; latent planning cost geometry
-\citep{latentproj_2610_26979,transition_geometry_2611_30064,sage_2607_17973}.
-\todo{State precisely how our definition differs from each.}
+\section{Setting}
+\label{sec:setting}
+A frozen world model $f$ predicts the next state. The world adds a hidden disturbance $\phi_t$: a gain fault $\theta$
+that scales the effect of the action, an additive force $w$, or both. A \emph{forward} planner ignores outcomes. A
+\emph{hindsight} planner maintains a belief over $\phi$ from the residuals $r_t=\Delta s_t-f(s_t,a_t)$ and plans under
+it. With $\phi_t$ a random walk of variance $q$ per step, the Bayes belief is a Kalman filter whose gain runs from $0$
+(constant $\phi$, gain $\to1/t$, recursive least squares) to $1$ as $q\to\infty$, which is exactly residual reuse. Forward
+planning is gain $0$; residual reuse is gain $1$; test-time latent inference with a window or forgetting factor sits in
+between.
 
-\section{Experimental setup}
-KeyGrid testbed with exact ground truth; episode-level splits with asserted disjointness; evaluation on
-fresh start/goal pairs from an independent RNG; oracle BFS shortest paths for optimality.
+\input{theory.tex}
 
-\section{Results}
-\begin{table}[h]\centering\small
-\IfFileExists{generated/planning_table.tex}{\input{generated/planning_table.tex}}{\todo{run scripts/run\_planning.py}}
-\caption{Goal reaching. Mean $\pm$ s.d. over seeds.}
+\section{Experiments}
+\label{sec:exp}
+\paragraph{Protocol.} Every experiment has a pre-registration committed before it ran
+(\texttt{papers/latent-hindsight-planning/*\_preregistration.md}), fixed analysis rules, provenance-stamped results
+(commit, clean tree, seeds), and an \emph{oracle gate}: the planner that knows the true disturbance must beat forward
+planning, otherwise the benchmark is not measuring what we think. The gate failed twice; both failures and their
+diagnoses are reported in the pre-registration files.
+
+\subsection{Theory verification}
+Table~\ref{tab:theory} and Figure~\ref{fig:theory}. Under persistent disturbances forward regret reaches \thForward{}
+after \thT{} steps while hindsight's is \thHindsight; $t\cdot$excess is \thTexcess, matching the predicted $\sigma^2d=$
+\thSigmaSqD. Residual reuse pays \thResidAdd{} per step under a pure additive fault, matching $\sigma^2=$\thSigmaSq. Under
+fresh disturbances hindsight (assuming persistence) is slightly worse than forward (\thFreshHind{} vs \thFreshFwd).
+Under switching, never-forgetting hindsight (\thSwitchHind) is worse than forward (\thSwitchFwd) and forgetting fixes it
+(\thSwitchForget).
+\begin{figure}[h]\centering
+\IfFileExists{generated/theory_regret.png}{\includegraphics[width=\linewidth]{generated/theory_regret.png}}{}
+\caption{Cumulative regret (log--log), mean over seeds.}\label{fig:theory}
+\end{figure}
+
+\subsection{Real measured systems}
+Five benchmarks from nonlinearbenchmark.org \citep{nonlinear_benchmarks}; official train/test splits; NARX world models
+trained on train only; all hyper-parameters fixed before any test data was read. One benchmark (EMPS) is excluded from
+every claim because model-free velocity extrapolation beats every learned model on it. Over \rdRecords{} test records,
+the gain/offset posterior with forgetting reduces error relative to forward prediction to \rdOneStep{} (one step) and
+\rdTenStep{} (ten steps); residual reuse is \emph{worse} than forward at ten steps (\rdResidTen). Online last-layer
+updates \citep{adajepa_2606_32026} are stronger at one step (\rdSgdOne). In a sealed test, a hybrid (online updates plus
+posterior) reaches \rdHybridFwd{} of forward error at ten steps, better than forward in \rdHybridSigFwd{} seed-records, but
+equals online updates alone (\rdHybridSgd; significantly worse in \rdHybridWorseSgd). On these systems the inputs are
+logged, so no planner chooses actions, and the residuals left after online adaptation are close to fresh, the case where
+Theorem~\ref{thm:fresh} predicts no further gain.
+
+\subsection{Interactive physics: MuJoCo}
+A puck driven by two motors (MuJoCo \citep{todorov2012mujoco}) with a hidden actuator gain and an external force; learned
+5-model ensemble world models with a disagreement penalty \citep{chua2018pets}; CEM-MPC executing open-loop chunks of
+$K=20$ steps; the puck is reset at each goal segment while the disturbance and each planner's memory persist. Methods:
+forward; residual reuse; online last-layer SGD; Gaussian gain/offset posterior; latent inference by gradient descent
+(T2-Z style) or by particles; hybrid; and an oracle given the true disturbance. 3 seeds $\times$ 20 episodes per regime.
+
+\begin{table}[h]\centering\scriptsize
+\input{generated/tab_mujoco_main.tex}
+\caption{Cost relative to forward planning (lower is better). $\downarrow$/$\uparrow$: 95\% paired-bootstrap interval
+entirely below/above 1.}\label{tab:mujoco}
 \end{table}
 
-\section{Interpretability of the planner}
-\todo{Probe $d_\theta$ and the latent for ground-truth reachability; intervene on goal latents.}
+Under persistent wind, the posterior reaches \mjPostWind{} of forward cost and latent inference \mjLatentWind, against
+\mjSgdWind{} for online SGD and \mjOracleWind{} for the oracle; the particle posterior captures \mjCaptureWind{} of the
+oracle's headroom. Under fresh gusts every hindsight method is worse than forward (residual reuse \mjFreshResid), as
+Theorem~\ref{thm:fresh} predicts. On pure gain faults gains are small (latent inference \mjGainLatent) and residual reuse
+is worse than forward (\mjGainResid).
+
+\paragraph{How open-loop is control? (Table~\ref{tab:k}, Figure~\ref{fig:sweeps}a.)} With every-step re-planning the
+oracle's headroom is near zero and hindsight's gain is \ksGainOne; with $K=40$ it is \ksGainForty{} against a headroom of
+\ksHeadForty. Feedback from re-planning absorbs most disturbances; hindsight matters when the agent commits to actions.
+\begin{table}[h]\centering\scriptsize\input{generated/tab_ksweep.tex}\caption{Gain over forward by chunk length $K$.}\label{tab:k}\end{table}
+
+\paragraph{How persistent is the disturbance? (Table~\ref{tab:rho}, Figure~\ref{fig:sweeps}b.)} With AR(1) wind of
+persistence $\rho$, the particle posterior's cost ratio falls monotonically from \rhoZero{} at $\rho=0$ (worse than
+forward) to \rhoOne{} at $\rho=1$, tracing Theorems~\ref{thm:fresh} and~\ref{thm:separation} in one curve.
+\begin{table}[h]\centering\scriptsize\input{generated/tab_rho.tex}\caption{Cost ratio vs forward by persistence.}\label{tab:rho}\end{table}
+
+\paragraph{How noisy is the world? (Table~\ref{tab:noise}.)} Adding i.i.d.\ gusts on top of the persistent wind,
+residual reuse degrades from \nzResidZero{} to \nzResidOne{}, as Theorem~\ref{thm:residual} predicts. The Gaussian
+posterior is nearly unaffected (\nzPostZero{} to \nzPostOne). Latent inference with a likelihood calibrated on the
+noise-free model chases the gusts (\nzFixedZero{} to \nzFixedOne); estimating the noise level online fixes it
+(\nzAdaptZero{} to \nzAdaptOne). Hindsight estimators must be calibrated to deployment noise, not training residuals.
+\begin{table}[h]\centering\scriptsize\input{generated/tab_noise.tex}\caption{Cost ratio vs forward under gust noise.}\label{tab:noise}\end{table}
+
+\paragraph{What is identified?}\label{sec:ident} After 20 transitions the inferred wind explains \idWindTwenty{} of its
+variance across episodes (Figure~\ref{fig:sweeps}c), while the gain is poorly identified. The inferred parameters also
+drop at every chunk boundary. This is not a defect: the data identify $\theta a+w$, not $\theta$ and $w$ separately,
+and each new action rotates that ridge. Pinning the gain removes the drop (boundary dip \cfDipStd{} $\to$ \cfDipPin;
+final $R^2$ \cfRPin), and the identifiable quantity, the predicted effect of the next action, \emph{improves} at
+boundaries (dip \idPredDip) and reaches $R^2=$\idPredEnd. Interpretability claims about inferred latents should be made
+about identifiable combinations.
+\begin{figure}[h]\centering
+\IfFileExists{generated/mujoco_v3_figure.png}{\includegraphics[width=\linewidth]{generated/mujoco_v3_figure.png}}{}
+\caption{(a) gain vs chunk length; (b) gain vs persistence; (c) identification $R^2$ over time.}\label{fig:sweeps}
+\end{figure}
+
+\section{Negative results}
+\label{sec:neg}
+\paragraph{Hierarchical planning (river crossing).} We tested whether hindsight rescues a hierarchical planner whose
+subgoal fails because of a surprise (Theorem~\ref{thm:hier}). Across three pre-registered designs it did not.
+v1: an abort-and-retreat rule made hindsight worse (success \rvOneHind{} vs \rvOneFwd{} forward; flat planners
+\rvOneFlat). v2: the current was identified one step after entry, but no plan in a fixed library was safe (success
+\rvTwoHind{} vs \rvTwoFwd; oracle \rvTwoOracle). v3: with MPC re-planning every step, forward planning pushed through
+(\rvThreeFwd) and the oracle's bridge execution failed (\rvThreeOracle), so the main run was not executed. In every case
+inference worked and execution, or fast feedback, decided the outcome. We therefore do not claim that hindsight beats
+hierarchical planning; we claim the narrower Theorem~\ref{thm:hier}, whose conditions these tasks rarely met.
+\paragraph{Autoresearch.} An automated keep-or-discard loop over estimators, scored on development data and one-step
+error, selected an estimator that was worse than forward at ten steps on sealed test data. The metric, not the search,
+was at fault; we report the sealed result rather than the development score.
+
+\section{Related work}
+Hindsight relabeling \citep{andrychowicz2017her}; counterfactual world models and residual reuse \citep{cwm_2611_24778};
+test-time adaptation of world models \citep{adajepa_2606_32026,t2z_2610_22364,jepattt_2610_00722}; learned temporal
+metrics and latent-planning geometry \citep{howlong_2610_04988,latentproj_2610_26979,transition_geometry_2611_30064};
+adaptive control and regret \citep{laiwei1982,abbasi2011,simchowitz2020,cassel2020,astrom_wittenmark}; value of
+information \citep{blackwell1953}; probing world models \citep{li2023othello,probing_rl_wm_2603_21546}.
+
+\section{Limitations}
+One simulated physical system and five real benchmarks with logged inputs; learned dynamics are small MLP ensembles on
+low-dimensional state, not pixel JEPAs; gain faults are poorly identified without deliberate excitation; the
+hierarchical claim is untested in a task where its conditions hold.
 
 \bibliographystyle{plainnat}
 \bibliography{../refs}

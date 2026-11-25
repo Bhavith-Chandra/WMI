@@ -59,6 +59,14 @@ $\det V_T$ by $(\lambda_{\max}(V_0)+TL^2/d)^d$. The Bayes planner is no worse th
 every step because the CE action is feasible for its minimisation.
 \end{proof}
 
+\paragraph{Remark (why $\log T$ here and $\sqrt T$ in LQR).} The elliptical-potential bound charges regret only along
+the regressors actually played, and in our one-step setting the cost depends on nothing else, so no exploration is
+needed and the rate is logarithmic. In linear-quadratic control with unknown input matrix, unexplored directions
+affect future costs and $\tilde\Theta(\sqrt T)$ is unavoidable~\citep{simchowitz2020,cassel2020}. Gain faults are
+the input-matrix case: they are identified only through variation in the commands, which our task supplies through
+random targets. Section~\ref{sec:ident} shows the practical consequence: additive faults are identified quickly,
+gain faults slowly.
+
 \begin{theorem}[Residual reuse is inconsistent for sequential replanning]\label{thm:residual}
 Apply the residual-reuse rule of \citet{cwm_2611_24778} at every step: predict
 $\Delta s_t(a)=\bar\theta a+r_{t}$ with $r_t=\Delta s_{t-1}-\bar\theta a_{t-1}$, and act on it. Under persistent $\phi$
