@@ -1,0 +1,68 @@
+{
+  "anchor_open_mid": 58.099998474121094,
+  "reencode_code_agreement": 0.4765625,
+  "reencode_price_tick_mae": 3.09375,
+  "context_sensitivity": {
+    "tick_exact_same": 0.00390625,
+    "tick_mae": 11.60546875,
+    "tick_p90": 23.0,
+    "tick_max": 48.0,
+    "action_flip": 0.0,
+    "side_flip": 0.0,
+    "logvol_mae": 0.01067795604467392,
+    "dt_mae": 0.005469702649861574
+  },
+  "decoded_price_off_grid_mean_ticks": 0.25452657400397705,
+  "negative_dt_frac": 0.1484375,
+  "add_frac": 0.921875,
+  "bid_frac": 0.279296875,
+  "released_tokenizer_metrics": {
+    "mae_delta_time_seconds": 0.020355212385766208,
+    "mae_log_volume": 0.039522080100141466,
+    "mae_relative_open_price": 0.0007754914495308185,
+    "open_exact_tick_rate": 0.33746910095214844,
+    "open_tick_loss": 2.4412465691566467,
+    "open_tick_mae": 2.828431572765112,
+    "open_within_1_tick_rate": 0.520594596862793,
+    "time_decoded_mae": 0.6458865776658058,
+    "val_mae_delta_time_seconds": 0.01228272963897325,
+    "val_mae_log_volume": 0.03732572889886796,
+    "val_mae_relative_open_price": 0.000500443465061835,
+    "val_open_exact_tick_rate": 0.4186459732055664,
+    "val_open_tick_loss": 2.136497900504619,
+    "val_open_tick_mae": 2.4946384643763304,
+    "val_open_within_1_tick_rate": 0.5984790420532227,
+    "val_time_decoded_mae": 0.6554230664670467
+  },
+  "feature_clip": {
+    "kind": "vq_order_feature_clip_stats",
+    "feature_order": [
+      "relative_mid_price",
+      "relative_open_price",
+      "log_volume",
+      "delta_time_seconds"
+    ],
+    "lower_quantile": 0.005,
+    "upper_quantile": 0.995,
+    "lower": [
+      -0.0453459657728672,
+      -0.08097414005547762,
+      4.6151204109191895,
+      0.0
+    ],
+    "upper": [
+      0.08459065292030535,
+      0.1114683578535903,
+      10.74075698852539,
+      2.759999990463257
+    ],
+    "sample_count": [
+      20000000,
+      20000000,
+      20000000,
+      20000000
+    ]
+  },
+  "val_split": "test",
+  "clip_stats_file": "/home/dataset-assist-0/vq_windows/hs300_csi500_openmid/feature_clip_q005_q995.json"
+}
