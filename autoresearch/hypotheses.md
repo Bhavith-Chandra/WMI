@@ -35,3 +35,4 @@ v2 incumbent starts empty. eval.py now also reports WORST.
 
 ## AR-3 = re-test of AR-2 code under rule v2
 Prediction: worst <= 1.05 (fresh ~1.01), becomes the first v2-admissible incumbent.
+Result: SCORE 0.08751, WORST 1.0114. Verdict: SUPPORTED; first v2-admissible incumbent. KEPT.

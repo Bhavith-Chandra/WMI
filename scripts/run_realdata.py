@@ -59,8 +59,16 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--exp", default="realdata_hindsight")
     ap.add_argument("--only", nargs="*", default=None)
+    ap.add_argument("--sealed_estimator", default=None, help="path to an autoresearch estimator.py to evaluate ONCE on TEST")
     args = ap.parse_args()
-    rec = run_record({"experiment": "realdata_hindsight", "seed": args.seed, **HP})
+    extra = None
+    if args.sealed_estimator:
+        import hashlib, importlib.util
+        spec = importlib.util.spec_from_file_location("est", args.sealed_estimator)
+        mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+        extra = mod.Estimator
+        HP["sealed_estimator_sha"] = hashlib.sha1(Path(args.sealed_estimator).read_bytes()).hexdigest()[:10]
+    rec = run_record({"experiment": args.exp, "seed": args.seed, **HP})
     rng = set_seed(args.seed)
     torch.set_num_threads(4)
 
@@ -76,7 +84,7 @@ def main():
                "sigma": info["val_rmse_norm"], "forget": HP["forget"], "sgd_lr": HP["sgd_lr"]}
         per_rec = []
         for j, (u, y) in enumerate(d["test"]):
-            se1, sek, extra = stream_eval(model, norm.nu(u), norm.ny(y), HP["n"], HP["k"], cfg, rng, stride=HP["stride_k"])
+            se1, sek, extra = stream_eval(model, norm.nu(u), norm.ny(y), HP["n"], HP["k"], cfg, rng, stride=HP["stride_k"], extra_est=extra)
             sc = norm.sd_y  # back to original units
             r = {"record": j, "u_std": float(np.std(u)), "n_steps": int(len(se1["forward"])), **extra,
                  "rmse1": {m: float(np.sqrt(v.mean()) * sc) for m, v in se1.items()},

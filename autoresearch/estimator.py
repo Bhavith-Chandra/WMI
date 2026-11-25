@@ -5,7 +5,7 @@ Each filter j models c_t = c_{t-1} + eta, eta ~ N(0, q_j * S0) (q relative to th
 """
 import numpy as np
 
-QS = np.array([0.0, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1])
+QS = np.array([0.0, 1e-5, 1e-4, 1e-3, 1e-2, np.inf])  # inf = 'fresh': prior re-drawn every step
 P_STAY = 0.99
 
 
@@ -13,6 +13,7 @@ class Estimator:
     def __init__(self, M, prior_mean, prior_cov, sigma):
         J = len(QS)
         self.S0 = np.asarray(prior_cov, float)
+        self.m0 = np.asarray(prior_mean, float)
         self.m = np.broadcast_to(np.asarray(prior_mean, float), (M, J, 2)).copy()
         self.C = np.broadcast_to(self.S0, (M, J, 2, 2)).copy()
         self.logw = np.full((M, J), -np.log(J))
@@ -27,7 +28,9 @@ class Estimator:
         m = np.einsum("mij,mid->mjd", mix, self.m)
         dm = self.m[:, :, None, :] - m[:, None, :, :]
         C = np.einsum("mij,mide->mjde", mix, self.C) + np.einsum("mij,mijd,mije->mjde", mix, dm, dm)
-        C = C + QS[None, :, None, None] * self.S0[None, None]
+        fin = np.isfinite(QS)
+        C[:, fin] = C[:, fin] + QS[fin][None, :, None, None] * self.S0[None, None]
+        m[:, ~fin] = self.m0; C[:, ~fin] = self.S0
         return m, C, np.log(np.maximum(pred_w, 1e-300))
 
     def belief(self):

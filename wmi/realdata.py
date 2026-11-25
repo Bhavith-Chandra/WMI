@@ -93,14 +93,18 @@ class GainOffsetPosterior:
         self.b = self.b + x * resid / self.sigma2
 
 
-def stream_eval(model: NARX, u_n, y_n, n, k, cfg, rng, stride=10):
+def stream_eval(model: NARX, u_n, y_n, n, k, cfg, rng, stride=10, extra_est=None):
     """Causal streaming over ONE test record (normalised units). Returns per-step squared errors."""
     X, Y, idx = windows(u_n, y_n, n)
     with torch.no_grad():
         F = model(torch.from_numpy(X)).numpy()
     yt = X[:, 0]
     N = len(Y)
-    methods = ("forward", "residual", "hindsight", "hindsight_forget", "online_sgd", "naive_last", "naive_velocity")
+    methods = ("forward", "residual", "hindsight", "hindsight_forget", "online_sgd", "naive_last", "naive_velocity") + \
+        (("hindsight_imm",) if extra_est is not None else ())
+    if extra_est is not None:
+        imm = extra_est(1, np.zeros(2), np.diag([cfg["s_theta"] ** 2, cfg["s_w"] ** 2]), cfg["sigma"])
+        phis_imm = np.zeros((len(windows(u_n, y_n, n)[1]), 2))
     pred1 = {m: np.zeros(N) for m in methods}
     post = GainOffsetPosterior(cfg["s_theta"], cfg["s_w"], cfg["sigma"])
     postf = GainOffsetPosterior(cfg["s_theta"], cfg["s_w"], cfg["sigma"], forget=cfg["forget"])
@@ -123,6 +127,11 @@ def stream_eval(model: NARX, u_n, y_n, n, k, cfg, rng, stride=10):
         xt = Xt[t:t + 1]
         out = sgd(xt)
         pred1["online_sgd"][t] = float(out)
+        if extra_est is not None:
+            mi = imm.belief()[0][0]
+            phis_imm[t] = mi
+            pred1["hindsight_imm"][t] = yt[t] + (1 + mi[0]) * df + mi[1]
+            imm.update(np.array([[df, 1.0]]), np.array([Y[t] - F[t]]))
         pred1["naive_last"][t] = yt[t]                       # model-free: y_{t+1} = y_t
         pred1["naive_velocity"][t] = 2 * yt[t] - X[t, 1]     # model-free: constant-velocity extrapolation
         # ---- outcome y_{t+1} revealed; update every method's memory (strictly after predicting)
@@ -149,7 +158,7 @@ def stream_eval(model: NARX, u_n, y_n, n, k, cfg, rng, stride=10):
             elif m == "residual":
                 ynext = f + res_hist[starts]
             else:
-                ph = phis[starts] if m == "hindsight" else phisf[starts]
+                ph = {"hindsight": phis, "hindsight_forget": phisf}.get(m, phis_imm if extra_est is not None else None)[starts]
                 ynext = yprev + (1 + ph[:, 0]) * (f - yprev) + ph[:, 1]
             ybuf = np.concatenate([ynext[:, None], ybuf[:, :-1]], 1)
         sek[m] = (ybuf[:, 0] - Y[starts + k - 1]) ** 2
