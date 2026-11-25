@@ -1,0 +1,47 @@
+{
+  "provenance": {
+    "config": {
+      "experiment": "mujoco_v2_calibration",
+      "seed": 99,
+      "pop": 300,
+      "elites": 30,
+      "iters": 3,
+      "sgd_lr": 0.001,
+      "forget": 0.98,
+      "window": 30,
+      "latent_steps": 10,
+      "E": 20,
+      "T": 160,
+      "train_batches": 20,
+      "train_E": 200,
+      "train_T": 50,
+      "fit_steps": 6000
+    },
+    "config_hash": "2db73565eb",
+    "git_commit": "4f2fae6267e7e7c15e1e1bdf17d00a6ed3456213",
+    "git_dirty": false,
+    "timestamp_utc": "2026-11-25T06:53:50.762949+00:00",
+    "python": "3.13.18",
+    "numpy": "2.5.5",
+    "torch": "2.15.0+cpu",
+    "machine": "x86_64"
+  },
+  "candidates": [
+    {
+      "name": "C5",
+      "K": 20,
+      "wind_sd": 1.0,
+      "forward": 12.156290563619411,
+      "oracle": 9.027480286079747,
+      "headroom": 0.2573819917486484
+    }
+  ],
+  "chosen": {
+    "name": "C5",
+    "K": 20,
+    "wind_sd": 1.0,
+    "forward": 12.156290563619411,
+    "oracle": 9.027480286079747,
+    "headroom": 0.2573819917486484
+  }
+}
