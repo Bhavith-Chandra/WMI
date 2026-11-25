@@ -1,0 +1,41 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,hyperref}
+\usepackage[numbers]{natbib}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+\usepackage{xcolor}
+% RULE: every number in this paper is \input from generated/ (scripts/make_tables.py).
+\title{Open Problems in World Models and Interpretability}
+\author{\todo{authors}}
+\begin{document}
+\maketitle
+
+\begin{abstract}\todo{}\end{abstract}
+
+% Template per problem: Statement / Why it matters / Current evidence (cite) / What would count as progress (a test).
+\section{Defining the object of study}
+\paragraph{P1: What makes a representation a world model?} Decodability is necessary, not sufficient. \todo{}
+\paragraph{P2: Ground truth beyond toy worlds.} \todo{}
+
+\section{Representations}
+\paragraph{P3: Memory vs.\ inference of latent state in partially observed settings.} \todo{}
+\paragraph{P4: Identifiability of latent state variables.} \todo{}
+
+\section{Dynamics}
+\paragraph{P5: Locating transition computation; error accumulation in imagined rollouts.} \todo{}
+
+\section{Use in planning}
+\paragraph{P6: Does the planner's cost reflect reachability?} Evidence from the companion paper. \todo{}
+\paragraph{P7: Hindsight structure in latent spaces.} \todo{}
+
+\section{Methodology}
+\paragraph{P8: Probe validity and controls as a standard.} \citep{hewitt2019control} \todo{}
+\paragraph{P9: Causal evaluation at scale (video WMs, JEPAs, world action models).} \todo{}
+
+\section{Relation to existing roadmaps}
+\citep{openproblems_mi_2501_16496,wm_roadmap_2607_06401,state_of_mi_2611_08438}
+\todo{Each problem above must state what is new relative to these.}
+
+\bibliographystyle{plainnat}
+\bibliography{../refs}
+\end{document}

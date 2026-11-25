@@ -1,0 +1,50 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,hyperref}
+\usepackage[numbers]{natbib}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+\usepackage{xcolor}
+% RULE: every number in this paper is \input from generated/ (scripts/make_tables.py).
+\title{Latent Hindsight Planning in World Models}
+\author{\todo{authors}}
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\todo{Write after results exist. Do not pre-commit to a headline number.}
+\end{abstract}
+
+\section{Introduction}
+\todo{Problem: latent planners score imagined states with a cost (often $\ell_2$ to a goal latent) that need not reflect reachability. Hypothesis: hindsight-relabeled structure in latent space supplies the missing signal.}
+
+\section{Definition of latent hindsight planning}
+\label{sec:def}
+\todo{BLOCKING: replace with the collaborators' definition.}
+Working definition used by the current code (\texttt{wmi/train.py:train\_temporal\_distance}):
+given trajectories $(o_0,a_0,\dots,o_T)$ and a frozen encoder $z=f(o)$, relabel goals in hindsight as
+$g = z_{t+k}$ for $k\sim\mathcal{U}\{0,\dots,K\}$ and fit $d_\theta(z_t,g)$ to $k$ with an expectile loss
+($\tau=0.1$) so that $d_\theta$ tracks the lower envelope of random-walk offsets. Planning is CEM-MPC
+in latent space with cost $\min_t d_\theta(\hat z_t, z_g)$.
+
+\section{Related work}
+Hindsight relabeling \citep{andrychowicz2017her}; hindsight for world action models \citep{hintwam_2611_24789};
+learned temporal metrics for latent planning \citep{howlong_2610_04988}; latent planning cost geometry
+\citep{latentproj_2610_26979,transition_geometry_2611_30064,sage_2607_17973}.
+\todo{State precisely how our definition differs from each.}
+
+\section{Experimental setup}
+KeyGrid testbed with exact ground truth; episode-level splits with asserted disjointness; evaluation on
+fresh start/goal pairs from an independent RNG; oracle BFS shortest paths for optimality.
+
+\section{Results}
+\begin{table}[h]\centering\small
+\IfFileExists{generated/planning_table.tex}{\input{generated/planning_table.tex}}{\todo{run scripts/run\_planning.py}}
+\caption{Goal reaching. Mean $\pm$ s.d. over seeds.}
+\end{table}
+
+\section{Interpretability of the planner}
+\todo{Probe $d_\theta$ and the latent for ground-truth reachability; intervene on goal latents.}
+
+\bibliographystyle{plainnat}
+\bibliography{../refs}
+\end{document}

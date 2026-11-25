@@ -1,0 +1,61 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,hyperref}
+\usepackage[numbers]{natbib}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+\usepackage{xcolor}
+% RULE: every number in this paper is \input from generated/ (scripts/make_tables.py).
+\title{Interpreting World Models: A Tutorial and Methodology}
+\author{\todo{authors}}
+\begin{document}
+\maketitle
+
+\begin{abstract}
+A practical guide to making \emph{checkable} claims about what learned world models represent and how they use it.
+Every method is paired with the control that would falsify it, and every example runs from the accompanying
+\texttt{wmi} toolkit on a testbed with exact ground truth.
+\end{abstract}
+
+\section{What counts as a claim about a world model}
+Decodability (information is present), use (the model's computation depends on it), and fidelity
+(the represented dynamics match the environment). These require different evidence.
+
+\section{Testbeds with ground truth}
+KeyGrid: position and key status are exactly known. The POMDP stream shows a full view only at $t=0$, so
+position and key status at $t>0$ must be carried in memory---decoding them is non-trivial, unlike
+fully observed one-hot inputs where everything is linearly decodable from the raw observation.
+
+\section{Probing without fooling yourself}
+\begin{enumerate}
+\item Split by episode; assert disjointness (\texttt{wmi.harness.check\_split}).
+\item Select probe hyper-parameters on validation only.
+\item Always report: raw-input probe, untrained-model probe, shuffled labels, majority class, and a
+      control task \citep{hewitt2019control}; report selectivity.
+\item Cluster-bootstrap CIs over episodes, not timesteps.
+\end{enumerate}
+\begin{table}[h]\centering\scriptsize
+\IfFileExists{generated/probe_table.tex}{\input{generated/probe_table.tex}}{\todo{run scripts/run\_probes.py}}
+\caption{Probe accuracy on held-out episodes ($t\ge1$). Mean $\pm$ s.d. over seeds.}
+\end{table}
+
+\section{From decodability to use: interventions}
+Minimal-norm edits that set a probe's logit to a target, compared to matched-norm random edits; measure the
+intended effect and a specificity metric on an unrelated output channel.
+\begin{table}[h]\centering\scriptsize
+\IfFileExists{generated/intervention_table.tex}{\input{generated/intervention_table.tex}}{\todo{run scripts/run\_probes.py}}
+\caption{Editing the has-key direction of the recurrent state.}
+\end{table}
+
+\section{Interpretability for planning}
+\todo{Latent geometry vs.\ reachability; link to the latent hindsight planning paper.}
+
+\section{Checklist}
+\todo{One-page checklist distilled from Sections 3--5.}
+
+\section{Related work}
+\citep{li2023othello,probing_rl_wm_2603_21546,wmi_survey_2610_25296,onelens_2606_09936,steer_wam_2607_14943,world2vec_2610_40637}
+\todo{Position: this tutorial's contribution is executable methodology with falsification controls.}
+
+\bibliographystyle{plainnat}
+\bibliography{../refs}
+\end{document}
