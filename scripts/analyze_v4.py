@@ -26,7 +26,8 @@ if runs:
     checks["N3 s=1: posterior AND latent_pf beat residual"] = all(verdict(rel(1.0, p, "residual")[1]) == "beats" for p in ("hindsight_posterior", "hindsight_latent_pf"))
     g0, g1 = 1 - rel(0.0, "hindsight_posterior")[0], 1 - rel(1.0, "hindsight_posterior")[0]
     checks["N4 posterior gain at s=1 >= half its gain at s=0"] = g1 >= 0.5 * g0
-    checks["F3 pf_bayes not worse than pf at every s"] = all(verdict(rel(g, "hindsight_latent_pf_bayes", "hindsight_latent_pf")[1]) != "worse" for g in G)
+    if "hindsight_latent_pf_bayes" in P[key(0.0)]:
+        checks["F3 pf_bayes not worse than pf at every s"] = all(verdict(rel(g, "hindsight_latent_pf_bayes", "hindsight_latent_pf")[1]) != "worse" for g in G)
     out.append(f"provenance: commits {sorted({r['provenance']['git_commit'][:7] for r in runs})}, seeds {len(runs)}")
 I = load_results("identification_v4") if len(sys.argv) <= 1 else None
 if I:
