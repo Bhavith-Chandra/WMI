@@ -3,7 +3,9 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from scipy.stats import spearmanr
+def spearmanr(a, b):
+    ra, rb = np.argsort(np.argsort(a)), np.argsort(np.argsort(b))
+    return (float(np.corrcoef(ra, rb)[0, 1]),)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.analyze_mujoco import paired_ratio, verdict  # noqa: E402
