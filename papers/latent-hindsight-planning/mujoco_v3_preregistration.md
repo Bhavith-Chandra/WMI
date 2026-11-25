@@ -40,3 +40,18 @@ exploitation, not search failure; (2) warm start irrelevant; (3) from the SAME r
 The loss is a benchmark artefact (chained random goals reward imprecision), not a property of hindsight.
 DEVIATION: reset the puck to a fresh random start at each 40-step goal segment; phi and every planner's memory
 persist across segments. Gate re-run with the same beta ladder and pass rule.
+
+## OUTCOME E1 (main) + E3 (rho), 3 seeds x 20 episodes; scripts/analyze_mujoco_v3.py -> generated/mujoco_v3_summary.txt
+Cost ratio vs forward (paired bootstrap 95% CI):
+- wind: posterior 0.755, latent(GD) 0.749, latent_pf 0.790, hybrid 0.751, online_sgd 0.867, residual 0.750, oracle 0.652
+- both: posterior 0.776, latent(GD) 0.768, latent_pf 0.812, online_sgd 0.886, oracle 0.691
+- switching: latent_pf 0.848, latent(GD) 0.865, posterior 0.937, online_sgd 0.976, oracle 0.689
+- ood_gain: latent(GD) 0.952, posterior 0.964, latent_pf 0.963, online_sgd 0.999, residual 1.007 (worse), oracle 0.945
+- gain: latent(GD) 0.959, posterior 0.979, latent_pf 0.991 (tie), online_sgd 0.997, residual 1.019 (worse), oracle 0.951
+- fresh: posterior 1.019, latent_pf 1.287, residual 1.369 (all worse); online_sgd 0.998 (CI upper 1.000)
+- rho sweep, latent_pf: rho=0 1.221, 0.9 1.058, 0.99 0.840, 1.0 0.736 (monotone); oracle 1.216/0.936/0.685/0.586;
+  residual 1.311/0.993/0.764/0.703.
+Verdicts: R2 SUPPORTED (latent_pf captures 60.5% / 60.7% of oracle headroom on wind/both), R4 SUPPORTED.
+R1 NOT SUPPORTED only because latent_pf ties forward on 'gain' (0.991, CI [0.976, 1.008]); it beats forward and
+online_sgd on wind, both, ood_gain. R5 NOT SUPPORTED: residual ties forward at rho=0.9 (worse at rho=0).
+R6 NOT SUPPORTED on a technicality: online_sgd 0.998 with CI upper bound 1.000 (0.2%).
