@@ -70,7 +70,7 @@ class Planner3:
             sd = np.array(cfg["resid_sd"]); self.post = Posterior(E, 0.5, 2 * sd, sd, cfg["forget"])
         if kind == "hindsight_latent":
             self.phi_hat = torch.tensor(np.tile(PHI_MU, (E, 1)), dtype=torch.float32); self.buf = []
-        if kind == "hindsight_latent_pf":
+        if kind.startswith("hindsight_latent_pf"):
             N = cfg["n_particles"]
             self.parts = self._prior(E * N).reshape(E, N, 3); self.logw = np.zeros((E, N))
 
@@ -97,6 +97,12 @@ class Planner3:
         return torch.stack([mdl(x) for mdl in self.Mu])
 
     def predict(self, v, a):
+        if self.kind == "hindsight_latent_pf_bayes":
+            # v, a: (E, P*S, 2) with samples interleaved; self.samp: (E, S, 3)
+            S = self.samp.shape[1]
+            phi = torch.tensor(self.samp, dtype=torch.float32).repeat(1, v.shape[1] // S, 1)
+            ms = torch.stack([mdl(torch.cat([v, a, phi], -1)) for mdl in self.Mc])
+            return ms.mean(0), ms.std(0)
         if self.kind in ("hindsight_latent", "hindsight_latent_pf", "oracle_latent"):
             phi = torch.tensor(self.phi_est(), dtype=torch.float32)[:, None].expand(-1, v.shape[1], -1)
             ms = torch.stack([mdl(torch.cat([v, a, phi], -1)) for mdl in self.Mc])
@@ -112,6 +118,8 @@ class Planner3:
 
     @torch.no_grad()
     def act(self, s, goal):
+        if self.kind == "hindsight_latent_pf_bayes":
+            return self.act_bayes(s, goal)
         c = self.cfg; E, H, P = self.E, c["H"], c["pop"]
         if not c.get("warm", True):
             self.mu = np.zeros((E, H, 2))
@@ -126,6 +134,31 @@ class Planner3:
                 st = st + d
                 cost += ((st[..., :2] - g[:, None]) ** 2).sum(-1) + 0.01 * (At[:, :, t] ** 2).sum(-1) \
                     + c["beta"] * ((dsd / self.rsd) ** 2).mean(-1)
+            el = torch.topk(cost, c["elites"], dim=1, largest=False).indices.numpy()
+            EA = np.take_along_axis(A, el[:, :, None, None], 1)
+            self.mu, std = EA.mean(1), EA.std(1) + 0.05
+        plan, K = self.mu.copy(), c["K"]
+        self.mu = np.concatenate([self.mu[:, K:], np.zeros((E, K, 2))], 1)
+        return plan
+
+    @torch.no_grad()
+    def act_bayes(self, s, goal, S=8):
+        c = self.cfg; E, H, P = self.E, c["H"], c["pop"]
+        w = np.exp(self.logw - self.logw.max(1, keepdims=True)); w /= w.sum(1, keepdims=True)
+        idx = np.stack([self.rng.choice(w.shape[1], S, p=w[e]) for e in range(E)])
+        self.samp = np.take_along_axis(self.parts, idx[..., None], 1)            # (E,S,3)
+        std = np.full((E, H, 2), 0.6); g = torch.tensor(goal, dtype=torch.float32)
+        for _ in range(c["iters"]):
+            A = np.clip(self.mu[:, None] + std[:, None] * self.rng.standard_normal((E, P, H, 2)), -1, 1)
+            At = torch.tensor(A, dtype=torch.float32).repeat_interleave(S, 1)       # (E, P*S, H, 2)
+            st = torch.tensor(s, dtype=torch.float32)[:, None].expand(-1, P * S, -1)
+            cost = torch.zeros(E, P * S)
+            for t in range(H):
+                d, dsd = self.predict(st[..., 2:], At[:, :, t])
+                st = st + d
+                cost += ((st[..., :2] - g[:, None]) ** 2).sum(-1) + 0.01 * (At[:, :, t] ** 2).sum(-1) \
+                    + c["beta"] * ((dsd / self.rsd) ** 2).mean(-1)
+            cost = cost.reshape(E, P, S).mean(-1)                                   # posterior-expected cost
             el = torch.topk(cost, c["elites"], dim=1, largest=False).indices.numpy()
             EA = np.take_along_axis(A, el[:, :, None, None], 1)
             self.mu, std = EA.mean(1), EA.std(1) + 0.05
@@ -152,7 +185,7 @@ class Planner3:
                 gerr = 2 * (pred - (y - mdl.out_mu) / mdl.out_sd) / 4
                 self.W[:, m] -= self.cfg["sgd_lr"] * gerr[:, :, None] * h[:, None, :]
                 self.b[:, m] -= self.cfg["sgd_lr"] * gerr
-        if self.kind == "hindsight_latent_pf":
+        if self.kind.startswith("hindsight_latent_pf"):
             E, N = self.parts.shape[:2]
             ph = torch.tensor(self.parts.reshape(E * N, 3), dtype=torch.float32)
             vv = v[:, 0].repeat_interleave(N, 0); aa = at[:, 0].repeat_interleave(N, 0)
@@ -193,8 +226,10 @@ def run_regime3(kind, Mu, Mc, goals, sched, cfg, seed):
     s = env.reset(starts[0]) if cfg.get("reset_each_segment") else env.reset()
     pl = Planner3(kind, Mu, Mc, E, cfg, np.random.default_rng(seed))
     cost = np.zeros((T, E)); K = cfg["K"]
+    gust = np.random.default_rng(seed + 2).standard_normal((T, E, 2)) * cfg.get("gust_sd", 0.0)
     for t in range(T):
-        env.set_phi(sched[t]); pl.phi_true = sched[t]
+        ph = sched[t].copy(); ph[:, 1:] += gust[t]
+        env.set_phi(ph); pl.phi_true = sched[t]
         if cfg.get("reset_each_segment") and t > 0 and t % 40 == 0:
             s = env.reset(starts[t // 40]); pl.mu[:] = 0
         if t % K == 0:

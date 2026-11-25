@@ -57,6 +57,9 @@ def run(mode, seed):
         settings = [("K20", 20, ["none", "gain", "wind", "both", "switching", "fresh", "ood_gain"] if gate_pass else ["wind", "both"], ALL)]
     elif mode == "ksweep":
         settings = [(f"K{K}", K, ["wind", "both"], ["forward", "online_sgd", "hindsight_posterior", "hindsight_latent_pf", "oracle_latent"]) for K in (1, 5, 10, 20, 40)]
+    elif mode == "noise":
+        settings = [(f"gust{g}", 20, ["wind"], ["forward", "residual", "hindsight_posterior", "hindsight_latent_pf",
+                                                 "hindsight_latent_pf_bayes", "oracle_latent"]) for g in (0.0, 0.25, 0.5, 1.0)]
     else:
         settings = [("K20", 20, [f"ar{r}" for r in (0.0, 0.9, 0.99, 1.0)], ["forward", "residual", "hindsight_posterior", "hindsight_latent_pf", "oracle_latent"])]
     rec = run_record({"experiment": f"mujoco_v3_{mode}", "seed": seed, "beta": beta, "gate_pass": gate_pass, **BASE})
@@ -65,7 +68,7 @@ def run(mode, seed):
     Mu, Mc, iu, ic = build(cfg, rng)
     res = {}
     for tag, K, regimes, planners in settings:
-        cfg.update(K=K, H=max(10, K + 5))
+        cfg.update(K=K, H=max(10, K + 5), gust_sd=float(tag[4:]) if tag.startswith("gust") else 0.0)
         test_rng = np.random.default_rng(10_000 + seed)
         for reg in regimes:
             g, s = make_schedule3(reg, test_rng, cfg["E"], cfg["T"])
@@ -76,6 +79,6 @@ def run(mode, seed):
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(); ap.add_argument("mode", choices=["gate", "main", "ksweep", "rho"]); ap.add_argument("--seed", type=int, default=0)
+    ap = argparse.ArgumentParser(); ap.add_argument("mode", choices=["gate", "main", "ksweep", "rho", "noise"]); ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
     gate() if a.mode == "gate" else run(a.mode, a.seed)
