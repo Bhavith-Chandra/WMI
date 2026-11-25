@@ -42,3 +42,18 @@ H6 residual reuse is worse than hier_hindsight in mixed (noisy single-step estim
 (2) With independent 5 N motors per axis, a 7-10 N current never sweeps the puck away (forward and oracle both
 succeeded 8/8 in 'strong'), so the task had no surprise to exploit. Strong currents become U[15, 25] N, in the prior
 mixture (80% U[0,3], 20% U[15,25]) and in the 'strong' regime. Everything else unchanged; calibration rule unchanged.
+
+## OUTCOME (3 seeds x 200 episodes; success rate, mean steps on success)
+    calm {'flat_forward': (np.float64(1.0), np.float64(30.3)), 'flat_hindsight': (np.float64(1.0), np.float64(28.0)), 'hier_cautious': (np.float64(1.0), np.float64(87.0)), 'hier_forward': (np.float64(1.0), np.float64(53.0)), 'hier_hindsight': (np.float64(1.0), np.float64(44.0)), 'hier_oracle': (np.float64(1.0), np.float64(44.0)), 'hier_residual': (np.float64(1.0), np.float64(44.0))}
+    strong {'flat_forward': (np.float64(1.0), np.float64(62.1)), 'flat_hindsight': (np.float64(1.0), np.float64(62.1)), 'hier_cautious': (np.float64(1.0), np.float64(87.0)), 'hier_forward': (np.float64(0.577), np.float64(94.0)), 'hier_hindsight': (np.float64(0.363), np.float64(91.2)), 'hier_oracle': (np.float64(1.0), np.float64(88.5)), 'hier_residual': (np.float64(0.363), np.float64(91.2))}
+    mixed {'flat_forward': (np.float64(1.0), np.float64(36.4)), 'flat_hindsight': (np.float64(1.0), np.float64(34.6)), 'hier_cautious': (np.float64(1.0), np.float64(87.0)), 'hier_forward': (np.float64(0.917), np.float64(57.7)), 'hier_hindsight': (np.float64(0.868), np.float64(47.3)), 'hier_oracle': (np.float64(1.0), np.float64(52.5)), 'hier_residual': (np.float64(0.868), np.float64(47.3))}
+    fresh {'flat_forward': (np.float64(1.0), np.float64(30.8)), 'flat_hindsight': (np.float64(1.0), np.float64(31.5)), 'hier_cautious': (np.float64(1.0), np.float64(87.0)), 'hier_forward': (np.float64(1.0), np.float64(52.2)), 'hier_hindsight': (np.float64(1.0), np.float64(60.3)), 'hier_oracle': (np.float64(0.992), np.float64(113.0)), 'hier_residual': (np.float64(0.997), np.float64(74.0))}
+    commits {'a36ff57'}
+Verdicts: H1 REFUTED (strong: hier_hindsight 0.36 < hier_forward 0.58); H2 SUPPORTED (calm: hindsight 44 steps vs
+cautious 87, success 1.0); H3 REFUTED (flat planners best in mixed); H4 SUPPORTED (fresh: no hindsight gain);
+H5 REFUTED (flat_hindsight 1.0 > hier_hindsight 0.36); H6 REFUTED (residual == posterior: noise-free simulator,
+one residual identifies c exactly).
+Diagnosis: (a) the hard-coded abort (retreat to the nearest bank) is slower than finishing the crossing, so correct
+inference led to a worse decision; (b) waypoint PD control slows down near the mid-river subgoal, so hierarchical
+crossing is slower than flat crossing and gets swept; (c) 15-25 N is passable at full speed, so hierarchy is not
+needed. Hindsight inference was right; the re-derived plan was wrong.
