@@ -1,0 +1,80 @@
+{
+  "provenance": {
+    "config": {
+      "experiment": "river_v3_calibration",
+      "seed": 99
+    },
+    "config_hash": "6e920d755c",
+    "git_commit": "f31a90b0e69e3cccfd813e6014983ee5e07e7779",
+    "git_dirty": false,
+    "timestamp_utc": "2026-11-25T16:35:10.749507+00:00",
+    "python": "3.13.18",
+    "numpy": "2.5.5",
+    "torch": "2.15.0+cpu",
+    "machine": "x86_64"
+  },
+  "rows": [
+    {
+      "waterfall": 2.0,
+      "calm": {
+        "oracle": 1.0,
+        "forward": 1.0
+      },
+      "strong": {
+        "oracle": 0.54,
+        "forward": 0.89
+      },
+      "mixed": {
+        "oracle": 0.9,
+        "forward": 0.97
+      },
+      "fresh": {
+        "oracle": 0.98,
+        "forward": 1.0
+      },
+      "pass": false
+    },
+    {
+      "waterfall": 3.0,
+      "calm": {
+        "oracle": 1.0,
+        "forward": 1.0
+      },
+      "strong": {
+        "oracle": 0.54,
+        "forward": 1.0
+      },
+      "mixed": {
+        "oracle": 0.9,
+        "forward": 1.0
+      },
+      "fresh": {
+        "oracle": 0.99,
+        "forward": 1.0
+      },
+      "pass": false
+    },
+    {
+      "waterfall": 1.5,
+      "calm": {
+        "oracle": 1.0,
+        "forward": 1.0
+      },
+      "strong": {
+        "oracle": 0.54,
+        "forward": 0.44
+      },
+      "mixed": {
+        "oracle": 0.9,
+        "forward": 0.84
+      },
+      "fresh": {
+        "oracle": 0.97,
+        "forward": 1.0
+      },
+      "pass": false
+    }
+  ],
+  "waterfall": 2.0,
+  "passed": false
+}
