@@ -36,3 +36,9 @@ H3 mixed: hier_hindsight has the best success-weighted time among non-oracle pla
 H4 fresh: hier_hindsight is not better than hier_forward (Theorem 2 / 5).
 H5 hierarchy matters: hier_hindsight success > flat_hindsight in strong (flat has no bridge route).
 H6 residual reuse is worse than hier_hindsight in mixed (noisy single-step estimate triggers wrong decisions).
+
+## DEVIATION (before calibration; based on a smoke test of hier_forward/hier_oracle/hier_cautious only)
+(1) The simulator is deterministic, so the linear model's residual sd is ~0 -> likelihood sigma = max(fit sd, 0.002).
+(2) With independent 5 N motors per axis, a 7-10 N current never sweeps the puck away (forward and oracle both
+succeeded 8/8 in 'strong'), so the task had no surprise to exploit. Strong currents become U[15, 25] N, in the prior
+mixture (80% U[0,3], 20% U[15,25]) and in the 'strong' regime. Everything else unchanged; calibration rule unchanged.
