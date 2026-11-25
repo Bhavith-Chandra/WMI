@@ -83,3 +83,33 @@ lowers replanning success when there is no disturbance.
 Theorem~\ref{thm:separation} predicts $\sigma^2d$). Mean $\pm$ s.d.\ over seeds.}
 \label{tab:theory}
 \end{table}
+
+\subsection{Hierarchical planning under persistent surprises}
+\label{sec:theory-hier}
+A hierarchical planner chooses a route $r\in\{1,\dots,R\}$ (a subgoal sequence) and a low-level controller executes it.
+Route $r$ succeeds iff the hidden disturbance lies in its feasible set, $\phi\in\mathcal F_r$; the bridge-like route
+$r_0$ is feasible for every $\phi$ but costs more. Executing an infeasible route produces a \emph{surprise} (an observed
+transition the nominal model does not predict) after $\tau_{\rm detect}$ steps, and an irreversible failure after
+$\tau_{\rm irr}$ steps unless the planner aborts.
+
+\begin{theorem}[Subgoal failure is permanent without hindsight]\label{thm:hier}
+Let $\phi$ be persistent. A hierarchical planner whose subgoal choice is a fixed function of the prior (nominal model)
+commits to $r^\star$ and re-selects $r^\star$ after every recoverable subgoal failure, so its main-goal failure
+probability equals $\Pr(\phi\notin\mathcal F_{r^\star})$ \emph{for any number of retries}. A hierarchical planner whose
+subgoal choice conditions on the observed surprise (posterior over $\phi$) and which aborts as soon as
+$\Pr(\phi\notin\mathcal F_{r}\mid\text{history})$ exceeds a threshold fails only on the event
+$\{\phi\notin\mathcal F_{r^\star}\}\cap\{\tau_{\rm detect}+\tau_{\rm abort}\ge\tau_{\rm irr}\}$.
+Hence its advantage is $\Pr\big(\phi\notin\mathcal F_{r^\star},\ \tau_{\rm detect}+\tau_{\rm abort}<\tau_{\rm irr}\big)$,
+which is positive iff the surprise is identifiable before the failure becomes irreversible.
+If $\phi$ is redrawn independently at every attempt (fresh surprises), retries are independent and the
+prior-based planner's failure probability after $n$ retries is $p^{\,n}$; the posterior carries no information about the
+next draw, so hindsight gives no advantage (Theorem~\ref{thm:fresh}).
+\end{theorem}
+\begin{proof}[Proof sketch]
+Under persistence the prior-based choice and the low-level outcome are deterministic functions of $\phi$ given the
+start state, so every retry reproduces the same failure. The hindsight planner's abort rule triggers on the first
+posterior update that makes $r^\star$ infeasible with high probability; it then re-plans over the remaining routes
+and $r_0$ is always feasible. Under fresh draws the posterior predictive for the next attempt equals the prior.
+\end{proof}
+The theorem turns the qualitative claim ``hindsight makes hierarchical planning robust in deployment'' into two
+testable conditions: \emph{persistence} of the surprise and \emph{detection before irreversibility}.
