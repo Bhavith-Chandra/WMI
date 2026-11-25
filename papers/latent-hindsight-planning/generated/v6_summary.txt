@@ -1,0 +1,13 @@
+throw: commits ['55e206d', '72a91db'], seeds 3
+both: {'forward': [0.855, 0.84, 0.847, 0.849, 0.848], 'hindsight': [0.931, 0.282, 0.193, 0.187, 0.19], 'oracle': [0.098, 0.097, 0.104, 0.11, 0.104], 'residual': [0.855, 0.363, 0.331, 0.323, 0.318]}
+   summary ratio vs forward: {'forward': (1.0, [1.0, 1.0]), 'hindsight': (0.238, [0.224, 0.253]), 'oracle': (0.125, [0.11, 0.141]), 'residual': (0.391, [0.37, 0.411])}
+damping: {'forward': [0.486, 0.484, 0.483, 0.489, 0.492], 'hindsight': [0.604, 0.224, 0.148, 0.147, 0.146], 'oracle': [0.067, 0.066, 0.058, 0.066, 0.067], 'residual': [0.486, 0.308, 0.286, 0.287, 0.283]}
+   summary ratio vs forward: {'forward': (1.0, [1.0, 1.0]), 'hindsight': (0.321, [0.304, 0.338]), 'oracle': (0.138, [0.124, 0.153]), 'residual': (0.603, [0.585, 0.622])}
+fresh: {'forward': [0.855, 0.82, 0.866, 0.816, 0.866], 'hindsight': [0.931, 1.105, 1.132, 1.032, 1.006], 'oracle': [0.098, 0.078, 0.093, 0.08, 0.102], 'residual': [0.855, 1.152, 1.203, 1.104, 1.202]}
+   summary ratio vs forward: {'forward': (1.0, [1.0, 1.0]), 'hindsight': (1.269, [1.254, 1.284]), 'oracle': (0.107, [0.099, 0.114]), 'residual': (1.407, [1.388, 1.425])}
+wind: {'forward': [0.731, 0.733, 0.73, 0.733, 0.735], 'hindsight': [0.797, 0.25, 0.135, 0.12, 0.125], 'oracle': [0.018, 0.02, 0.025, 0.02, 0.021], 'residual': [0.731, 0.148, 0.135, 0.122, 0.129]}
+   summary ratio vs forward: {'forward': (1.0, [1.0, 1.0]), 'hindsight': (0.189, [0.181, 0.198]), 'oracle': (0.03, [0.025, 0.036]), 'residual': (0.18, [0.173, 0.189])}
+SUPPORTED T1 wind/damping/both: hindsight summary miss <= 0.5 x forward (upper CI < 0.5)
+SUPPORTED T2 damping/both: hindsight beats residual
+SUPPORTED T3 fresh: hindsight not better than forward
+NOT SUPPORTED T4 wind/damping/both: attempt-10 miss hindsight <= 2 x oracle

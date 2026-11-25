@@ -33,3 +33,22 @@ D2 at d = 20, hindsight_posterior and pf_adapt beat forward AND online_sgd.
   (seed, delay) runs as its own process. This is numerically equivalent to the original design: the test schedule RNG is
   re-seeded per delay tag (`10_000+seed`) and the planner RNG is `20_000+seed`. `analyze_v6.py` loader changed to merge
   per-delay files; decision rules D1/D2 untouched.
+
+## E-A outcome (3 seeds x 200 episodes, analysis rules from 648ec46)
+Summary miss over attempts 2-10, ratio vs forward (paired bootstrap 95% CI):
+| regime | hindsight | residual | oracle |
+|---|---|---|---|
+| wind | 0.189 [0.181, 0.198] | 0.180 [0.173, 0.189] | 0.030 |
+| damping | 0.321 [0.304, 0.338] | 0.603 [0.585, 0.622] | 0.138 |
+| both | 0.238 [0.224, 0.253] | 0.391 [0.370, 0.411] | 0.125 |
+| fresh (control) | 1.269 [1.254, 1.284] | 1.407 | 0.107 |
+
+- T1 SUPPORTED (3-5x lower miss than forward in all persistent regimes).
+- T2 SUPPORTED (beats residual reuse where the disturbance is multiplicative).
+- T3 SUPPORTED (fresh: hindsight is *worse* than forward, +27%, as Theorem 2 implies it cannot help and the
+  inference adds variance).
+- T4 NOT SUPPORTED: attempt-10 miss is 1.5x (both), 2.2x (damping), 6x (wind) the oracle. The learned-model
+  posterior converges but plateaus above the oracle; on wind, residual reuse ties hindsight (additive disturbance,
+  as Theorem 4 predicts consistency there).
+- Not pre-registered, observed: attempt 1 hindsight is 9-24% worse than forward (posterior-expected cost under the
+  broad prior is more conservative than the point forward plan).
