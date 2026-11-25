@@ -1,0 +1,84 @@
+{
+  "provenance": {
+    "config": {
+      "experiment": "river_calibration",
+      "seed": 99
+    },
+    "config_hash": "4511076071",
+    "git_commit": "2d2922cc324ada03aea60bab56cd59e725a3f6c2",
+    "git_dirty": false,
+    "timestamp_utc": "2026-11-25T16:25:55.957298+00:00",
+    "python": "3.13.18",
+    "numpy": "2.5.5",
+    "torch": "2.15.0+cpu",
+    "machine": "x86_64"
+  },
+  "lin": {
+    "kappa": 0.04853431239325123,
+    "sigma": 0.002
+  },
+  "rows": [
+    {
+      "waterfall": 2.0,
+      "calm": {
+        "hier_oracle": 1.0,
+        "hier_forward": 1.0
+      },
+      "strong": {
+        "hier_oracle": 1.0,
+        "hier_forward": 0.55
+      },
+      "mixed": {
+        "hier_oracle": 1.0,
+        "hier_forward": 0.86
+      },
+      "fresh": {
+        "hier_oracle": 0.97,
+        "hier_forward": 1.0
+      },
+      "pass": false
+    },
+    {
+      "waterfall": 3.0,
+      "calm": {
+        "hier_oracle": 1.0,
+        "hier_forward": 1.0
+      },
+      "strong": {
+        "hier_oracle": 1.0,
+        "hier_forward": 0.83
+      },
+      "mixed": {
+        "hier_oracle": 1.0,
+        "hier_forward": 0.96
+      },
+      "fresh": {
+        "hier_oracle": 1.0,
+        "hier_forward": 1.0
+      },
+      "pass": false
+    },
+    {
+      "waterfall": 1.5,
+      "calm": {
+        "hier_oracle": 1.0,
+        "hier_forward": 1.0
+      },
+      "strong": {
+        "hier_oracle": 1.0,
+        "hier_forward": 0.17
+      },
+      "mixed": {
+        "hier_oracle": 1.0,
+        "hier_forward": 0.8
+      },
+      "fresh": {
+        "hier_oracle": 0.87,
+        "hier_forward": 1.0
+      },
+      "pass": false
+    }
+  ],
+  "waterfall": 2.0,
+  "passed": false
+}
