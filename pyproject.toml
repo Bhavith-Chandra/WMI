@@ -1,0 +1,19 @@
+[project]
+name = "wmi"
+version = "0.1.0"
+description = "World model interpretability toolkit: ground-truth testbeds, controlled probes, interventions, latent planning."
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.26", "torch>=2.2", "scikit-learn>=1.4"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["wmi", "wmi.harness"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
