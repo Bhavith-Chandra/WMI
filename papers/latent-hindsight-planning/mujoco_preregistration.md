@@ -35,3 +35,11 @@ P5 none            : residual reuse is worse than forward (Thm 4(iii)); others ~
 P6 switching       : planners with forgetting/windows (posterior, latent, sgd) recover; forward does not adapt.
 P7 hybrid vs online_sgd: hybrid better on gain/ood_gain (gain identified through the action channel), ~equal
    elsewhere. (Real-data result predicts ~equal; this is the regime where they should differ.)
+
+## OUTCOME (scripts/analyze_mujoco.py, rules fixed before results; 3 seeds x 20 episodes per regime)
+5 of 11 checks supported (generated/mujoco_predictions.txt). Dominant finding, not anticipated in the
+pre-registration: HEADROOM IS SMALL. Even oracle_latent (true disturbance) improves on forward by only
+0.2% (gain), 2.0% (wind), 4.6% (both), 1.6% (ood_gain), 5.0% (switching). Forward MPC replans from the measured
+state every step, which is already feedback and removes most of the disturbance's effect on cost; hindsight can
+only recover the remaining offset. Where headroom exists, hindsight_latent tracks the oracle (both 0.961 vs
+0.954; wind 0.981 vs 0.980; ood_gain 0.989 vs 0.984) and residual reuse is worse than forward on both/ood_gain.

@@ -1,0 +1,11 @@
+NOT SUPPORTED P1 persistent: all hindsight beat forward
+NOT SUPPORTED P1b latent ~ oracle (tie or beats) on gain/wind/both
+SUPPORTED P2 wind: residual beats forward
+NOT SUPPORTED P2b wind: posterior beats residual
+NOT SUPPORTED P3 gain: posterior beats residual
+SUPPORTED P3b ood_gain: posterior and latent beat residual
+SUPPORTED P4 fresh: no hindsight planner beats forward
+SUPPORTED P4b fresh: residual worse than forward
+NOT SUPPORTED P5 none: residual worse than forward
+NOT SUPPORTED P6 switching: posterior, latent, sgd beat forward
+NOT SUPPORTED P7 gain & ood_gain: hybrid beats online_sgd
