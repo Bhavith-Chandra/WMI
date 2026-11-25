@@ -6,10 +6,11 @@ from pathlib import Path
 import numpy as np, torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.run_mujoco_v3 import BASE, build
-from wmi.harness import set_seed
+from wmi.harness import run_record, save_result, set_seed
 from wmi.mujoco_exp import PuckBatch
 from wmi.mujoco_v3 import Planner3, make_schedule3
 cfg = dict(BASE, K=20, H=25, beta=0.1, E=40)
+rec = run_record({"experiment": "diag_confound", "seed": 0, **cfg}); res = {}
 rng = set_seed(0); torch.set_num_threads(4); Mu, Mc, _, _ = build(cfg, rng)
 for pin in (False, True):
     dips = []
@@ -31,4 +32,8 @@ for pin in (False, True):
         bnd = [20, 40, 60, 80, 100, 120, 140]
         dips.append(np.mean([r2[b] - r2[b - 5:b].mean() for b in bnd]))
         print(("PINNED gain" if pin else "standard   "), "seed", sd, "dip", round(float(dips[-1]), 3), "R2@159", round(float(r2[-1]), 3), flush=True)
+        res.setdefault("final_r2_" + ("pinned" if pin else "standard"), []).append(float(r2[-1]))
     print(("PINNED gain" if pin else "standard   "), "mean dip", round(float(np.mean(dips)), 3))
+    res["pinned" if pin else "standard"] = {"dips": [float(d) for d in dips], "mean_dip": float(np.mean(dips)),
+                                            "final_r2_last_seed": float(r2[-1])}
+print("wrote", save_result("diag_confound", rec, res))
