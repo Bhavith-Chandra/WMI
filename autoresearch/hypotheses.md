@@ -81,3 +81,11 @@ at 10 steps vs online SGD on WH/ParWH -- mixing-induced partial resets make the 
 Prediction: real 10-step close to V3-1 (<= 1.04) because the gate shrinks the correction when residuals look
 fresh; synthetic switching < 1 (faster forgetting than V3-1) but likely > the IMM's 0.04; fresh ~1.0.
 Admissible iff real WH <= 1.05 -- uncertain.
+Result V3-6: SCORE 0.317, WORST 1.066 (real WH). Synthetic: fresh 1.0003, switching 0.50, none 0.043. Real:
+Cascaded 1.000, Silverbox 1.003, WH 1.066, ParWH 1.012 -> the evidence gate selects 'fresh' on real dev data, i.e.
+after online SGD the residuals carry ~no exploitable persistent gain/offset. NOT admissible (by 1.6%).
+
+## STOP of v3 tuning (decision logged before any test data is seen)
+7 candidates, none admissible. Further tuning on the same dev data = forking paths. EXPLORATORY sealed tests
+(not winner-selection) on TWO candidates fixed now: V3-1 (best real dev) and V3-6 (closest to admissible). Both
+are reported regardless of outcome; neither is "selected" on test.
