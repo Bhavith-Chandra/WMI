@@ -55,3 +55,10 @@ Verdicts: R2 SUPPORTED (latent_pf captures 60.5% / 60.7% of oracle headroom on w
 R1 NOT SUPPORTED only because latent_pf ties forward on 'gain' (0.991, CI [0.976, 1.008]); it beats forward and
 online_sgd on wind, both, ood_gain. R5 NOT SUPPORTED: residual ties forward at rho=0.9 (worse at rho=0).
 R6 NOT SUPPORTED on a technicality: online_sgd 0.998 with CI upper bound 1.000 (0.2%).
+
+## OUTCOME E2 (K-sweep) + identification (3 seeds)
+latent_pf cost reduction vs forward by K (1, 5, 10, 20, 40): wind 0.4%, 0.3%, 4.3%, 17.9%, 34.1%; both 0.8%, 1.4%,
+5.9%, 22.6%, 35.6%. Oracle headroom: wind 0.7%, 1.9%, 7.7%, 29.2%, 49.1%; both 1.5%, 2.5%, 9.1%, 35.2%, 52.0%.
+R3 SUPPORTED for wind and both. Identification (R^2 inferred vs true, 'both'): wind_x 0.43/0.79/0.86 and wind_y
+0.41/0.85/0.91 after 5/20/160 transitions; gain -0.03 after 20 and 0.65 after 160 -> additive faults are identified
+within ~20 transitions, the gain fault only slowly (identifiability through the action channel needs excitation).

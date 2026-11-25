@@ -7,12 +7,17 @@ K20/ood_gain {'forward': (1.0, [1.0, 1.0]), 'hindsight_latent': (0.952, [0.944, 
 K20/switching {'forward': (1.0, [1.0, 1.0]), 'hindsight_latent': (0.865, [0.831, 0.899]), 'hindsight_latent_pf': (0.848, [0.81, 0.884]), 'hindsight_posterior': (0.937, [0.904, 0.967]), 'hybrid': (0.942, [0.908, 0.973]), 'online_sgd': (0.976, [0.963, 0.988]), 'oracle_latent': (0.689, [0.635, 0.74]), 'residual': (0.842, [0.804, 0.881])}
 K20/wind {'forward': (1.0, [1.0, 1.0]), 'hindsight_latent': (0.749, [0.704, 0.798]), 'hindsight_latent_pf': (0.79, [0.74, 0.841]), 'hindsight_posterior': (0.755, [0.709, 0.804]), 'hybrid': (0.751, [0.703, 0.804]), 'online_sgd': (0.867, [0.842, 0.894]), 'oracle_latent': (0.652, [0.584, 0.724]), 'residual': (0.75, [0.705, 0.802])}
 headroom captured by latent_pf: {'wind': 0.6050294361528261, 'both': 0.6074620009996277}
+ksweep: commits ['a406392', 'b7d8f7a'] seeds 3
+wind latent_pf gain by K {1: 0.003711907199308584, 5: 0.00343934970679749, 10: 0.04283066397339419, 20: 0.17931979197471482, 40: 0.34126843313064836} | oracle headroom by K {1: 0.007240635358815806, 5: 0.018829370358687814, 10: 0.07712744974656183, 20: 0.2916451118016502, 40: 0.49138871236093096}
+both latent_pf gain by K {1: 0.007715044325069087, 5: 0.014376651414054642, 10: 0.05914756047775249, 20: 0.22604064707518923, 40: 0.35612394994246976} | oracle headroom by K {1: 0.014625107422692851, 5: 0.025323301639374685, 10: 0.091428034638245, 20: 0.3516484738842467, 40: 0.5199915593717144}
 rho: commits ['e554525'] seeds 3
-rho latent_pf ratio {0.0: (1.221, [1.178, 1.27]), 0.9: (1.058, [1.013, 1.108]), 0.99: (0.84, [0.799, 0.88]), 1.0: (0.736, [0.684, 0.795])}
+rho latent_pf ratio {0.0: (1.221, [1.179, 1.269]), 0.9: (1.058, [1.014, 1.108]), 0.99: (0.84, [0.798, 0.879]), 1.0: (0.736, [0.685, 0.796])}
 rho residual ratio {0.0: 1.311, 0.9: 0.993, 0.99: 0.764, 1.0: 0.703}
 rho oracle ratio {0.0: 1.216, 0.9: 0.936, 0.99: 0.685, 1.0: 0.586}
 NOT SUPPORTED R1 latent_pf beats forward AND online_sgd on wind/both/gain/ood_gain
 SUPPORTED R2 latent_pf captures >= 50% of oracle headroom on wind and both
 NOT SUPPORTED R6 fresh: no hindsight method beats forward
+SUPPORTED R3 wind: gain(K=40) > gain(K=1) and Spearman(K, gain) > 0
+SUPPORTED R3 both: gain(K=40) > gain(K=1) and Spearman(K, gain) > 0
 SUPPORTED R4 latent_pf gain monotone in rho and no significant gain at rho=0
 NOT SUPPORTED R5 residual worse than forward at rho=0 and 0.9
