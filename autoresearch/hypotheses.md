@@ -56,3 +56,20 @@ Candidates (code frozen in autoresearch/candidates/ before running):
 - V3-2 AR-3 IMM (control). Prediction: v3 must DETECT its sealed failure: real 10-step ratio > 1 somewhere.
 - V3-3 IMM with slow rates + fresh only. Prediction: keeps fresh ~1.01 (admissible synthetic) and loses less
   at 10 steps than AR-3; may be the first v3-admissible candidate.
+
+### v3 results (results_v3.tsv): NO candidate admissible (WORST <= 1.05).
+- V3-0 SCORE 0.359 WORST 1.410 (switching). Real 10-step vs min(fwd,sgd): Cascaded 0.58, Silverbox 1.28, WH 1.09,
+  ParWH 1.12 -> beats forward everywhere (0.47-0.90) but loses to online SGD on 3/4. Prediction partly wrong
+  (predicted 0.9-1.0 vs min baseline).
+- V3-1 HYBRID SCORE 0.340 WORST 1.410. Real: 0.57, 1.004, 1.038, 0.994 -> roughly ties online SGD except Cascaded
+  Tanks. Prediction "<1 on most datasets": REFUTED (only 2/4 below 1, and by <1% on ParWH).
+- V3-2 AR-3 control: real 0.60, 1.42, 1.67, 1.93 -> v3 DETECTS the sealed failure on dev data. SUPPORTED.
+- V3-3 IMM slow: real 0.67, 1.39, 1.40, 1.42; synthetic worst 1.011. REFUTED (still loses at 10 steps).
+Finding: on these real systems, online weight adaptation captures most of what hindsight correction offers; the
+posterior adds value on top of it only on Cascaded Tanks.
+
+## V3-4 HYBRID online-SGD base + IMM{static, q=1e-5, fresh}
+Hypothesis: switching/fresh synthetic failures need the fresh model; real 10-step losses came from fast-drift
+filters, so dropping them while keeping SGD base gives synthetic WORST ~1.01 and real ~V3-1 (0.57-1.04).
+Prediction: WORST in [1.01, 1.05] only if real WH/Silverbox stay <= 1.05; borderline.
+## V3-5 HYBRID online-SGD base + full AR-3 IMM. Prediction: real worse than V3-4 (fast filters), not admissible.
