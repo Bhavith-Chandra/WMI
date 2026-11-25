@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.analyze_mujoco import paired_ratio, verdict
 from wmi.harness import load_results
 rng = np.random.default_rng(0); out, checks = [], {}
-runs = load_results("mujoco_v3_noise")
+runs = load_results(sys.argv[1] if len(sys.argv) > 1 else "mujoco_v3_noise")
 if runs:
     keys = runs[0]["metrics"]["regimes"]
     P = {k: {p: np.concatenate([np.array(r["metrics"]["regimes"][k][p]["per_episode_cost"]) for r in runs]) for p in keys[k]} for k in keys}
@@ -14,6 +14,12 @@ if runs:
     rel = lambda g, p, q="forward": paired_ratio(P[key(g)][p], P[key(g)][q], rng)
     for g in G:
         out.append(f"gust {g}: " + str({p: (round(rel(g, p)[0], 3), [round(c, 3) for c in rel(g, p)[1]]) for p in P[key(g)]}))
+    if "hindsight_latent_pf_adapt" in P[key(0.0)]:
+        A = "hindsight_latent_pf_adapt"
+        checks["L1 s=1: pf_adapt beats residual AND pf"] = all(verdict(rel(1.0, A, q)[1]) == "beats" for q in ("residual", "hindsight_latent_pf"))
+        checks["L2 s=0: pf_adapt not worse than pf"] = verdict(rel(0.0, A, "hindsight_latent_pf")[1]) != "worse"
+        checks["L3 s=1: |pf_adapt - posterior| <= 0.05"] = abs(rel(1.0, A)[0] - rel(1.0, "hindsight_posterior")[0]) <= 0.05
+        checks["L4 pf_adapt ratio rises <= 0.05 from s=0 to s=1"] = rel(1.0, A)[0] - rel(0.0, A)[0] <= 0.05
     checks["N1 s=0: residual <= latent_pf (not worse)"] = verdict(rel(0.0, "residual", "hindsight_latent_pf")[1]) != "worse"
     rr = [rel(g, "residual")[0] for g in G]
     checks["N2 residual ratio vs forward increases monotonically in s"] = all(np.diff(rr) > 0)
@@ -22,7 +28,7 @@ if runs:
     checks["N4 posterior gain at s=1 >= half its gain at s=0"] = g1 >= 0.5 * g0
     checks["F3 pf_bayes not worse than pf at every s"] = all(verdict(rel(g, "hindsight_latent_pf_bayes", "hindsight_latent_pf")[1]) != "worse" for g in G)
     out.append(f"provenance: commits {sorted({r['provenance']['git_commit'][:7] for r in runs})}, seeds {len(runs)}")
-I = load_results("identification_v4")
+I = load_results("identification_v4") if len(sys.argv) <= 1 else None
 if I:
     bnd = [20, 40, 60, 80, 100, 120, 140]
     for reg in ("both", "wind"):
@@ -34,4 +40,4 @@ if I:
                 checks[f"F2 {reg}: predictive R^2 boundary dip > -0.05"] = dip > -0.05
 out += [("SUPPORTED " if v else "NOT SUPPORTED ") + k for k, v in checks.items()]
 print("\n".join(out))
-(Path(__file__).resolve().parents[1] / "papers" / "latent-hindsight-planning" / "generated" / "mujoco_v4_summary.txt").write_text("\n".join(out) + "\n")
+(Path(__file__).resolve().parents[1] / "papers" / "latent-hindsight-planning" / "generated" / ("mujoco_v4_summary.txt" if len(sys.argv) <= 1 else "mujoco_v5_summary.txt")).write_text("\n".join(out) + "\n")

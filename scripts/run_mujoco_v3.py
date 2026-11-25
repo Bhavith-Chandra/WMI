@@ -57,6 +57,9 @@ def run(mode, seed):
         settings = [("K20", 20, ["none", "gain", "wind", "both", "switching", "fresh", "ood_gain"] if gate_pass else ["wind", "both"], ALL)]
     elif mode == "ksweep":
         settings = [(f"K{K}", K, ["wind", "both"], ["forward", "online_sgd", "hindsight_posterior", "hindsight_latent_pf", "oracle_latent"]) for K in (1, 5, 10, 20, 40)]
+    elif mode == "noise2":
+        settings = [(f"gust{g}", 20, ["wind"], ["forward", "residual", "hindsight_posterior", "hindsight_latent_pf",
+                                                 "hindsight_latent_pf_adapt", "oracle_latent"]) for g in (0.0, 0.25, 0.5, 1.0)]
     elif mode == "noise":
         settings = [(f"gust{g}", 20, ["wind"], ["forward", "residual", "hindsight_posterior", "hindsight_latent_pf",
                                                  "hindsight_latent_pf_bayes", "oracle_latent"]) for g in (0.0, 0.25, 0.5, 1.0)]
@@ -79,6 +82,6 @@ def run(mode, seed):
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(); ap.add_argument("mode", choices=["gate", "main", "ksweep", "rho", "noise"]); ap.add_argument("--seed", type=int, default=0)
+    ap = argparse.ArgumentParser(); ap.add_argument("mode", choices=["gate", "main", "ksweep", "rho", "noise", "noise2"]); ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
     gate() if a.mode == "gate" else run(a.mode, a.seed)

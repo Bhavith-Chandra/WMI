@@ -73,6 +73,7 @@ class Planner3:
         if kind.startswith("hindsight_latent_pf"):
             N = cfg["n_particles"]
             self.parts = self._prior(E * N).reshape(E, N, 3); self.logw = np.zeros((E, N))
+            self.nv = np.tile((2 * np.array(cfg["resid_sd_c"])) ** 2, (E, 1))      # adaptive noise variance
 
     def _prior(self, n):
         w = 1.5 * self.cfg["wind_sd"]
@@ -103,7 +104,7 @@ class Planner3:
             phi = torch.tensor(self.samp, dtype=torch.float32).repeat(1, v.shape[1] // S, 1)
             ms = torch.stack([mdl(torch.cat([v, a, phi], -1)) for mdl in self.Mc])
             return ms.mean(0), ms.std(0)
-        if self.kind in ("hindsight_latent", "hindsight_latent_pf", "oracle_latent"):
+        if self.kind in ("hindsight_latent", "hindsight_latent_pf", "hindsight_latent_pf_adapt", "oracle_latent"):
             phi = torch.tensor(self.phi_est(), dtype=torch.float32)[:, None].expand(-1, v.shape[1], -1)
             ms = torch.stack([mdl(torch.cat([v, a, phi], -1)) for mdl in self.Mc])
         else:
@@ -191,6 +192,11 @@ class Planner3:
             vv = v[:, 0].repeat_interleave(N, 0); aa = at[:, 0].repeat_interleave(N, 0)
             pred = torch.stack([mdl(torch.cat([vv, aa, ph], -1)) for mdl in self.Mc]).mean(0).numpy().reshape(E, N, 4)
             sd = 2 * np.array(self.cfg["resid_sd_c"])
+            if self.kind == "hindsight_latent_pf_adapt":
+                ph_hat = torch.tensor(self.phi_est(), dtype=torch.float32)
+                p_hat = torch.stack([mdl(torch.cat([v[:, 0], at[:, 0], ph_hat], -1)) for mdl in self.Mc]).mean(0).numpy()
+                self.nv = 0.98 * self.nv + 0.02 * (dobs - p_hat) ** 2
+                sd = np.sqrt(np.maximum(self.nv, sd[None] ** 2))[:, None, :]           # (E,1,4)
             self.logw += -0.5 * (((dobs[:, None] - pred) / sd) ** 2).sum(-1)
             self.logw -= self.logw.max(1, keepdims=True)
             w = np.exp(self.logw); w /= w.sum(1, keepdims=True)
