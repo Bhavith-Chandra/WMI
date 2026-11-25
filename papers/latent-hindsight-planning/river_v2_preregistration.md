@@ -29,3 +29,13 @@ precede irreversibility):
 G6 waterfall sweep, regime 'strong', distances {2, 3, 4, 6, 8} m, 3 seeds x 200 episodes, planners
 hier_replan_forward / hier_replan_hindsight / hier_replan_oracle: hindsight success is non-decreasing in distance and
 rises from <= 0.2 at 2 m to >= 0.8 at 8 m; forward stays <= 0.2 at every distance; oracle >= 0.9 at every distance.
+
+## OUTCOME v2 (3 seeds x 200 episodes) and diagnosis
+strong: every non-oracle planner 0.333 success (hindsight == forward), oracle/cautious 1.00. calm: hindsight 28 steps
+vs cautious 82 (success 1.0). mixed: hindsight 0.858 = forward, oracle 1.0. fresh: all ~1.0.
+G1 REFUTED, G2 SUPPORTED, G3 REFUTED, G4 SUPPORTED, G5 REFUTED. G6 INVALID: success identical at every waterfall
+distance because (i) the |x| > 6 out-of-arena guard truncates distances >= 6 and (ii) drift reaches >10 m/s within
+0.5 s. Trace (one episode, c = 35, waterfall 4): the current is identified one step after entry (c_hat = 35.0), but
+none of the four fixed candidate plans is predicted safe because the PD low-level crosses slowly (derivative term
+cuts the cross-river thrust to ~0.26), so the re-planner falls back to 'bridge' mid-river, brakes, and is swept.
+Pushing through at full thrust would exit in ~0.3 s. Inference was correct; the plan library was the bottleneck.

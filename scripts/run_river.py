@@ -9,7 +9,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from wmi.harness import run_record, save_result, set_seed  # noqa: E402
 from wmi import river  # noqa: E402
-from wmi.river import fit_linear, run, run_v2, schedule  # noqa: E402
+from wmi.river import fit_linear, run, run_v2, run_v3, schedule  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 CAL = ROOT / "results" / "river_calibration.json"
@@ -62,10 +62,53 @@ def sweep_v2(seed):
     print("wrote", save_result("river_v2_sweep", rec, {"by_waterfall": out}))
 
 
+P3 = ["forward", "hindsight", "cautious", "oracle"]
+
+
+def v3(mode, seed):
+    river.configure_v2()
+    if mode == "calibrate_v3":
+        rec = run_record({"experiment": "river_v3_calibration", "seed": 99}); rng = set_seed(99); lin = fit_linear(rng)
+        rows, chosen = [], None
+        for wf in (2.0, 3.0, 1.5):
+            row = {"waterfall": wf}
+            for reg in REGIMES:
+                cs = schedule_v2(reg, np.random.default_rng(999), 100)
+                row[reg] = {k: float(run_v3(k, cs, lin, wf, seed=99)[0].mean()) for k in ("oracle", "forward")}
+            row["pass"] = all(row[r]["oracle"] >= 0.9 for r in REGIMES) and row["strong"]["forward"] <= 0.5
+            rows.append(row); print(row, flush=True)
+            if row["pass"]:
+                chosen = wf; break
+        (ROOT / "results" / "river_v3_calibration.json").write_text(json.dumps({"provenance": rec, "rows": rows,
+            "waterfall": chosen if chosen is not None else 2.0, "passed": chosen is not None}, indent=2))
+        print("CHOSEN", chosen); return
+    cal = json.loads((ROOT / "results" / "river_v3_calibration.json").read_text()); wf0 = cal["waterfall"]
+    rng = set_seed(seed); lin = fit_linear(rng)
+    if mode == "main_v3":
+        rec = run_record({"experiment": "river_v3", "seed": seed, "waterfall": wf0}); out = {}
+        for reg in REGIMES:
+            cs = schedule_v2(reg, np.random.default_rng(10_000 + seed), 200); out[reg] = {}
+            for k in P3:
+                su, tg, fe, en = run_v3(k, cs, lin, wf0, seed=20_000 + seed)
+                out[reg][k] = {"success": su.astype(int).tolist(), "time": tg.tolist(), "fell": fe.astype(int).tolist(), "entered": en.astype(int).tolist()}
+            print(reg, {k: round(float(np.mean(v["success"])), 3) for k, v in out[reg].items()}, flush=True)
+        print("wrote", save_result("river_v3", rec, {"regimes": out}))
+    else:
+        rec = run_record({"experiment": "river_v3_sweep", "seed": seed}); out = {}
+        for wf in (2.0, 3.0, 4.0, 6.0, 8.0):
+            cs = schedule_v2("strong", np.random.default_rng(20_000 + seed), 200); out[str(wf)] = {}
+            for k in ("forward", "hindsight", "oracle"):
+                su, tg, fe, en = run_v3(k, cs, lin, wf, seed=20_000 + seed)
+                out[str(wf)][k] = {"success": su.astype(int).tolist(), "entered": en.astype(int).tolist()}
+            print(wf, {k: round(float(np.mean(v["success"])), 3) for k, v in out[str(wf)].items()}, flush=True)
+        print("wrote", save_result("river_v3_sweep", rec, {"by_waterfall": out}))
+
+
 def _cli():
-    ap = argparse.ArgumentParser(); ap.add_argument("mode", choices=["calibrate", "main", "calibrate_v2", "main_v2", "sweep_v2"]); ap.add_argument("--seed", type=int, default=0)
+    ap = argparse.ArgumentParser(); ap.add_argument("mode", choices=["calibrate", "main", "calibrate_v2", "main_v2", "sweep_v2", "calibrate_v3", "main_v3", "sweep_v3"]); ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
-    {"calibrate": calibrate, "main": lambda: main(a.seed), "calibrate_v2": calibrate_v2, "main_v2": lambda: main_v2(a.seed), "sweep_v2": lambda: sweep_v2(a.seed)}[a.mode]()
+    {"calibrate": calibrate, "main": lambda: main(a.seed), "calibrate_v2": calibrate_v2, "main_v2": lambda: main_v2(a.seed), "sweep_v2": lambda: sweep_v2(a.seed), "calibrate_v3": lambda: v3("calibrate_v3", 0),
+     "main_v3": lambda: v3("main_v3", a.seed), "sweep_v3": lambda: v3("sweep_v3", a.seed)}[a.mode]()
 
 
 PLANNERS_V2 = ["flat_forward", "flat_hindsight", "hier_cautious", "hier_replan_forward", "hier_replan_hindsight", "hier_replan_oracle"]

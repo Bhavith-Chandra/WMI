@@ -243,3 +243,73 @@ def run_v2(kind, c_sched, lin, waterfall, T=400, budget=80, seed=0):
         if done.all():
             break
     return (t_goal < T) & ~fell, t_goal, fell, entered
+
+
+# ============================== v3: CEM-MPC low level on the believed model ==============================
+def cem_mpc(p, v, w, c_hat, lin, waterfall, rng, H=15, P=200, iters=3):
+    """Vectorised over episodes. p,v,w: (E,2); c_hat: (E,). Returns first action (E,2)."""
+    W, k = lin["W"], lin["kappa"]; E = len(p)
+    mu = np.zeros((E, H, 2)); sd = np.full((E, H, 2), 0.7)
+    for _ in range(iters):
+        A = np.clip(mu[:, None] + sd[:, None] * rng.standard_normal((E, P, H, 2)), -1, 1)
+        pp = np.repeat(p[:, None], P, 1); vv = np.repeat(v[:, None], P, 1); cost = np.zeros((E, P)); dead = np.zeros((E, P), bool)
+        for t in range(H):
+            u = A[:, :, t]
+            d = np.concatenate([vv, u], -1) @ W
+            band = (np.abs(pp[..., 1]) < BAND) & ~((pp[..., 0] > BRIDGE[0]) & (pp[..., 0] < BRIDGE[1]))
+            d[..., 2] += k * np.where(band, c_hat[:, None], 0.0)
+            pp, vv = pp + d[..., :2], vv + d[..., 2:]
+            band2 = (np.abs(pp[..., 1]) < BAND) & ~((pp[..., 0] > BRIDGE[0]) & (pp[..., 0] < BRIDGE[1]))
+            dead |= band2 & (pp[..., 0] > waterfall - 0.2)
+            cost += ((pp - w[:, None]) ** 2).sum(-1)
+        cost += 1000.0 * dead
+        el = np.argsort(cost, 1)[:, :20]
+        EA = np.take_along_axis(A, el[:, :, None, None], 1)
+        mu, sd = EA.mean(1), EA.std(1) + 0.05
+    return mu[:, 0]
+
+
+def run_v3(kind, c_sched, lin, waterfall, T=400, seed=0, guard=12.0):
+    E = c_sched.shape[1]; rng = np.random.default_rng(seed)
+    env = PuckBatch(E); env.set_phi(np.tile([1.0, 0, 0], (E, 1))); s = env.reset(np.tile(START, (E, 1)))
+    C = globals()["C_GRID"]; pp = globals()["prior_pdf"]
+    prior_mean = float((C * pp(C)).sum() / pp(C).sum())
+    logpost = np.tile(np.log(pp(C) + 1e-4), (E, 1))
+    plans = [None] * E; idx = np.zeros(E, int); c_at = np.full(E, np.nan)
+    done = np.zeros(E, bool); fell = np.zeros(E, bool); t_goal = np.full(E, T); entered = np.zeros(E, bool)
+    for t in range(T):
+        p, v = s[:, :2], s[:, 2:]
+        post = np.exp(logpost - logpost.max(1, keepdims=True)); post /= post.sum(1, keepdims=True)
+        c_hat = {"forward": np.full(E, prior_mean), "cautious": np.full(E, prior_mean),
+                 "oracle": c_sched[t].astype(float)}.get(kind, post @ C)
+        targets = np.tile(GOAL, (E, 1)).astype(float)
+        for e in range(E):
+            if done[e]:
+                continue
+            if kind == "cautious":
+                if plans[e] is None:
+                    plans[e] = candidates(p[e])["bridge"]
+            elif plans[e] is None or abs(c_hat[e] - c_at[e]) > 2.0:
+                ok_direct = simulate_plan(p[e], v[e], candidates(p[e])["goal"], c_hat[e], lin, waterfall)[0]
+                plans[e] = candidates(p[e])["goal"] if ok_direct else (
+                    candidates(p[e])["retreat_bridge"] if p[e, 1] < 0 else [tuple(GOAL)])
+                idx[e], c_at[e] = 0, c_hat[e]
+            if idx[e] < len(plans[e]) - 1 and np.linalg.norm(p[e] - np.array(plans[e][idx[e]])) < 0.3:
+                idx[e] += 1
+            targets[e] = plans[e][idx[e]]
+        u = cem_mpc(p, v, targets, c_hat, lin, waterfall, rng); u[done] = 0
+        cur = in_current(p); entered |= cur & ~done
+        force = np.where(cur, c_sched[t], 0.0)
+        for e in range(E):
+            env.d[e].xfrc_applied[env.body, 0] = force[e]
+        s2 = env.step(u)
+        r = (s2 - s)[:, 2] - (np.c_[v, u] @ lin["W"])[:, 2]
+        m = cur & ~done
+        logpost[m] += -0.5 * ((r[m, None] - lin["kappa"] * C[None]) / lin["sigma"]) ** 2
+        s = s2
+        nf = (~done) & in_current(s[:, :2]) & (s[:, 0] > waterfall); fell |= nf; done |= nf
+        rc = (~done) & (np.linalg.norm(s[:, :2] - GOAL, axis=1) < 0.15); t_goal[rc] = t + 1; done |= rc
+        lost = (~done) & (np.abs(s[:, 0]) > guard); fell |= lost; done |= lost
+        if done.all():
+            break
+    return (t_goal < T) & ~fell, t_goal, fell, entered
