@@ -27,7 +27,8 @@ def verdict(ci):
 
 
 def main():
-    runs = load_results("mujoco_hindsight")
+    exp = sys.argv[1] if len(sys.argv) > 1 else "mujoco_hindsight"
+    runs = load_results(exp)
     if not runs:
         print("no results"); return
     rng = np.random.default_rng(0)
@@ -41,7 +42,22 @@ def main():
     def cmp(r, p, q):
         return verdict(paired_ratio(pooled[r][p], pooled[r][q], rng)[1])
     hs = ["online_sgd", "hindsight_posterior", "hybrid", "hindsight_latent"]
-    checks = {
+    if exp == "mujoco_v2":
+        hs2 = hs + ["hindsight_posterior_cd", "hindsight_latent_cd"]
+        cap = lambda r: (1 - tab[r]["hindsight_latent"][0]) / max(1e-9, 1 - tab[r]["oracle_latent"][0])
+        checks = {
+            "Q1 gain/wind/both/ood_gain: every hindsight method beats forward": all(cmp(r, p, "forward") == "beats" for r in ("gain", "wind", "both", "ood_gain") for p in hs2),
+            "Q1b hindsight_latent captures >= 50% of oracle headroom on gain/wind/both/ood_gain": all(cap(r) >= 0.5 for r in ("gain", "wind", "both", "ood_gain")),
+            "Q2 switching: cd variants beat non-cd versions": all(cmp("switching", p + "_cd", p) == "beats" for p in ("hindsight_posterior", "hindsight_latent")),
+            "Q2b switching: cd variants beat forward": all(cmp("switching", p, "forward") == "beats" for p in ("hindsight_posterior_cd", "hindsight_latent_cd")),
+            "Q3 fresh: no hindsight method beats forward": all(cmp("fresh", p, "forward") != "beats" for p in hs2),
+            "Q3b fresh: residual worse than forward": cmp("fresh", "residual", "forward") == "worse",
+            "Q4 gain & ood_gain: posterior beats residual": all(cmp(r, "hindsight_posterior", "residual") == "beats" for r in ("gain", "ood_gain")),
+        }
+        for r in ("gain", "wind", "both", "ood_gain", "switching"):
+            print(f"headroom captured by hindsight_latent on {r}: {cap(r):.2f}")
+    else:
+      checks = {
         "P1 persistent: all hindsight beat forward": all(cmp(r, p, "forward") == "beats" for r in ("gain", "wind", "both") for p in hs),
         "P1b latent ~ oracle (tie or beats) on gain/wind/both": all(cmp(r, "hindsight_latent", "oracle_latent") in ("tie", "beats") for r in ("gain", "wind", "both")),
         "P2 wind: residual beats forward": cmp("wind", "residual", "forward") == "beats",
@@ -53,7 +69,7 @@ def main():
         "P5 none: residual worse than forward": cmp("none", "residual", "forward") == "worse",
         "P6 switching: posterior, latent, sgd beat forward": all(cmp("switching", p, "forward") == "beats" for p in ("hindsight_posterior", "hindsight_latent", "online_sgd")),
         "P7 gain & ood_gain: hybrid beats online_sgd": all(cmp(r, "hybrid", "online_sgd") == "beats" for r in ("gain", "ood_gain")),
-    }
+      }
     for r in regs:
         print(r, {p: (round(v[0], 3), [round(c, 3) for c in v[1]]) for p, v in tab[r].items()})
     print()
@@ -74,9 +90,10 @@ def main():
             cells.append(f"{m:.3f}{mark}")
         lines.append(r.replace("_", "\\_") + " & " + " & ".join(cells) + " \\\\\n")
     lines.append("\\bottomrule\n\\end{tabular}\n")
-    out = ROOT / "papers" / "latent-hindsight-planning" / "generated" / "mujoco_table.tex"
+    sfx = "" if exp == "mujoco_hindsight" else "_v2"
+    out = ROOT / "papers" / "latent-hindsight-planning" / "generated" / f"mujoco_table{sfx}.tex"
     out.write_text("".join(lines))
-    (ROOT / "papers" / "latent-hindsight-planning" / "generated" / "mujoco_predictions.txt").write_text(
+    (ROOT / "papers" / "latent-hindsight-planning" / "generated" / f"mujoco_predictions{sfx}.txt").write_text(
         "\n".join(("SUPPORTED " if v else "NOT SUPPORTED ") + k for k, v in checks.items()) + "\n")
     print("wrote", out)
 
