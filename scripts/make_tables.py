@@ -80,7 +80,31 @@ def planning_table():
     return "".join(lines)
 
 
+def theory_table():
+    runs = load_results("theory_hindsight")
+    if not runs:
+        return None
+    P = ("forward", "residual", "hindsight_bayes", "hindsight_forget")
+    lines = [provenance_note(runs), "\\begin{tabular}{l" + "c" * len(P) + "c}\n\\toprule\n",
+             "Regime & " + " & ".join(p.replace("_", chr(92) + "_") for p in P) + " & $t\\cdot$excess (hindsight) \\\\\n\\midrule\n"]
+    for reg in ("persistent", "persistent_additive", "persistent_gain", "fresh", "switching", "none"):
+        cells = [ms([r["metrics"][reg][p]["cum_regret_T"] for r in runs], "{:.1f}") for p in P]
+        tq = ms([r["metrics"][reg]["hindsight_bayes"]["t_times_excess_q4"] for r in runs], "{:.2f}")
+        lines.append(reg.replace("_", chr(92) + "_") + " & " + " & ".join(cells) + f" & {tq} \\\\\n")
+    cf = runs[0]["metrics"]["closed_form"]
+    cfg = runs[0]["provenance"]["config"]
+    lines.append("\\midrule\n")
+    lines.append(f"\\multicolumn{{6}}{{l}}{{Closed forms: $c_F T$ = {cf['forward_excess_per_step'] * cfg['T']:.1f}; "
+                 f"residual (additive) $\\sigma^2 T$ = {cf['residual_excess_per_step_additive_only'] * cfg['T']:.1f}; "
+                 f"$\\sigma^2 d$ = {2 * cfg['sigma'] ** 2:.2f}; $T$ = {cfg['T']}, $M$ = {cfg['M']}}} \\\\\n")
+    lines.append("\\bottomrule\n\\end{tabular}\n")
+    return "".join(lines)
+
+
 def main():
+    th = theory_table()
+    if th:
+        (ROOT / "papers" / "latent-hindsight-planning" / "generated" / "theory_table.tex").write_text(th)
     pt = probe_table()
     if pt:
         for paper in ("wmi-tutorial", "latent-hindsight-planning"):
@@ -92,7 +116,7 @@ def main():
     if pl:
         for paper in ("latent-hindsight-planning", "wmi-tutorial"):
             (ROOT / "papers" / paper / "generated" / "planning_table.tex").write_text(pl)
-    print("probe tables:", bool(pt), "planning table:", bool(pl))
+    print("probe tables:", bool(pt), "planning table:", bool(pl), "theory table:", bool(th))
 
 
 if __name__ == "__main__":
