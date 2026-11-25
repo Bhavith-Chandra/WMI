@@ -144,3 +144,102 @@ def schedule(regime, rng, E, T=400):
     if regime == "fresh":
         return np.stack([sample_prior(rng, E) for _ in range(T)])
     return np.repeat(c[None], T, 0)
+
+
+# ============================== v2: hindsight as a re-planner ==============================
+def configure_v2():
+    global prior_pdf, sample_prior
+    def prior_pdf(c):  # noqa: F811
+        return 0.8 * ((c >= 0) & (c <= 3)) / 3 + 0.2 * ((c >= 30) & (c <= 40)) / 10
+    def sample_prior(rng, n):  # noqa: F811
+        strong = rng.random(n) < 0.2
+        return np.where(strong, rng.uniform(30, 40, n), rng.uniform(0, 3, n))
+    globals()["prior_pdf"], globals()["sample_prior"] = prior_pdf, sample_prior
+    globals()["C_GRID"] = np.linspace(0, 45, 451)
+
+
+def candidates(p):
+    x = p[0]
+    return {"cross": [(x, 0.75), tuple(GOAL)], "goal": [tuple(GOAL)],
+            "retreat_bridge": [(x, -0.75), (-3.0, -1.0), (-3.0, 1.0), tuple(GOAL)],
+            "bridge": [(-3.0, -1.0), (-3.0, 1.0), tuple(GOAL)]}
+
+
+def simulate_plan(p0, v0, wps, c, lin, waterfall, steps=300, pass_tol=0.3):
+    W, k = lin["W"], lin["kappa"]; p, v = p0.copy()[None], v0.copy()[None]; i = 0
+    for t in range(steps):
+        w = np.array(wps[i])[None]
+        if i < len(wps) - 1 and np.linalg.norm(p[0] - w[0]) < pass_tol:
+            i += 1; w = np.array(wps[i])[None]
+        u = controller(p, v, w, np.array([c]))
+        d = np.c_[v, u] @ W
+        d[:, 2] += k * (c if in_current(p)[0] else 0.0)
+        p, v = p + d[:, :2], v + d[:, 2:]
+        if in_current(p)[0] and p[0, 0] > waterfall:
+            return False, steps
+        if i == len(wps) - 1 and np.linalg.norm(p[0] - GOAL) < 0.15:
+            return True, t + 1
+        if abs(p[0, 0]) > 6:
+            return False, steps
+    return False, steps
+
+
+def choose(p, v, c, lin, waterfall):
+    best, bt = None, 10 ** 9
+    for name, wps in candidates(p).items():
+        ok, tt = simulate_plan(p, v, wps, c, lin, waterfall)
+        if ok and tt < bt:
+            best, bt = wps, tt
+    return best if best is not None else candidates(p)["bridge"]
+
+
+def run_v2(kind, c_sched, lin, waterfall, T=400, budget=80, seed=0):
+    E = c_sched.shape[1]
+    env = PuckBatch(E); env.set_phi(np.tile([1.0, 0, 0], (E, 1))); s = env.reset(np.tile(START, (E, 1)))
+    C = globals()["C_GRID"]; pp = globals()["prior_pdf"]
+    prior_mean = float((C * pp(C)).sum() / pp(C).sum())
+    logpost = np.tile(np.log(pp(C) + 1e-4), (E, 1))
+    hier = kind.startswith("hier")
+    plans = [None] * E; idx = np.zeros(E, int); since = np.zeros(E, int); c_at_plan = np.full(E, np.nan)
+    done = np.zeros(E, bool); fell = np.zeros(E, bool); t_goal = np.full(E, T); entered = np.zeros(E, bool)
+    for t in range(T):
+        p, v = s[:, :2], s[:, 2:]
+        post = np.exp(logpost - logpost.max(1, keepdims=True)); post /= post.sum(1, keepdims=True)
+        if kind in ("flat_forward", "hier_replan_forward", "hier_cautious"):
+            c_hat = np.full(E, prior_mean)
+        elif kind == "hier_replan_oracle":
+            c_hat = c_sched[t].astype(float)
+        else:
+            c_hat = post @ C
+        targets = np.tile(GOAL, (E, 1)).astype(float)
+        if hier:
+            for e in range(E):
+                if done[e]:
+                    continue
+                trigger = plans[e] is None or since[e] > budget or (
+                    kind != "hier_cautious" and abs(c_hat[e] - c_at_plan[e]) > 2.0)
+                if trigger:
+                    plans[e] = candidates(p[e])["bridge"] if kind == "hier_cautious" else choose(p[e], v[e], c_hat[e], lin, waterfall)
+                    idx[e], since[e], c_at_plan[e] = 0, 0, c_hat[e]
+                wps = plans[e]
+                if idx[e] < len(wps) - 1 and np.linalg.norm(p[e] - np.array(wps[idx[e]])) < 0.3:
+                    idx[e] += 1; since[e] = 0
+                since[e] += 1
+                targets[e] = wps[idx[e]]
+        u = controller(p, v, targets, c_hat); u[done] = 0
+        cur = in_current(p)
+        entered |= cur & ~done
+        force = np.where(cur, c_sched[t], 0.0)
+        for e in range(E):
+            env.d[e].xfrc_applied[env.body, 0] = force[e]
+        s2 = env.step(u)
+        r = (s2 - s)[:, 2] - (np.c_[v, u] @ lin["W"])[:, 2]
+        m = cur & ~done
+        logpost[m] += -0.5 * ((r[m, None] - lin["kappa"] * C[None]) / lin["sigma"]) ** 2
+        s = s2
+        nf = (~done) & in_current(s[:, :2]) & (s[:, 0] > waterfall); fell |= nf; done |= nf
+        rc = (~done) & (np.linalg.norm(s[:, :2] - GOAL, axis=1) < 0.15); t_goal[rc] = t + 1; done |= rc
+        lost = (~done) & (np.abs(s[:, 0]) > 6); fell |= lost; done |= lost
+        if done.all():
+            break
+    return (t_goal < T) & ~fell, t_goal, fell, entered
