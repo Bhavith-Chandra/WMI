@@ -73,3 +73,11 @@ Hypothesis: switching/fresh synthetic failures need the fresh model; real 10-ste
 filters, so dropping them while keeping SGD base gives synthetic WORST ~1.01 and real ~V3-1 (0.57-1.04).
 Prediction: WORST in [1.01, 1.05] only if real WH/Silverbox stay <= 1.05; borderline.
 ## V3-5 HYBRID online-SGD base + full AR-3 IMM. Prediction: real worse than V3-4 (fast filters), not admissible.
+Results: V3-4 SCORE 0.263 WORST 1.292 (real WH 1.22, ParWH 1.29); V3-5 SCORE 0.233 WORST 1.571.
+Both NOT admissible. V3-4 prediction REFUTED; V3-5 SUPPORTED (worse than V3-4). Pattern: any IMM-mixed bank loses
+at 10 steps vs online SGD on WH/ParWH -- mixing-induced partial resets make the correction noisy and it compounds.
+
+## V3-6 HYBRID online-SGD + Bayesian model averaging {persistent(lambda=.995), fresh}, no state mixing
+Prediction: real 10-step close to V3-1 (<= 1.04) because the gate shrinks the correction when residuals look
+fresh; synthetic switching < 1 (faster forgetting than V3-1) but likely > the IMM's 0.04; fresh ~1.0.
+Admissible iff real WH <= 1.05 -- uncertain.
