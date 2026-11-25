@@ -1,4 +1,4 @@
-"""IMMUTABLE evaluation for autoresearch (the agent must NOT edit this file).
+"""IMMUTABLE evaluation for autoresearch (the agent must NOT edit this file).  VERSION v2 (adds WORST).
 
 Score = geometric mean, over a fixed suite of DEV tasks, of (loss of estimator.py) / (loss of FORWARD).
 Lower is better; 1.0 = no better than ignoring outcomes. Tasks:
@@ -130,7 +130,7 @@ def main():
     src = (HERE / "estimator.py").read_bytes()
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
     row = [time.strftime("%Y-%m-%dT%H:%M:%S"), commit, hashlib.sha1(src).hexdigest()[:10], f"{score:.5f}",
-           f"{time.time() - t0:.0f}s", json.dumps(detail), desc]
+           f"{time.time() - t0:.0f}s", json.dumps(detail), f"v2 worst={max(ratios):.4f} | " + desc]
     tsv = HERE / "results.tsv"
     if not tsv.exists():
         tsv.write_text("time\tcommit\testimator_sha\tscore\tduration\tdetail\tdescription\n")
@@ -138,6 +138,7 @@ def main():
         f.write("\t".join(row) + "\n")
     print("DETAIL", json.dumps(detail))
     print(f"SCORE: {score:.5f}")
+    print(f"WORST: {max(ratios):.5f}")
 
 
 if __name__ == "__main__":
