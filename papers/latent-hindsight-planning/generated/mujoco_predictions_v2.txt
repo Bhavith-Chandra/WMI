@@ -1,0 +1,7 @@
+NOT SUPPORTED Q1 gain/wind/both/ood_gain: every hindsight method beats forward
+NOT SUPPORTED Q1b hindsight_latent captures >= 50% of oracle headroom on gain/wind/both/ood_gain
+NOT SUPPORTED Q2 switching: cd variants beat non-cd versions
+NOT SUPPORTED Q2b switching: cd variants beat forward
+SUPPORTED Q3 fresh: no hindsight method beats forward
+SUPPORTED Q3b fresh: residual worse than forward
+NOT SUPPORTED Q4 gain & ood_gain: posterior beats residual

@@ -32,3 +32,17 @@ is degenerate: wind_sd=2 exceeds the weak actuator's force (g=0.4 -> 2 N), so fo
 controllable settings and longer open-loop execution, same rule (first with headroom >= 20%):
   C5 K=20, wind_sd=1      C6 K=40, wind_sd=1   (K=40 = one plan per goal segment, the one-shot regime)
 If neither qualifies, report the experiment as headroom-limited and do not run the main experiment.
+
+## MAIN OUTCOME (C5: K=20, wind_sd=1; 3 seeds x 20 episodes x 7 regimes; rules from analyze_mujoco.py)
+2 of 7 checks supported (generated/mujoco_predictions_v2.txt): Q3, Q3b (fresh). Cost ratio vs forward:
+- wind: posterior 0.832, hybrid 0.817, latent 0.865, online_sgd 0.934, oracle 0.370 (all CIs < 1).
+  vs online_sgd: posterior 0.891 [0.855,0.922], hybrid 0.875 [0.831,0.909], latent 0.927 -> all significantly better.
+- both: posterior 0.873, hybrid 0.864, latent 0.860, online_sgd 0.953, oracle 0.563; hindsight beats online_sgd (0.90-0.92).
+- switching: latent 0.930, latent_cd 0.915, residual 0.869, oracle 0.549; vs online_sgd mostly ties.
+- fresh: every hindsight method WORSE than forward (posterior 1.33, residual 2.83) -- Thm 2 / Thm 4 confirmed.
+- none / gain / ood_gain: every phi-conditioned planner, INCLUDING the true-phi oracle (none 1.186, gain 1.194), is
+  WORSE than forward. Diagnostic: Mc with true phi is 17-50x more accurate in 20-step open-loop prediction on
+  behaviour-policy actions (none 0.004 m vs 0.065 m; gain 0.004 m vs 0.231 m), so the loss is NOT model inaccuracy on
+  training-like actions; likely cause (unverified): CEM exploits Mc's errors on out-of-distribution planned actions.
+  Gain-regime conclusions are therefore not valid tests of hindsight until this is resolved.
+- change detection (cd) did not help on wind/both (latent_cd 0.961 vs latent 0.865): false alarms.
