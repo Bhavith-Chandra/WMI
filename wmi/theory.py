@@ -12,7 +12,7 @@ planner, we use the conditional excess cost  e_t = (theta_t a_t + w_t - delta_t)
 whose expectation equals E[c_t] - E[c_t^oracle] exactly (lower variance than realised cost).
 
 Planners
-  oracle          a = (delta - w)/theta                         (excess 0)
+  oracle          a = clip((delta - w)/theta, +-a_max)          (excess 0 by definition)
   forward         Bayes-optimal under the PRIOR, ignores outcomes
   residual        residual reuse (Balestriero, LeCun, Varaku 2026, arXiv:2611.24778) applied
                   sequentially: add the last observed residual to the nominal prediction
@@ -113,8 +113,11 @@ def simulate(regime: str, cfg: TheoryConfig) -> dict:
             mu = np.einsum("mij,mj->mi", S, state[name]["b"])
             acts[name] = ce_action(mu, delta, cfg.a_max) if name == "hindsight_ce" else bayes_action(mu, S, delta, cfg.a_max)
 
+        # Oracle obeys the same action bound |a| <= a_max, so unreachable targets are not charged as regret.
+        a_or = np.clip((delta - w) / np.where(np.abs(th) < 1e-6, 1e-6, th), -cfg.a_max, cfg.a_max)
+        e_or = (th * a_or + w - delta) ** 2
         for p in PLANNERS:
-            e = (th * acts[p] + w - delta) ** 2
+            e = (th * acts[p] + w - delta) ** 2 - e_or
             out[p][t] = e.mean()
             out_se[p][t] = e.std(ddof=1) / np.sqrt(M)
 

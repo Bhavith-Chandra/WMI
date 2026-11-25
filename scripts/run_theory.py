@@ -36,7 +36,10 @@ def main():
             R = np.cumsum(e)
             m[p] = {"cum_regret_T": float(R[-1]), "mean_excess_last_quarter": float(e[-cfg.T // 4:].mean()),
                     "loglog_slope_100_to_T": slope_loglog(R, ts),
-                    "regret_over_logT": float(R[-1] / np.log(cfg.T))}
+                    "regret_over_logT": float(R[-1] / np.log(cfg.T)),
+                    # if excess_t ~ c/t (Theorem 3), t*excess_t is ~constant late in the run
+                    "t_times_excess_q3": float((e * np.arange(1, cfg.T + 1))[cfg.T // 2: 3 * cfg.T // 4].mean()),
+                    "t_times_excess_q4": float((e * np.arange(1, cfg.T + 1))[3 * cfg.T // 4:].mean())}
             curves[f"{regime}/{p}"] = R[ts - 1].tolist()
         # Theorem 1 check: per-step dominance of hindsight_bayes over forward (3 s.e. tolerance)
         diff = r["excess"]["hindsight_bayes"] - r["excess"]["forward"]

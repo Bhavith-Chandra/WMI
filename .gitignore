@@ -11,3 +11,4 @@ papers/**/*.bbl
 papers/**/*.blg
 logs/
 results/_smoke*/
+data_cache/
