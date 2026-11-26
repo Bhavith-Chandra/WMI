@@ -36,9 +36,11 @@ fresh hier:online_sgd - hier:forward = +0.013 [-0.053, 0.087]
 fresh hier:oracle_latent - hier:forward = +0.580 [0.5, 0.66]
 fresh hier:residual - hier:forward = +0.033 [-0.053, 0.12]
 H6 capture = 0.904
+K-sweep gain {1: 0.053, 5: 0.12, 10: 0.313, 20: 0.4}
 SUPPORTED H1 none: hier:forward > flat:forward
 SUPPORTED H2 wind/both: posterior and pf_adapt > hier:forward
 SUPPORTED H3 none/fresh: posterior not significantly > hier:forward
 SUPPORTED H4 wind/both: hier hindsight > flat hindsight
 SUPPORTED H5 both: posterior > residual and > online_sgd
 SUPPORTED H6 both: capture >= 0.5
+SUPPORTED H7 gain(K=20) > gain(K=1) and Spearman > 0

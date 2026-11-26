@@ -51,7 +51,7 @@ Main-goal success (difference to hier:forward, 95% paired bootstrap):
 | both | 0.040 | 0.547 | 0.773 | 0.640 | 0.860 (+0.313 [0.240, 0.393]) | 0.833 | 0.893 |
 | fresh | 0.013 | 0.360 | 0.393 | 0.373 | 0.253 (-0.107 [-0.200, -0.013]) | 0.373 | 0.940 |
 
-H1-H6 SUPPORTED (H6 capture 0.904). H7 pending the K-sweep.
+H1-H6 SUPPORTED (H6 capture 0.904). H7 SUPPORTED: success gain of hindsight over forward by chunk length K = 1, 5, 10, 20: +0.053, +0.120, +0.313, +0.400 (monotone; 3 seeds each).
 
 Unexpected, not pre-registered: flat + hindsight succeeds in 0% of episodes in every regime, including `none` (flat forward 0.407).
 Diagnosis (ad hoc, seed-0 models): failures are head-on impacts on the first wall near y = 0.1, about step 27; speeds
