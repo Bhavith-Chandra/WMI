@@ -13,7 +13,7 @@ from almagest.models import lmm as L
 from almagest.experiments.e2_train import build_stream, make_model
 from almagest.experiments.e1_calibrate_world import make
 
-torch.set_num_threads(2)
+torch.set_num_threads(1)
 
 
 def _sv(ev):

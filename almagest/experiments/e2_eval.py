@@ -21,7 +21,7 @@ from almagest.experiments.e1_calibrate_world import make
 from almagest.experiments.e2_train import build_stream, make_model
 from almagest.models import lmm as L
 
-torch.set_num_threads(4)
+torch.set_num_threads(1)   # oversubscription with numba + other jobs made ops ~100x slower
 WIN0, STRIDE, CH = 20480, 2048, 256     # 32 windows/day -> last window ends at 20480+31*2048+8910 < T_DAY
 N_EXEC, N_REL_EXEC, N_SIL = 100, 10, 100
 NBLK = N_EXEC + N_SIL          # 200: V arms = 100-child build-up + 100 silent blocks (R100); R arms use first 110 (R10)
