@@ -10,8 +10,10 @@ sys.path.insert(0, __file__.rsplit('/almagest/', 1)[0])
 from almagest.sim import world as W, campaign as C
 from almagest.experiments.e1_calibrate_world import loss
 
-LO = np.array([0.1, 0.2, 1.0, 0.05, 0.5, 0.1, 0.5, 1.3, 0.3, 0.35, 5.0, 0.40, 0.2, 2.0])
-HI = np.array([2.0, 1.5, 6.0, 0.40, 2.0, 0.4, 0.9, 1.7, 4.0, 0.65, 200.0, 0.75, 0.8, 20.0])
+LO = np.array([0.0, 0.2, 1.0, 0.05, 0.2, 0.05, 0.5, 1.3, 0.3, 0.35, 5.0, 0.40, 0.2, 2.0])
+HI = np.array([0.6, 1.5, 6.0, 0.40, 1.0, 0.25, 0.9, 1.7, 4.0, 0.65, 200.0, 0.75, 0.8, 20.0])
+# v2 ranges (2026-11-26): slow informed correction (relaxation is set by how fast informed traders arbitrage
+# uninformed impact away; 2/3 permanence after one duration needs a ~2.5-duration correction timescale)
 
 
 def make_prop(theta):

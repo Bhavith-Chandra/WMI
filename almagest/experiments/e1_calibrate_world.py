@@ -30,7 +30,7 @@ def loss(r):
     L += (max(0, 0.3 - r['gamma']) / 0.05) ** 2 + (max(0, r['gamma'] - 0.8) / 0.05) ** 2
     L += (max(0, r['slope100']) / 1.0) ** 2
     # realism: bounded hidden-state excursions (perverse responses arise in extreme states; found 2026-11-26)
-    L += (max(0, r.get('exc_F', 0) - 0.25) / 0.05) ** 2 + (max(0, r.get('exc_r', 0) - 1.0) / 0.2) ** 2
+    L += (max(0, r.get('exc_F', 0) - 0.35) / 0.05) ** 2   # ~0.3 sigma implied by 2/3 permanence at 1 duration + (max(0, r.get('exc_r', 0) - 1.0) / 0.2) ** 2
     return float(L)
 
 
