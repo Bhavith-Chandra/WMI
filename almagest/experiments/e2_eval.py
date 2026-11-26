@@ -216,8 +216,9 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
     return res, np.array(free_mid).T, np.array(free_sign).T
 
 
-def analyze(Ivis, Iblind, Irel, V, sig, did, child, free_drift, gamma, H, ref):
+def analyze(Ivis, Iblind, Irel, V, sig, did, child, free_drift, gamma, H, ref, free_end=None):
     """Ivis: (n, N_EXEC + N_SIL) visible build-up + silent tail; Irel: (n, >=110) R10 arm."""
+    free_sd = float(np.std(free_end / sig)) if free_end is not None else float('nan')  # free-run vol, sigma units
     I100 = Ivis / sig[:, None]
     ep100, slope100 = M.relaxation(I100.mean(0), N_EXEC)
     ep100_ci = list(M.relax_bootstrap(I100, did, N_EXEC, B=200))
@@ -238,7 +239,7 @@ def analyze(Ivis, Iblind, Irel, V, sig, did, child, free_drift, gamma, H, ref):
     ep_ci = list(M.relax_bootstrap(Irows, did, N_REL_EXEC, B=200))
     r = dict(delta=d, Y=Y, q_edge=q_edge, delta_ci95=list(np.nanquantile(bd, [0.025, 0.975])), delta_ci90=list(ci90),
              tost=tost, Y_ci95=list(np.nanquantile(bY, [0.025, 0.975])), identified=bool(ok), delta_l2=d_l2,
-             vb=vb, vb_ci95=list(vb_ci), ep=ep, ep_ci95=ep_ci, slope=slope, drift=free_drift, gamma=gamma, H=H,
+             vb=vb, vb_ci95=list(vb_ci), ep=ep, free_sd=free_sd, ep_ci95=ep_ci, slope=slope, drift=free_drift, gamma=gamma, H=H,
              curve=list(Iv.mean(0)), relax_curve=list(Ir), ep100=ep100, ep100_ci95=ep100_ci, slope100=slope100,
              relax100_curve=list(I100.mean(0)))
     r['ladder'] = {k: (None if v is None else bool(v)) for k, v in M.ladder(ref, r).items()}
@@ -309,7 +310,7 @@ if __name__ == '__main__':
         ts.append(np.where(s['tgt'][s0:s0 + hor, 0] == 2, np.where(s['tgt'][s0:s0 + hor, 1] == 0, 1, -1), 0))
     tg, tH = M.pooled_gamma(ts), M.pooled_hurst(tm)
     ref = dict(gamma=tg, H=tH)
-    truth = analyze(Tv, Tb, Tr, tV, tsig, tdid, child, t_drift, tg, tH, ref)
+    truth = analyze(Tv, Tb, Tr, tV, tsig, tdid, child, t_drift, tg, tH, ref, free_end=tr[(0, 0)][0][:, N_EXEC - 1])
     truth['n_rollouts'] = int(len(tdid))
     truth['blind_invariant'] = truth_blind_ok
     print('truth', {k: v for k, v in truth.items() if k not in ('curve', 'relax_curve')}, f'{time.time()-t0:.0f}s',
@@ -329,7 +330,8 @@ if __name__ == '__main__':
         Ib = 0.5 * (res['B+'][:, :N_EXEC] - res['B-'][:, :N_EXEC])
         Ir = 0.5 * (res['R+'] - res['R-'])
         drift = float(res['F'][:, N_EXEC - 1].mean())
-        mres = analyze(Iv, Ib, Ir, V, sig, did, child, drift, M.pooled_gamma(fsign), M.pooled_hurst(fmid), ref)
+        mres = analyze(Iv, Ib, Ir, V, sig, did, child, drift, M.pooled_gamma(fsign), M.pooled_hurst(fmid), ref,
+                       free_end=res['F'][:, N_EXEC - 1])
         mres.update(n_rollouts=int(len(did)), blind_invariant=blind_inv, visible_differs=vis_differs, phi_model=res['phi_model'],
                     participation_model=1.0 / (1.0 + gap * res['phi_model']))
         print('model', ck['arm'], {k: v for k, v in mres.items() if k not in ('curve', 'relax_curve')},

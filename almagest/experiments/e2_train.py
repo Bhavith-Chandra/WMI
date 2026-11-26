@@ -78,6 +78,20 @@ def build_stream_inj(par, seed, n, phi=0.11):
     return dict(prev=prev, feat=feat.astype(np.float32), dmid=dmid.astype(np.float32), sb=sb, tgt=ev5, cm=cm)
 
 
+def mirror(d):
+    """Exact buy/sell mirror of a stream (the World is side-symmetric): flip sides, swap bid/ask book features and
+    cancel masks, negate price changes and slow-bank features (flow and price-deviation parts are both odd)."""
+    m = {k: v.copy() for k, v in d.items()}
+    for k in ('prev', 'tgt'):
+        m[k][:, 1] = 1 - m[k][:, 1]
+    f = m['feat']
+    m['feat'] = np.concatenate([f[:, 10:20], f[:, 0:10], f[:, 20:21]], 1)
+    m['cm'] = m['cm'][:, ::-1, :].copy()
+    m['dmid'] = -m['dmid']
+    m['sb'] = -m['sb']
+    return m
+
+
 def stack(streams, chunks):
     out = {}
     for k in streams[0]:
@@ -136,7 +150,10 @@ if __name__ == '__main__':
     torch.manual_seed(0)
     t0 = time.time()
     bs = build_stream_inj if arm.endswith('_src') else build_stream
-    tr = stack([bs(par, S.TRAIN_BASE + i, NTOK) for i in range(NTR)], 1)   # B=16 contiguous streams
+    tr_streams = [bs(par, S.TRAIN_BASE + i, NTOK) for i in range(NTR)]
+    if os.environ.get('MIRROR'):           # side-flip augmentation: add the mirrored copy of every stream
+        tr_streams = tr_streams + [mirror(x) for x in tr_streams]
+    tr = stack(tr_streams, 1)
     va = stack([bs(par, S.VAL_BASE + i, 100_000) for i in range(4)], 1)
     print('data', time.time() - t0, 'train tokens', tr['tgt'].shape[0] * tr['tgt'].shape[1], flush=True)
     model, reset = make_model(arm)
