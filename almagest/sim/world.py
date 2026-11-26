@@ -84,13 +84,13 @@ def apply_action(bid, ask, bb, ba, typ, side, lvl, size):
         if side == 0:
             p = bb - lvl
             if p >= 0 and bid[p] > 0:
-                bid[p] -= 1
+                bid[p] -= min(size, bid[p])
                 if p == bb and bid[p] == 0:
                     bb = _best_bid(bid, bb)
         else:
             p = ba + lvl
             if p < P and ask[p] > 0:
-                ask[p] -= 1
+                ask[p] -= min(size, ask[p])
                 if p == ba and ask[p] == 0:
                     ba = _best_ask(ask, ba)
     else:
@@ -136,12 +136,12 @@ def apply_abs(bid, ask, bb, ba, typ, side, price, size):
     elif typ == 1:
         if side == 0:
             if bid[price] > 0:
-                bid[price] -= 1
+                bid[price] -= min(size, bid[price])
                 if price == bb and bid[price] == 0:
                     bb = _best_bid(bid, bb)
         else:
             if ask[price] > 0:
-                ask[price] -= 1
+                ask[price] -= min(size, ask[price])
                 if price == ba and ask[price] == 0:
                     ba = _best_ask(ask, ba)
     else:

@@ -77,13 +77,16 @@ class DiagRec(nn.Module):
 
 
 class LMM(nn.Module):
-    def __init__(self, d=64, h=128, layers=2, mode='learned', slowbank=False):
+    def __init__(self, d=64, h=128, layers=2, mode='learned', slowbank=False, nsize=NSIZE, ndt=0, size_all=False):
+        """v1 (synthetic): nsize=4, ndt=0, size only for markets. v2 (real): nsize=12 for all types, ndt=11 (Dt head)."""
         super().__init__()
-        self.cfg = dict(d=d, h=h, layers=layers, mode=mode, slowbank=slowbank)
+        self.cfg = dict(d=d, h=h, layers=layers, mode=mode, slowbank=slowbank, nsize=nsize, ndt=ndt, size_all=size_all)
+        self.nsize, self.ndt, self.size_all = nsize, ndt, size_all
         self.e_typ = nn.Embedding(3, d)
         self.e_side = nn.Embedding(2, d)
         self.e_lvl = nn.Embedding(NLVL, d)
-        self.e_size = nn.Embedding(NSIZE, d)
+        self.e_size = nn.Embedding(nsize, d)
+        self.e_dt = nn.Embedding(ndt, d) if ndt else None
         nsb = 2 * len(SB_TAUS) if slowbank else 0
         self.slowbank = slowbank
         self.inproj = nn.Linear(d + 21 + 1 + nsb, d)
@@ -94,14 +97,20 @@ class LMM(nn.Module):
         self.h_side = nn.Linear(d, 2)
         self.c_lvl = nn.Embedding(6, d)
         self.h_lvl = nn.Linear(d, NLVL)
-        self.h_size = nn.Linear(d, NSIZE)
+        self.h_size = nn.Linear(d, nsize)
+        self.c_size = nn.Embedding(nsize, d) if ndt else None
+        self.h_dt = nn.Linear(d, ndt) if ndt else None
         self.hdim = h
 
     def n_params(self):
         return sum(p.numel() for p in self.parameters())
 
     def embed(self, ev, feat, dmid, sb):
-        e = self.e_typ(ev[..., 0]) + self.e_side(ev[..., 1]) + self.e_lvl(ev[..., 2]) + self.e_size(ev[..., 3] - 1)
+        if self.ndt:   # v2 token (typ, side, lvl, size_bucket, dt_bucket)
+            e = (self.e_typ(ev[..., 0]) + self.e_side(ev[..., 1]) + self.e_lvl(ev[..., 2]) + self.e_size(ev[..., 3])
+                 + self.e_dt(ev[..., 4]))
+        else:
+            e = self.e_typ(ev[..., 0]) + self.e_side(ev[..., 1]) + self.e_lvl(ev[..., 2]) + self.e_size(ev[..., 3] - 1)
         z = [e, book_transform(feat), torch.clamp(dmid, -5, 5).unsqueeze(-1)]
         if self.slowbank:
             z.append(sb)
@@ -142,9 +151,29 @@ class LMM(nn.Module):
         nll = nll + F.cross_entropy(ls.reshape(-1, 2), side.reshape(-1), reduction='none')
         m_l = (typ != 2).reshape(-1).float()
         nll = nll + m_l * F.cross_entropy(ll.reshape(-1, NLVL), lvl.reshape(-1), reduction='none')
+        if self.ndt:
+            nll = nll + F.cross_entropy(lz.reshape(-1, self.nsize), size.reshape(-1), reduction='none')
+            zl = z + self.c_side(typ) + self.c_lvl(typ * 2 + side)
+            ld = self.h_dt(zl + self.c_size(size))
+            nll = nll + F.cross_entropy(ld.reshape(-1, self.ndt), tgt[..., 4].reshape(-1), reduction='none')
+            return nll.mean()
         m_z = (typ == 2).reshape(-1).float()
         nll = nll + m_z * F.cross_entropy(lz.reshape(-1, NSIZE), (size - 1).reshape(-1), reduction='none')
         return nll.mean()
+
+    def loss_parts(self, z, tgt, cmask):
+        """v2 per-field NLL (B*T, 5): typ, side, lvl (non-market), size, dt."""
+        typ, side, lvl, size = tgt[..., 0], tgt[..., 1], tgt[..., 2], tgt[..., 3]
+        lt, ls, ll, lz = self.heads_logits(z, typ, side)
+        ll = mask_lvl(ll, typ, side, cmask)
+        zl = z + self.c_side(typ) + self.c_lvl(typ * 2 + side)
+        ld = self.h_dt(zl + self.c_size(size))
+        p = [F.cross_entropy(lt.reshape(-1, 3), typ.reshape(-1), reduction='none'),
+             F.cross_entropy(ls.reshape(-1, 2), side.reshape(-1), reduction='none'),
+             (typ != 2).reshape(-1).float() * F.cross_entropy(ll.reshape(-1, NLVL), lvl.reshape(-1), reduction='none'),
+             F.cross_entropy(lz.reshape(-1, self.nsize), size.reshape(-1), reduction='none'),
+             F.cross_entropy(ld.reshape(-1, self.ndt), tgt[..., 4].reshape(-1), reduction='none')]
+        return torch.stack(p, -1)
 
 
 def mask_lvl(ll, typ, side, cmask):
