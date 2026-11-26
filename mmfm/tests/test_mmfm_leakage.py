@@ -84,9 +84,12 @@ def test_test_split_is_sealed_and_single_unseal(events_dir, monkeypatch):
     with pytest.raises(SealError):
         raw_chunks(events_dir, "test")
     monkeypatch.setenv("MMFM_UNSEAL", "modelhash1")
+    with pytest.raises(SealError):
+        raw_chunks(events_dir, "test")  # no declared pre-registered metric
+    monkeypatch.setenv("MMFM_PURPOSE", "M1")
     raw_chunks(events_dir, "test")
     with pytest.raises(SealError):
-        raw_chunks(events_dir, "test")  # second unseal of the same frozen model
+        raw_chunks(events_dir, "test")  # second unseal of the same frozen model for the same metric
     log = (events_dir / "test_access.log").read_text().splitlines()
     assert len(log) == 1
 

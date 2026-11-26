@@ -28,12 +28,16 @@ def _seal_check(events: Path, split: str):
     tok = os.environ.get("MMFM_UNSEAL")
     if not tok:
         raise SealError(f"split '{split}' is sealed (EVAL.md L3). Set MMFM_UNSEAL=<frozen model hash>.")
+    purpose = os.environ.get("MMFM_PURPOSE")
+    if purpose not in ("M1", "M2"):
+        raise SealError("set MMFM_PURPOSE to the pre-registered metric being computed (M1 or M2)")
     log = events / "test_access.log"
     prev = [json.loads(x) for x in log.read_text().splitlines()] if log.exists() else []
-    if any(p["model_hash"] == tok and p["split"] == split for p in prev) and os.environ.get("MMFM_REUNSEAL") != "1":
-        raise SealError(f"model {tok[:12]} already evaluated on '{split}' (one unseal per frozen model).")
+    if any(p["model_hash"] == tok and p["split"] == split and p.get("purpose") == purpose for p in prev):
+        raise SealError(f"model {tok[:12]} already evaluated on '{split}' for {purpose} (one unseal per model/split/metric).")
     with open(log, "a") as f:
-        f.write(json.dumps(dict(model_hash=tok, split=split, utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))) + "\n")
+        f.write(json.dumps(dict(model_hash=tok, split=split, purpose=purpose,
+                                utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))) + "\n")
 
 
 def raw_chunks(events: Path, split: str):

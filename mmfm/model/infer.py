@@ -95,16 +95,18 @@ class FastMMFM:
         T = tokens.shape[1]
         return x + m.pos(torch.arange(pos0, pos0 + T))[None]
 
-    def _attn_layer(self, L, x, cache, causal):
+    def _attn_layer(self, L, x, cache, causal, li=None):
         B, T, d = x.shape
         H, dh = self.H, d // self.H
         h = L.norm1(x)
         qkv = F.linear(h, L.self_attn.in_proj_weight, L.self_attn.in_proj_bias)
         q, k, v = qkv.split(d, -1)
         q, k, v = (t.view(B, T, H, dh).transpose(1, 2) for t in (q, k, v))
-        if cache is not None:
-            k = torch.cat([cache[0], k], 2)
-            v = torch.cat([cache[1], v], 2)
+        if cache is not None:  # preallocated buffers: write in place, attend over the filled prefix
+            Kb, Vb = cache
+            Kb[:, :, self.n:self.n + T] = k
+            Vb[:, :, self.n:self.n + T] = v
+            k, v = Kb[:, :, :self.n + T], Vb[:, :, :self.n + T]
         a = F.scaled_dot_product_attention(q, k, v, is_causal=causal and cache is None)
         a = a.transpose(1, 2).reshape(B, T, d)
         x = x + L.self_attn.out_proj(a)
@@ -117,9 +119,15 @@ class FastMMFM:
         T = tokens.shape[1]
         x = self._embed(tokens, feats, 0)
         self.cache = []
+        B = tokens.shape[0]
+        dh = self.d // self.H
         for L in self.layers:
-            x, kv = self._attn_layer(L, x, None, True)
-            self.cache.append(kv)
+            x, (k, v) = self._attn_layer(L, x, None, True)
+            Kb = torch.empty(B, self.H, self.ctx, dh)
+            Vb = torch.empty(B, self.H, self.ctx, dh)
+            Kb[:, :, :T] = k
+            Vb[:, :, :T] = v
+            self.cache.append((Kb, Vb))
         self.n = T
         self.hist_tok, self.hist_feat = tokens, feats
         return self.m.norm(x)[:, -1]
@@ -132,10 +140,7 @@ class FastMMFM:
         if self.n >= self.ctx:  # window full: re-prefill from the last `keep` events
             return self.prefill(self.hist_tok[:, -self.keep:], self.hist_feat[:, -self.keep:])
         x = self._embed(tok_row[:, None], feat_row[:, None], self.n)
-        new = []
         for L, kv in zip(self.layers, self.cache):
-            x, kv2 = self._attn_layer(L, x, kv, False)
-            new.append(kv2)
-        self.cache = new
+            x, _ = self._attn_layer(L, x, kv, False)
         self.n += 1
         return self.m.norm(x)[:, -1]

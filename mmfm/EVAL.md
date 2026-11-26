@@ -77,3 +77,10 @@ Let `[T0, T1)` be the collected span after exclusions.
   train_end ≥ dev_cut + 10 min. `data/splits.py` refuses otherwise.
   With collection start ≈ 02:27 UTC, the final cut must be ≥ ≈ 04:45 UTC.
 * Nothing at or after `dev_cut_ns` is inspected before the final freeze.
+
+## Addendum 2 (seal granularity, committed before any test access)
+* L3 is refined to ≤ 1 unseal per (frozen model hash, split, pre-registered metric ∈ {M1, M2}).
+  The metric is declared through `MMFM_PURPOSE` and logged, and a repeat for the same triple fails.
+* Reason: M1 (NLL) and M2 (simulation realism) are both pre-registered test metrics of the same frozen model.
+* Horizons for M2/M3 are 1/5/10 s, not 60 s. Event-level rollouts on CPU can't reach 60 s on fast pairs
+  in reasonable time (measured: 8 ms/step for 16 paths). This is reported under M5.
