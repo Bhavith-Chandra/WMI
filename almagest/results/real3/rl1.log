@@ -1,2 +1,4 @@
 loaded rows 159
 val setup s 5
+val eval s 352
+{"it": 0, "fit_val_score": 2.9094002674832824, "fit_val_pass": 7}
