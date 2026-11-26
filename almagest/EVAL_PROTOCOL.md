@@ -1,4 +1,7 @@
-# Almagest LMM — pre-registered evaluation protocol (v1, frozen 2026-11-26 before any test run)
+# Almagest LMM — pre-registered evaluation protocol (v1.1, 2026-11-26; still before any test run)
+
+Changelog: v1.1 adds A8 (held-out operating points) after introducing interventional (source-tagged) training;
+no test split had been touched.
 
 Any change to this file after a test run invalidates that test split; a new split must be drawn.
 Every result file must record: split, seeds/time ranges, git revision (clean tree), config, n_rollouts.
@@ -47,6 +50,7 @@ Model rollouts: 32 days x 30 windows = 960; truth: 8 replicas per window.
 | A5 relaxation | |ep100_m - ep100_t| <= 0.15 and slope100_m <= 0 + 2 SE |
 | A6 attribution | visible/blind ratio of model within factor 2 of truth's ratio (both fail-closed) |
 | A7 absolute (LOB-Impact C4) | reported, not gated: |delta - 0.5| <= 0.10, Y in [0.5, 1] |
+| A8 operating-point generalisation (v1.1) | A3-A5 also hold vs truth at held-out participations 5% and 20% (models trained with interventions must not be tuned to the 10% point) |
 
 Primary comparison (pre-registered): `modebank_sb` vs `short`. Other arms are ablations (no multiplicity claims).
 
