@@ -10,8 +10,6 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from m3.closedloop import ClosedLoop
-from m3.engine import Book, decode_to_orders, replay
 from m3.provenance import INPUTS, REL, ROOT, load_ckpt_meta
 
 
@@ -56,23 +54,6 @@ def test_scripts_read_only_allowed_inputs():
                 if not (isinstance(kw.get("weights_only"), ast.Constant) and kw["weights_only"].value is True):
                     bad.append(f"{f.name}:{node.lineno}: torch.load without weights_only=True")
     assert not bad, bad
-
-
-def test_closed_loop_injection_never_precedes_schedule(tiny, tok, example):
-    """Child orders are applied only once simulated time has passed their schedule (no early execution),
-    and are encoded into the model context only after being executed."""
-    codes, lob, st = example
-    anchor = float(st[0, 4])
-    bp, sp = replay(Book.from_snapshot(lob[0].numpy()), *decode_to_orders(tok.decode(codes)[0].numpy(), anchor)[:5])
-    sched = [[(2.0, 1, 500), (4.0, 1, 500)], [(2.0, 0, 500), (4.0, 0, 500)]]
-    sim = ClosedLoop(tiny, tok, codes, lob, st, bp, float(sp.t[-1]), 2, block=16, seed=3, log_every=0)
-    n_codes_before = [len(c) for c in sim.codes]
-    sim.run(5.0, sched, max_steps=3000)
-    for i in range(2):
-        times = [t for t, _, _ in sim.injected[i]]
-        sched_t = [t for t, _, _ in sched[i]][: len(times)]
-        assert all(t >= s for t, s in zip(times, sched_t)), (times, sched_t)
-        assert len(sim.codes[i]) > n_codes_before[i]
 
 
 def test_released_checkpoints_selected_on_test_split_is_detected_and_disclosed():

@@ -83,6 +83,41 @@ class ReplayStats:
     zero_qty_events: int
 
 
+def apply_event(b: Book, p: int, q: int, a: int, s: int) -> tuple[int, int, bool]:
+    """THE single matching implementation (used by replay and the closed loop).
+    Returns (traded_qty, cancel_removed_qty, was_marketable). q<=0 is a no-op."""
+    q = max(int(q), 0)
+    if q == 0:
+        return 0, 0, False
+    if a == 1:
+        opp, own = (b.asks, b.bids) if s == 1 else (b.bids, b.asks)
+        best_of = min if s == 1 else max
+        crosses = (lambda best: best <= p) if s == 1 else (lambda best: best >= p)
+        marketable = bool(opp) and crosses(best_of(opp))
+        res, traded = q, 0
+        while res > 0 and opp:
+            best = best_of(opp)
+            if not crosses(best):
+                break
+            f = min(res, opp[best])
+            res -= f
+            traded += f
+            opp[best] -= f
+            if opp[best] <= 0:
+                del opp[best]
+        if res > 0:
+            own[p] = own.get(p, 0) + res
+        return traded, 0, marketable
+    own = b.bids if s == 1 else b.asks
+    have = own.get(p, 0)
+    rem = min(have, q)
+    if rem:
+        own[p] = have - rem
+        if own[p] <= 0:
+            del own[p]
+    return 0, rem, False
+
+
 def replay(book0: Book, px, qty, dt, act, side, dt_raw=None) -> tuple[Book, ReplayStats]:
     b = book0.copy()
     seen = set(b.bids) | set(b.asks)
@@ -93,59 +128,26 @@ def replay(book0: Book, px, qty, dt, act, side, dt_raw=None) -> tuple[Book, Repl
     t = np.cumsum(dt)
     n_add = n_can = can_q = can_un = can_full = can_out = mkt = traded = empty = zq = 0
     for i in range(T):
-        p, q, a, s = int(px[i]), int(qty[i]), int(act[i]), int(side[i])
+        p, q, a, s = int(px[i]), max(int(qty[i]), 0), int(act[i]), int(side[i])
         if q <= 0:
             zq += 1
-        if a == 1:  # add
-            n_add += 1
-            res = q
-            if s == 1:  # buy
-                if b.asks and min(b.asks) <= p:
-                    mkt += 1
-                while res > 0 and b.asks:
-                    best = min(b.asks)
-                    if best > p:
-                        break
-                    f = min(res, b.asks[best])
-                    res -= f
-                    traded += f
-                    b.asks[best] -= f
-                    if b.asks[best] <= 0:
-                        del b.asks[best]
-                if res > 0:
-                    b.bids[p] = b.bids.get(p, 0) + res
-            else:  # sell
-                if b.bids and max(b.bids) >= p:
-                    mkt += 1
-                while res > 0 and b.bids:
-                    best = max(b.bids)
-                    if best < p:
-                        break
-                    f = min(res, b.bids[best])
-                    res -= f
-                    traded += f
-                    b.bids[best] -= f
-                    if b.bids[best] <= 0:
-                        del b.bids[best]
-                if res > 0:
-                    b.asks[p] = b.asks.get(p, 0) + res
-            seen.add(p)
-        else:  # cancel
-            n_can += 1
-            can_q += q
+        if a == 0:
             book = b.bids if s == 1 else b.asks
             have = book.get(p, 0)
-            rem = min(have, q)
-            un = q - rem
-            can_un += un
+            n_can += 1
+            can_q += q
             if have == 0 and q > 0:
                 can_full += 1
                 if p not in seen:
                     can_out += 1
-            if rem:
-                book[p] = have - rem
-                if book[p] <= 0:
-                    del book[p]
+        tr, rem, mk = apply_event(b, p, q, a, s)
+        if a == 1:
+            n_add += 1
+            mkt += mk
+            traded += tr
+            seen.add(p)
+        else:
+            can_un += q - rem
         bbi, bai = b.best_bid(), b.best_ask()
         if bbi is None or bai is None:
             empty += 1

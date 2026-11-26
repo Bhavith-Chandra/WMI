@@ -201,7 +201,7 @@ def exp_rollout(args):
         for i in range(S):
             oa = decode_to_orders(fa[i], anchor)
             _, sa = replay(book_p, *oa)  # continue from the book reached by the real prompt
-            per.append(_summ(sa, mid0))
+            per.append(_summ(sa, book_p.mid()))  # return measured from the post-prompt mid
             ob = decode_to_orders(fb[i], anchor)
             ctx_tick.append(np.abs(oa[0][:512] - ob[0]))
         ctx_tick = np.concatenate(ctx_tick)
@@ -217,7 +217,9 @@ def exp_rollout(args):
                                                     p90=float(np.percentile(ctx_tick, 90))),
                       entropy_in_trained_range=float(e[pos <= trained_len].mean()),
                       entropy_beyond_trained=float(e[pos > trained_len].mean()) if (pos > trained_len).any() else None,
-                      entropy_by_256=[float(e[j:j + 256].mean()) for j in range(0, len(e), 256)])
+                      entropy_by_256=[float(e[j:j + 256].mean()) for j in range(0, len(e), 256)],
+                      entropy_by_64=[float(e[j:j + 64].mean()) for j in range(0, len(e), 64)],
+                      entropy_bins_abs_start_pos=[int(pos[j]) for j in range(0, len(e), 64)])
         raw[f"{s}_gen"] = gen.numpy()
         raw[f"{s}_entropy"] = ent.numpy()
         print(s, f"{el:.0f}s", {k: round(v['median'], 4) for k, v in agg.items()}, res[s]["decode_context_tick_diff"],
@@ -257,7 +259,7 @@ def exp_decode_ablation(_):
         fb = tok.decode(torch.cat([codes.expand(S, -1), gen], 1))[:, 512:].numpy()
         out = {}
         for name, F in (("A_release_gen_only", fa), ("B_context_aware", fb)):
-            per = [_summ(replay(book_p, *decode_to_orders(F[i], anchor))[1], mid0) for i in range(S)]
+            per = [_summ(replay(book_p, *decode_to_orders(F[i], anchor))[1], book_p.mid()) for i in range(S)]  # post-prompt mid
             out[name] = {k: dict(mean=float(np.nanmean([p[k] for p in per])),
                                  median=float(np.nanmedian([p[k] for p in per])),
                                  frac_negative=float(np.mean([p[k] < 0 for p in per])) if k == "end_ret_bp" else None)
