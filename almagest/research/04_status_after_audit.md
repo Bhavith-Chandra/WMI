@@ -153,3 +153,18 @@ Still failing the pre-registered gates:
 - collapse 6% > 2%
 
 The truth is uncertified.
+
+
+## 9. Scale test and remaining gap
+2x data and 8 passes change nothing within CIs (Y 1.18 vs 1.22, δ 0.80 vs 0.78) [C]. Not under-training.
+
+Teacher-forced one-step conditionals match the World vs own flow on everything summarised [C]:
+- market side and market share;
+- limit side and cancel side (all within about 0.01-0.02).
+
+The residual (Y about 2x, R100 0.6 vs 0.34) is therefore closed-loop compounding of unsummarised conditionals [L]:
+level placement, book-shape dependence, the hidden-fundamental anchor.
+
+Strategic consequence [L]: real data has no tagged own orders, so the own-order reaction can ONLY be learned from
+interventional synthetic data. Stage 1 (synthetic causal pretraining) is necessary, and the synthetic-to-real transfer
+of that reaction is the main open risk.
