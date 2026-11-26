@@ -49,7 +49,7 @@ class LiveModel:
     def __init__(self, ckpt_path, context_seed=7_000_001, context_len=20480):
         ck = torch.load(ckpt_path, weights_only=False)
         self.arm = ck['arm']
-        self.model, self.reset = make_model(ck['arm'], cond=ck.get('cfg', {}).get('cond_heads', False))
+        self.model, self.reset = make_model(ck['arm'], cfg=ck.get('cfg'))
         self.model.load_state_dict(ck['state'])
         self.model.eval()
         self.n_params = self.model.n_params()

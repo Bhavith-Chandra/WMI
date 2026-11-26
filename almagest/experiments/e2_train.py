@@ -35,6 +35,8 @@ def build_stream(par, seed, n):
     sv = np.where(prev[:, 0] == 2, np.where(prev[:, 1] == 0, 1, -1) * prev[:, 3], 0).astype(float)
     fv, dev = L.slowbank_offline(sv, dmid)
     sb = L.sb_scale(torch.tensor(fv, dtype=torch.float32), torch.tensor(dev, dtype=torch.float32)).numpy()
+    if os.environ.get('TAG_CHANNEL'):     # observed market stream: no own orders -> tag channel is zero
+        sb = np.concatenate([sb, np.zeros((len(sb), len(L.SB_TAUS)), np.float32)], 1)
     return dict(prev=prev, feat=feat.astype(np.float32), dmid=dmid.astype(np.float32), sb=sb,
                 tgt=ev, cm=cm)
 
@@ -75,6 +77,9 @@ def build_stream_inj(par, seed, n, phi=0.11):
     sv = np.where(prev[:, 0] == 2, np.where(prev[:, 1] == 0, 1, -1) * prev[:, 3], 0).astype(float)
     fv, dev = L.slowbank_offline(sv, dmid)
     sb = L.sb_scale(torch.tensor(fv, dtype=torch.float32), torch.tensor(dev, dtype=torch.float32)).numpy()
+    if os.environ.get('TAG_CHANNEL'):
+        st = np.where((prev[:, 0] == 2) & (prev[:, 4] == 1), np.where(prev[:, 1] == 0, 1, -1) * prev[:, 3], 0).astype(float)
+        sb = np.concatenate([sb, L.tag_offline(st).astype(np.float32)], 1)
     return dict(prev=prev, feat=feat.astype(np.float32), dmid=dmid.astype(np.float32), sb=sb, tgt=ev5, cm=cm)
 
 
@@ -104,12 +109,17 @@ def stack(streams, chunks):
     return out
 
 
-def make_model(arm, cond=None):
+def make_model(arm, cond=None, cfg=None):
+    """cfg given (from a checkpoint) -> rebuild exactly. Otherwise arm defaults + env flags COND_HEADS/TAG_CHANNEL."""
     m, r = _make_model(arm)
+    if cfg is not None:
+        return L.LMM(**cfg), r
+    c = dict(m.cfg)
     if cond if cond is not None else bool(os.environ.get('COND_HEADS')):
-        cfg = dict(m.cfg); cfg['cond_heads'] = True
-        m = L.LMM(**cfg)
-    return m, r
+        c['cond_heads'] = True
+    if os.environ.get('TAG_CHANNEL') and c.get('src') and c.get('slowbank'):
+        c['tagch'] = True
+    return L.LMM(**c), r
 
 
 def _make_model(arm):

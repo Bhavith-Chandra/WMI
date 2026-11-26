@@ -8,7 +8,7 @@ from almagest.experiments.e2_train import build_stream, make_model
 from almagest.experiments.e1_calibrate_world import make
 torch.set_num_threads(2)
 ck = torch.load(sys.argv[1], weights_only=False)
-m, _ = make_model(ck['arm'], cond=ck.get('cfg', {}).get('cond_heads', False)); m.load_state_dict(ck['state']); m.eval()
+m, _ = make_model(ck['arm'], cfg=ck.get('cfg')); m.load_state_dict(ck['state']); m.eval()
 par = make(ck['theta'])
 emp, mod = {}, {}
 for i in range(3):

@@ -78,11 +78,12 @@ class DiagRec(nn.Module):
 
 class LMM(nn.Module):
     def __init__(self, d=64, h=128, layers=2, mode='learned', slowbank=False, nsize=NSIZE, ndt=0, size_all=False,
-                 src=False, cond_heads=False):
+                 src=False, cond_heads=False, tagch=False):
         """v1 (synthetic): nsize=4, ndt=0, size only for markets. v2 (real): nsize=12 for all types, ndt=11 (Dt head)."""
         super().__init__()
         self.cfg = dict(d=d, h=h, layers=layers, mode=mode, slowbank=slowbank, nsize=nsize, ndt=ndt, size_all=size_all,
-                        src=src, cond_heads=cond_heads)
+                        src=src, cond_heads=cond_heads, tagch=tagch)
+        self.tagch = tagch
         # cond_heads: SEPARATE output weights per event type (side) and per (type, side) (level, size). Without it the
         # state->side mapping is shared by limits/cancels/markets (only the bias differs), so market-order sides cannot
         # depend on order-flow state (found 2026-11-26: model P(buy|market) flat at 0.5 vs empirical 0.32-0.67).
@@ -95,7 +96,9 @@ class LMM(nn.Module):
         self.e_size = nn.Embedding(nsize, d)
         self.e_dt = nn.Embedding(ndt, d) if ndt else None
         self.e_src = nn.Embedding(2, d) if src else None
-        nsb = 2 * len(SB_TAUS) if slowbank else 0
+        nsb = (2 + (1 if tagch else 0)) * len(SB_TAUS) if slowbank else 0
+        # src models get a SEPARATE slow-bank channel of OWN/exogenous (tagged) signed volume: the market reacts to
+        # how much of recent flow was exogenous; mixing it into the total-flow channel hides that (2026-11-26).
         self.slowbank = slowbank
         self.inproj = nn.Linear(d + 21 + 1 + nsb, d)
         self.blocks = nn.ModuleList([DiagRec(d, h, mode) for _ in range(layers)])
@@ -237,20 +240,30 @@ def inv_cdf(logits, u):
 
 
 class SlowBank:
-    """Recursive slow features for generation: signed-volume EMAs and price - EMA(price)."""
-    def __init__(self, B):
+    """Recursive slow features for generation: signed-volume EMAs and price - EMA(price); with tag=True also EMAs of
+    own/exogenous (tagged) signed volume."""
+    def __init__(self, B, tag=False):
         self.lam = torch.tensor(np.exp(-1.0 / SB_TAUS), dtype=torch.float32)
         self.fv = torch.zeros(B, len(SB_TAUS))
         self.p = torch.zeros(B, 1)
         self.ep = torch.zeros(B, len(SB_TAUS))
+        self.tag = tag
+        self.ft = torch.zeros(B, len(SB_TAUS))
 
-    def update(self, signed_vol, dmid):
+    def update(self, signed_vol, dmid, signed_tag=None):
         self.fv = self.lam * self.fv + (1 - self.lam) * signed_vol.unsqueeze(-1)
         self.p = self.p + dmid.unsqueeze(-1)
         self.ep = self.lam * self.ep + (1 - self.lam) * self.p
+        if self.tag:
+            st = torch.zeros_like(signed_vol) if signed_tag is None else signed_tag
+            self.ft = self.lam * self.ft + (1 - self.lam) * st.unsqueeze(-1)
 
     def feat(self):
-        return sb_scale(self.fv, self.p - self.ep)
+        f = sb_scale(self.fv, self.p - self.ep)
+        return torch.cat([f, self.ft * TAG_SCALE], -1) if self.tag else f
+
+
+TAG_SCALE = torch.tensor(np.sqrt(SB_TAUS), dtype=torch.float32) / 4.0
 
 
 def sb_scale(fv, dev):
@@ -265,3 +278,11 @@ def slowbank_offline(signed_vol, dmid):
     fv = np.stack([lfilter([1 - l], [1, -l], signed_vol) for l in lam], -1)
     ep = np.stack([lfilter([1 - l], [1, -l], p) for l in lam], -1)
     return fv, p[:, None] - ep
+
+
+def tag_offline(signed_tag):
+    """Tagged-flow channel, same recursion as SlowBank.ft, scaled (numpy)."""
+    from scipy.signal import lfilter
+    lam = np.exp(-1.0 / SB_TAUS)
+    ft = np.stack([lfilter([1 - l], [1, -l], signed_tag) for l in lam], -1)
+    return ft * (np.sqrt(SB_TAUS) / 4.0)

@@ -139,7 +139,7 @@ def main():
     rows = int(sys.argv[5]) if len(sys.argv) > 5 else 64
     ck = torch.load(base, weights_only=False)
     par = make(ck['theta'])
-    model, reset = make_model(ck['arm'], cond=ck.get('cfg', {}).get('cond_heads', False))
+    model, reset = make_model(ck['arm'], cfg=ck.get('cfg'))
     model.load_state_dict(ck['state'])
     bs = build_stream_inj if ck['arm'].endswith('_src') else build_stream
     orig = stack([bs(par, S.TRAIN_BASE + i, 120_000) for i in range(8)], 1)

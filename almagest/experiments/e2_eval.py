@@ -74,6 +74,9 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
     SRC = bool(getattr(model, 'src', False))
     pad = (lambda t, v: torch.cat([t, torch.full(t.shape[:-1] + (1,), v, dtype=t.dtype)], -1)) if SRC else (lambda t, v: t)
     prev = pad(prev, 0)                      # real context events are market events (src=0)
+    TAG = bool(getattr(model, 'tagch', False))
+    if TAG and sb.shape[-1] == 2 * len(L.SB_TAUS):   # observed market context: own-order channel is zero
+        sb = torch.cat([sb, torch.zeros(sb.shape[:-1] + (len(L.SB_TAUS),))], -1)
     half = reset // 2 if reset else None
     for s0 in range(0, n_need, CH):
         if reset and s0 % reset == half:      # reset boundaries at sidx - reset/2 -> rollout starts mid-segment
@@ -117,7 +120,7 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
     # tokens consumed since last reset (reset arm only): reset/2 at window start, by construction above
     since = np.full(R, half if reset else 0, np.int64)
     pend_ev = pad(torch.tensor(np.stack([st[days[w]]['tgt'][sidx[w] - 1] for w in win_of])), 0)
-    sbank = L.SlowBank(R)
+    sbank = L.SlowBank(R, tag=TAG)
     for i, w in enumerate(win_of):
         fv, p, ep = sbst[days[w]]
         j = sidx[w] - 1
@@ -163,11 +166,12 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
         pend_dmid = torch.where(m, d, pend_dmid)
         pend_cm = torch.stack([torch.tensor(cmb), torch.tensor(cma)], 1)
         sv = torch.where(ev[:, 0] == 2, torch.where(ev[:, 1] == 0, 1.0, -1.0) * ev[:, 3].float(), torch.zeros(R))
-        fv0, p0, ep0 = sbank.fv.clone(), sbank.p.clone(), sbank.ep.clone()
-        sbank.update(sv, d)
+        stag = torch.where(ev[:, -1] == 1, sv, torch.zeros(R)) if (TAG and ev.shape[-1] > 4) else None
+        fv0, p0, ep0, ft0 = sbank.fv.clone(), sbank.p.clone(), sbank.ep.clone(), sbank.ft.clone()
+        sbank.update(sv, d, stag)
         mm = m.unsqueeze(-1)
         sbank.fv = torch.where(mm, sbank.fv, fv0); sbank.p = torch.where(mm, sbank.p, p0)
-        sbank.ep = torch.where(mm, sbank.ep, ep0)
+        sbank.ep = torch.where(mm, sbank.ep, ep0); sbank.ft = torch.where(mm, sbank.ft, ft0)
 
     fidx = np.where(np.array([ARMS[a] == 'F' for a in arm_of]))[0]
     collapsed = np.zeros(R, bool)
@@ -324,7 +328,7 @@ if __name__ == '__main__':
                truth_replicas=TRUTH_REPLICAS, nblk=NBLK, eta=ETA,
                win0=WIN0, gap=gap, child=child, phi_world=phi, code_rev=rev, burn=W.BURN, truth=truth, theta=theta)
     if ck is not None:
-        model, reset = make_model(ck['arm'], cond=ck.get('cfg', {}).get('cond_heads', False))
+        model, reset = make_model(ck['arm'], cfg=ck.get('cfg'))
         model.load_state_dict(ck['state'])
         model.eval()
         res, fmid, fsign = model_campaign(model, reset, par, days, sidx, gap, child, snaps, st)
