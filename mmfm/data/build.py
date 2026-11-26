@@ -46,32 +46,48 @@ def build(raw: Path, out: Path, until_ns: int, pairs):
                         [x for x in msgs if c_ns <= x[0] < t_hi], anch[1:], hours, k, TICK[pair], 200,
                         t_lo_ns=c_ns, t_hi_ns=t_hi, want_state=True, ckpt_every_us=30_000_000)
             ev, stt = r["events"], r["state"]
-            ok_verify = all(v["accept"] for v in r["verify"])
-            excluded = (not ok_verify) or len(ev) < MIN_SEG_EVENTS
-            info = dict(seg=k, snap_us=r["snap_us"], n_events=int(len(ev)),
-                        t0_us=int(ev["us"][0]) if len(ev) else None, t1_us=int(ev["us"][-1]) if len(ev) else None,
+            # v2-1: keep only intervals bounded by two consecutive PASSING verifications (anchor = pass)
+            bounds = [(r["snap_us"], True)] + [(v["us"], v["accept"]) for v in r["verify"]] + [(int(ev["us"][-1]) + 1 if len(ev) else r["snap_us"], True)]
+            keep = np.zeros(len(ev), bool)
+            for (u0, ok0), (u1, ok1) in zip(bounds[:-1], bounds[1:]):
+                if ok0 and ok1:
+                    keep |= (ev["us"] > u0) & (ev["us"] <= u1)
+            # contiguous kept runs become separate parts (a dropped interval is a hard gap)
+            runs, i0 = [], None
+            for i, kk in enumerate(np.r_[keep, False]):
+                if kk and i0 is None:
+                    i0 = i
+                elif not kk and i0 is not None:
+                    runs.append((i0, i))
+                    i0 = None
+            info = dict(seg=k, snap_us=r["snap_us"], n_events=int(len(ev)), n_kept=int(keep.sum()),
                         verify=r["verify"], lockstep={k2: v for k2, v in r["lockstep"].items() if k2 != "events_replay_book"},
-                        excluded=bool(excluded),
-                        reason=None if not excluded else ("verification failed" if not ok_verify else "too short"))
-            if not excluded:
+                        parts=[])
+            for pi, (a0, a1) in enumerate(runs):
+                if a1 - a0 < MIN_SEG_EVENTS:
+                    continue
                 d = out / pair
                 d.mkdir(parents=True, exist_ok=True)
-                f = d / f"seg_{r['snap_us']}.npz"
-                ck = r["ckpts"]
+                f = d / f"seg_{r['snap_us']}_p{pi}.npz"
+                ck = [(c[0] - a0, c[1], c[2], c[3]) for c in r["ckpts"] if a0 <= c[0] < a1]
                 L = 300
                 ck_idx = np.array([c[0] for c in ck], np.int64)
                 ck_b = np.full((len(ck), L, 2), np.nan)
                 ck_a = np.full((len(ck), L, 2), np.nan)
-                for j, c in enumerate(ck):
+                for jj, c in enumerate(ck):
                     if c[2]:
-                        ck_b[j, :len(c[2])] = c[2]
+                        ck_b[jj, :len(c[2])] = c[2]
                     if c[3]:
-                        ck_a[j, :len(c[3])] = c[3]
-                np.savez_compressed(f, us=ev["us"], type=ev["type"], side=ev["side"], price=ev["price"], qty=ev["qty"],
-                                    state=stt.astype(np.float64), lvq=r["lvq"], tick=np.float64(TICK[pair]),
-                                    ck_idx=ck_idx, ck_bids=ck_b, ck_asks=ck_a)
-                info["file"] = str(f.relative_to(out))
-                info["sha256"] = hashlib.sha256(f.read_bytes()).hexdigest()
+                        ck_a[jj, :len(c[3])] = c[3]
+                sl = slice(a0, a1)
+                np.savez_compressed(f, us=ev["us"][sl], type=ev["type"][sl], side=ev["side"][sl], price=ev["price"][sl],
+                                    qty=ev["qty"][sl], state=stt[sl].astype(np.float64), lvq=r["lvq"][sl],
+                                    tick=np.float64(TICK[pair]), ck_idx=ck_idx, ck_bids=ck_b, ck_asks=ck_a)
+                info["parts"].append(dict(file=str(f.relative_to(out)), sha256=hashlib.sha256(f.read_bytes()).hexdigest(),
+                                          n_events=int(a1 - a0), t0_us=int(ev["us"][a0]), t1_us=int(ev["us"][a1 - 1])))
+            info["excluded"] = not info["parts"]
+            info["reason"] = None if info["parts"] else "no verified interval long enough"
+            print(pair, k, info["n_events"], "kept", info["n_kept"], "parts", len(info["parts"]), flush=True)
             segs.append(info)
             print(pair, k, info["n_events"], "excluded" if excluded else "ok", flush=True)
         report["pairs"][pair] = segs

@@ -16,9 +16,9 @@ p = ev / "splits.json"
 if p.exists():
     sys.exit("frozen")
 rep = json.loads((ev / "build_report.json").read_text())
-segs = [s for ss in rep["pairs"].values() for s in ss if not s["excluded"]]
-files = sorted((s["file"], s["sha256"]) for s in segs)
-t0 = min(s["t0_us"] for s in segs)
+parts = [p for ss in rep["pairs"].values() for s in ss for p in s.get("parts", [])]
+files = sorted((p["file"], p["sha256"]) for p in parts)
+t0 = min(p["t0_us"] for p in parts)
 sp = dict(train=[t0, us("07:00:00")], val=[us("07:10:00"), us("08:00:00")], test=[us("08:00:00"), us("08:00:01")],
           heldout_pair="linkusd", embargo_us=600_000_000, files=files,
           files_hash=hashlib.sha256(json.dumps(files).encode()).hexdigest(), rule="EVAL_v2.md (test = forward test, separate build)")

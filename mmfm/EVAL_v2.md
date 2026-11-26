@@ -26,3 +26,12 @@ A criterion counts as met only if it is met on the forward test. Val results are
 7. **Real-time**: ≥ 1× real time for 8 paths on ethusd at its median event rate.
 
 Every result is reported, including misses.
+
+## Addendum v2-1 (data exclusion granularity, decided on design data before training)
+* v1's §0 rule excluded a whole connection segment if any verification snapshot failed. In the v2 design data, two BTC
+  segments (2.1M events) were excluded because of **one transient extra order each** (Jaccard 0.9999). All other
+  verifications in those segments passed, including the next one.
+* v2 rule: keep events only within intervals bounded by two consecutive **passing** verifications (the anchor
+  counts as passing). An interval bounded by a failure is dropped, and the segment is split there, so no context
+  window spans the hole. The book is never corrected; this only changes what is excluded.
+* As in v1, the tail after a segment's last verification is kept (it cannot be verified before the connection ends).
