@@ -33,6 +33,7 @@ def arm_model(cfg=None):
     return L.LMM(mode='modebank', slowbank=True, cond_heads=True, nsize=X.NSZ, ndt=T.NDT, size_all=True,
                  nlvl=X.NLVL, nimp=X.KI, nfeat=X.NF, nsb_extra=L.NFB if FLOW else 0,
                  size_cond=os.environ.get('SIZE_COND', '1') == '1',
+                 side_skip=os.environ.get('SIDE_SKIP', '1') == '1', mkt_side_w=float(os.environ.get('MKT_SIDE_W', 5.0)),
                  d=int(os.environ.get('D_MODEL', 64)), h=int(os.environ.get('H_MODEL', 128)))
 
 
@@ -176,7 +177,7 @@ def train(cache, split, out, passes=4):
             val = np.mean([run(model, b) for b in batches(vrows, 16)]) if vrows else float('nan')
         hist.append((float(trl), float(val)))
         print(f'pass {p} fit {trl:.4f} select {val:.4f} t {time.time()-t0:.0f}s', flush=True)
-    torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3.4-real-exact',
+    torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3.5-real-exact',
                     lot_table=lot_table(rows), DR=X.DR, KI=X.KI, NF=X.NF), out)
 
 

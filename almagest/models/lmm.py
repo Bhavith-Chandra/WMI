@@ -81,12 +81,14 @@ class DiagRec(nn.Module):
 class LMM(nn.Module):
     def __init__(self, d=64, h=128, layers=2, mode='learned', slowbank=False, nsize=NSIZE, ndt=0, size_all=False,
                  src=False, cond_heads=False, tagch=False, ndom=0, tag_gain=1.0, gen_cal=None, nlvl=NLVL, nimp=0,
-                 nfeat=21, nsb_extra=0, size_cond=False):
+                 nfeat=21, nsb_extra=0, size_cond=False, side_skip=False,
+                 mkt_side_w=1.0):
         """v1 (synthetic): nsize=4, ndt=0, size only for markets. v2 (real): nsize=12 for all types, ndt=11 (Dt head)."""
         super().__init__()
         self.cfg = dict(d=d, h=h, layers=layers, mode=mode, slowbank=slowbank, nsize=nsize, ndt=ndt, size_all=size_all,
                         src=src, cond_heads=cond_heads, tagch=tagch, ndom=ndom, tag_gain=tag_gain,
-                        nlvl=nlvl, nimp=nimp, nfeat=nfeat, nsb_extra=nsb_extra, size_cond=size_cond)
+                        nlvl=nlvl, nimp=nimp, nfeat=nfeat, nsb_extra=nsb_extra, size_cond=size_cond,
+                        side_skip=side_skip, mkt_side_w=mkt_side_w)
         # v3 (replay-exact real data): nlvl = DR + 1 + nimp level classes; the last nimp limit classes mean 'improve
         # own best by k = 2..nimp+1 buckets' (valid only if spread > k); cancels use the first DR classes (book mask)
         self.nlvl, self.nimp, self.nfeat = nlvl, nimp, nfeat
@@ -132,6 +134,14 @@ class LMM(nn.Module):
         # size_cond (v3.4): size | (type, side, LEVEL, log queue volume at that level). Without it a cancel at the
         # best and one 40 levels deep share one size law; whole-queue cancels at the best (21% real) came out at 6%
         # in generation and limit sizes at the best x2 -> depth x2 within 200 events (found 2026-11-26).
+        # side_skip (v3.5): direct linear path FlowBank -> market-order side logits. A logistic on the flow features
+        # reaches implied trade-sign ACF(1) 0.39 vs the network's 0.26 (real 0.46): the signal is there, the deep
+        # path under-uses it (markets are 2.5% of events). mkt_side_w upweights the market-side CE term (its optimum
+        # is still the true conditional, so calibration is preserved).
+        self.side_skip, self.mkt_side_w, self._fb = side_skip, float(mkt_side_w), None
+        if side_skip:
+            self.skip_side = nn.Linear(nsb_extra, 2)
+            nn.init.zeros_(self.skip_side.weight); nn.init.zeros_(self.skip_side.bias)
         self.size_cond = size_cond
         if size_cond:
             self.c_lvl_sz = nn.Embedding(nlvl, d)
@@ -160,6 +170,8 @@ class LMM(nn.Module):
                 k = len(SB_TAUS)
                 sb = torch.cat([sb[..., :2 * k], sb[..., 2 * k:] * self.tag_gain], -1)
             z.append(sb)
+        if self.side_skip:
+            self._fb = sb[..., -self.cfg['nsb_extra']:]
         return self.inproj(torch.cat(z, -1))
 
     def gen_typ_logits(self, z):
@@ -202,7 +214,7 @@ class LMM(nn.Module):
         zs = z + self.c_side(typ)
         zl = zs + self.c_lvl(typ * 2 + side)
         if self.cond_heads:
-            ls = _pick(self.hc_side(zs), typ, 2)
+            ls = self._skip(_pick(self.hc_side(zs), typ, 2), typ)
             ll = _pick(self.hc_lvl(zl), typ * 2 + side, self.nlvl)
             lz = _pick(self.hc_size(self.size_input(zl, lvl, lq)), typ * 2 + side, self.nsize)
             return lt, ls, ll, lz
@@ -212,9 +224,14 @@ class LMM(nn.Module):
         return lt, ls, ll, lz
 
     # generation-time head access (same math as heads_logits, usable step by step)
+    def _skip(self, ls, typ):
+        if self.side_skip and self._fb is not None:
+            return ls + (typ == 2).unsqueeze(-1).float() * self.skip_side(self._fb)
+        return ls
+
     def side_logits(self, z, typ):
         zs = z + self.c_side(typ)
-        return _pick(self.hc_side(zs), typ, 2) if self.cond_heads else self.h_side(zs)
+        return self._skip(_pick(self.hc_side(zs), typ, 2), typ) if self.cond_heads else self.h_side(zs)
 
     def lvl_size_logits(self, z, typ, side):
         zl = z + self.c_side(typ) + self.c_lvl(typ * 2 + side)
@@ -228,7 +245,8 @@ class LMM(nn.Module):
         lt, ls, ll, lz = self.heads_logits(z, typ, side, lvl if self.size_cond else None, lq)
         ll = mask_lvl(ll, typ, side, cmask, spread, self.nimp)
         nll = F.cross_entropy(lt.reshape(-1, 3), typ.reshape(-1), reduction='none')
-        nll = nll + F.cross_entropy(ls.reshape(-1, 2), side.reshape(-1), reduction='none')
+        sw = 1.0 + (self.mkt_side_w - 1.0) * (typ == 2).reshape(-1).float() if self.training else 1.0
+        nll = nll + sw * F.cross_entropy(ls.reshape(-1, 2), side.reshape(-1), reduction='none')
         m_l = (typ != 2).reshape(-1).float()
         nll = nll + m_l * F.cross_entropy(ll.reshape(-1, self.nlvl), lvl.reshape(-1), reduction='none')
         if self.ndt:
