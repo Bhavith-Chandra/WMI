@@ -2,3 +2,5 @@
 __pycache__/
 *.pt
 almagest/results/*.npy
+almagest/results/*.log
+almagest/results/*.jsonl
