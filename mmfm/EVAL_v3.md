@@ -4,7 +4,7 @@
 The v2 forward test (README, EVAL_v2) met criteria 5 and 7 and failed criteria 1–4 and 6. The measured
 failure is a regime shift: the forward window was 7–28% quieter than the 5 h of design data, and the count heads
 over-predicted by 1.1–1.6×. v3 attacks it three ways, all decided now:
-1. **More data / regimes**: every hour recorded up to the v3 cut (02:27–08:00 and 14:51–23:16 UTC, 2026-11-26).
+1. **More data / regimes**: every hour recorded up to the v3 cut (02:27–08:00 and 14:51–22:56 UTC, 2026-11-26).
    This includes the burned v2 val and v2 forward windows; they are never used as a test again.
 2. **Online count recalibration** (causal, below) on the simulator's anchored clock and on the direct count heads.
 3. **Rollout-aware fine-tuning**: two-pass scheduled sampling (Mihaylova & Martins 2019) on top of MMFM-v3.
@@ -12,7 +12,7 @@ over-predicted by 1.1–1.6×. v3 attacks it three ways, all decided now:
 ## Data and splits (frozen in `<v3 dir>/splits.json` before training)
 - Build: `data/build.py --chunk-s 3600`. Long recorder segments are re-anchored on a REST order-id snapshot about
   every 60 min, which bounds memory. The v2-1 verification and exclusion rule is unchanged.
-- Cut U = 23:16:07 UTC (`/home/user/data/mmfm_v3_until_ns`).
+- Cut U = 22:56:07 UTC (`/home/user/data/mmfm_v3_until_ns`).
 - Split windows:
   - **val** = [U − 60 min, U];
   - **embargo** = 10 min;
