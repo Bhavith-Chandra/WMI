@@ -98,6 +98,14 @@ def run_episode(kind, Mu, Mc, sdc, phis, targets, rng, N=1000, S=16):
     """phis: (A, E, 3) per attempt; targets: (A, E, 2). Returns miss (A, E)."""
     A, E = targets.shape[:2]; th = Thrower(E); miss = np.zeros((A, E)); r_last = np.zeros((E, 2))
     parts = sample_phi(rng, E * N, broad=True).reshape(E, N, 3); logw = np.zeros((E, N))
+    corr = np.zeros((E, 2)); gaps = []                         # goal-gap correction state (v9)
+    HV, HY = [], []                                           # executed actions and achieved outcomes (relabeling)
+
+    def anchor(tg):
+        """Relabeling: the past attempt whose ACHIEVED outcome is closest to the current goal (per episode)."""
+        Y, V = np.stack(HY, 1), np.stack(HV, 1)               # (E,k,2)
+        k = np.argmin(((Y - tg[:, None]) ** 2).sum(-1), 1)
+        return V[np.arange(E), k], Y[np.arange(E), k]
     nv = np.tile((2 * sdc) ** 2, (E, 1))
     for k in range(A):
         tg = targets[k]
@@ -105,23 +113,40 @@ def run_episode(kind, Mu, Mc, sdc, phis, targets, rng, N=1000, S=16):
             f = lambda Aa: ((ens(Mu, torch.tensor(Aa.reshape(-1, 2), dtype=torch.float32)).numpy().reshape(E, -1, 2) - tg[:, None]) ** 2).sum(-1)
         elif kind == "residual":
             f = lambda Aa: ((ens(Mu, torch.tensor(Aa.reshape(-1, 2), dtype=torch.float32)).numpy().reshape(E, -1, 2) + r_last[:, None] - tg[:, None]) ** 2).sum(-1)
+        elif kind == "anchor" and HY:                         # predicted(a) = y* + f(a) - f(a*): model only predicts the difference
+            va, ya = anchor(tg); ra = ya - ens(Mu, torch.tensor(va, dtype=torch.float32)).numpy()
+            f = lambda Aa, ra=ra: ((ens(Mu, torch.tensor(Aa.reshape(-1, 2), dtype=torch.float32)).numpy().reshape(E, -1, 2) + ra[:, None] - tg[:, None]) ** 2).sum(-1)
+        elif kind == "anchor":
+            f = lambda Aa: ((ens(Mu, torch.tensor(Aa.reshape(-1, 2), dtype=torch.float32)).numpy().reshape(E, -1, 2) - tg[:, None]) ** 2).sum(-1)
+        elif kind in ("gap_ilc", "gap_mean"):                 # aim so that predicted outcome + correction = target
+            f = lambda Aa: ((ens(Mu, torch.tensor(Aa.reshape(-1, 2), dtype=torch.float32)).numpy().reshape(E, -1, 2) + corr[:, None] - tg[:, None]) ** 2).sum(-1)
         elif kind == "oracle":
             def f(Aa):
                 Pp = Aa.shape[1]; ph = np.repeat(phis[k][:, None], Pp, 1)
                 x = torch.tensor(np.c_[Aa.reshape(-1, 2), ph.reshape(-1, 3)], dtype=torch.float32)
                 return ((ens(Mc, x).numpy().reshape(E, Pp, 2) - tg[:, None]) ** 2).sum(-1)
-        else:  # hindsight: posterior-expected cost over S particle samples
+        else:  # hindsight: posterior-expected cost over S particle samples (+ relabeling anchor for hindsight_anchor)
             w = np.exp(logw - logw.max(1, keepdims=True)); w /= w.sum(1, keepdims=True)
             idx = np.stack([rng.choice(N, S, p=w[e]) for e in range(E)]); samp = np.take_along_axis(parts, idx[..., None], 1)
-            def f(Aa, samp=samp):
+            ca = np.zeros((E, S, 2))
+            if kind == "hindsight_anchor" and HY:             # anchor residual under each posterior sample
+                va, ya = anchor(tg)
+                xa = torch.tensor(np.c_[np.repeat(va, S, 0), samp.reshape(-1, 3)], dtype=torch.float32)
+                ca = ya[:, None] - ens(Mc, xa).numpy().reshape(E, S, 2)
+            def f(Aa, samp=samp, ca=ca):
                 Pp = Aa.shape[1]
                 a = np.repeat(Aa[:, :, None], S, 2); ph = np.repeat(samp[:, None], Pp, 1)
                 x = torch.tensor(np.c_[a.reshape(-1, 2), ph.reshape(-1, 3)], dtype=torch.float32)
-                return ((ens(Mc, x).numpy().reshape(E, Pp, S, 2) - tg[:, None, None]) ** 2).sum(-1).mean(-1)
+                return ((ens(Mc, x).numpy().reshape(E, Pp, S, 2) + ca[:, None] - tg[:, None, None]) ** 2).sum(-1).mean(-1)
         v0 = cem(f, E, rng)
         y = th.throw(v0, phis[k]); miss[k] = np.linalg.norm(y - tg, axis=1)
         r_last = y - ens(Mu, torch.tensor(v0, dtype=torch.float32)).numpy()
-        if kind == "hindsight":
+        if kind == "gap_ilc":                                 # integral update on the outcome-to-goal gap
+            corr = corr + (y - tg)
+        if kind == "gap_mean":                                # mean of past gaps between outcome and intended outcome
+            gaps.append(r_last); corr = np.mean(gaps, 0)
+        HV.append(v0.copy()); HY.append(y.copy())
+        if kind in ("hindsight", "hindsight_anchor"):
             x = torch.tensor(np.c_[np.repeat(v0, N, 0), parts.reshape(-1, 3)], dtype=torch.float32)
             pred = ens(Mc, x).numpy().reshape(E, N, 2)
             w = np.exp(logw - logw.max(1, keepdims=True)); w /= w.sum(1, keepdims=True)
