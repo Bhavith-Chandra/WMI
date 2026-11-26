@@ -73,7 +73,7 @@ def test_causality(planner):
 def test_rng_streams_disjoint():
     seeds = [0, 1, 2]
     train = set(seeds); test_sched = {10_000 + s for s in seeds}; planner = {20_000 + s for s in seeds}
-    gate = {99, 99_999}; sealed = {100_000 + s for s in (100, 101, 102)} | {200_000 + s for s in (100, 101, 102)}
+    gate = {99, 99_999}; sealed = {100_000 + s for s in (100, 101, 102)} | {200_000 + s for s in (100, 101, 102)} | {300_000 + s for s in (100, 101, 102)}
     groups = [train, test_sched, planner, gate, sealed]
     for i in range(len(groups)):
         for j in range(i + 1, len(groups)):
