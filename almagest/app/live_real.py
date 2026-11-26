@@ -58,7 +58,18 @@ class LiveReal:
         self.q = queue.Queue()
         self.feed = Feed(product, self.q)
         self.feed.start()
+        self.lock = threading.RLock()
         self._new_session()
+        # keep consuming the feed even when no client polls (bounded memory, state always current)
+        threading.Thread(target=self._pump_loop, daemon=True).start()
+
+    def _pump_loop(self):
+        while True:
+            try:
+                self.pump()
+            except Exception:
+                pass
+            time.sleep(0.2)
 
     def _new_session(self):
         self.tok = T.StreamTokenizer(self.product)
@@ -75,8 +86,12 @@ class LiveReal:
         self.n_mkt = 0
 
     # ------------------------------------------------------------------ teacher forcing on real events
-    @torch.no_grad()
     def pump(self, max_msgs=20000):
+        with self.lock:
+            return self._pump(max_msgs)
+
+    @torch.no_grad()
+    def _pump(self, max_msgs=20000):
         toks = []
         for _ in range(max_msgs):
             try:
@@ -136,8 +151,12 @@ class LiveReal:
                     phi=float(self.n_mkt / max(1, self.n)))
 
     # ------------------------------------------------------------------ what-if from the live state
+    def whatif(self, **kw):
+        with self.lock:
+            return self._whatif(**kw)
+
     @torch.no_grad()
-    def whatif(self, side='buy', children=20, child_lots=8, participation=0.1, tail_blocks=20, paths=48, seed=0):
+    def _whatif(self, side='buy', children=20, child_lots=8, participation=0.1, tail_blocks=20, paths=48, seed=0):
         b = self.tok.book
         assert b is not None and self.n > 1000, 'need live context first'
         side = 0 if side in ('buy', 0) else 1
