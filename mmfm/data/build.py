@@ -89,7 +89,6 @@ def build(raw: Path, out: Path, until_ns: int, pairs):
             info["reason"] = None if info["parts"] else "no verified interval long enough"
             print(pair, k, info["n_events"], "kept", info["n_kept"], "parts", len(info["parts"]), flush=True)
             segs.append(info)
-            print(pair, k, info["n_events"], "excluded" if excluded else "ok", flush=True)
         report["pairs"][pair] = segs
     (out / "build_report.json").write_text(json.dumps(report, indent=1))
     return report

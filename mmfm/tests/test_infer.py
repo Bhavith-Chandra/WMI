@@ -49,3 +49,19 @@ def test_kv_cache_equals_full_forward_including_window_rolls():
             win = win[-32:]
         ref = m.hidden(T[:, win], F_[:, win])[:, -1]
         assert torch.allclose(h, ref, atol=1e-4), f"step {i}: max diff {(h - ref).abs().max()}"
+
+
+def test_kv_cache_does_not_reprefill_every_step():
+    """Regression: with ctx=64 the default keep=128 made every step a full prefill."""
+    ev, st = synth(400, seed=6)
+    tok = Tokenizer.fit([(ev, st)], dict(split="train", files_hash="x", range=[0, 1]))
+    t, f, _ = tok.encode(ev, st)
+    m = MMFM(tok.vocab, f.shape[1], d=32, n_layers=2, n_heads=4, ctx=64).eval()
+    fm = FastMMFM(m)
+    fm.prefill(torch.from_numpy(t[:64])[None], torch.from_numpy(f[:64])[None])
+    calls = {"n": 0}
+    orig = fm.prefill
+    fm.prefill = lambda *a, **k: (calls.__setitem__("n", calls["n"] + 1), orig(*a, **k))[1]
+    for i in range(64, 164):
+        fm.step(torch.from_numpy(t[i])[None], torch.from_numpy(f[i])[None])
+    assert calls["n"] <= 100 // (64 - fm.keep) + 1, calls

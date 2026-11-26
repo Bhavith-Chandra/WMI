@@ -84,7 +84,7 @@ class FastMMFM:
     def __init__(self, model: MMFM, keep=128):
         self.m = model.eval()
         self.ctx = model.cfg["ctx"]
-        self.keep = keep
+        self.keep = min(keep, self.ctx // 2)  # must be < ctx, else every step re-prefills (v1 bug: ctx=64, keep=128)
         self.layers = list(model.blocks.layers)
         self.H = model.cfg["n_heads"]
         self.d = model.cfg["d"]

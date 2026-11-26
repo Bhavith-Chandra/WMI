@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from data.dataset_v2 import load, raw_chunks  # noqa: E402
 from data.tokenizer_v2 import HORIZONS, Tokenizer2  # noqa: E402
+from model.mmfm import FeatMLP  # noqa: E402
 from model.mmfm2 import MMFM2  # noqa: E402
 
 torch.set_num_threads(4)
@@ -94,22 +95,33 @@ def main():
     ap.add_argument("--minutes", type=float, default=90)
     ap.add_argument("--eval-every", type=int, default=500)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--model", choices=["mmfm2", "b2"], default="mmfm2")
+    ap.add_argument("--tokenizer", default=None)
     a = ap.parse_args()
     out = ROOT / a.out
     out.mkdir(parents=True, exist_ok=True)
     events = Path(a.events)
     torch.manual_seed(a.seed)
     rng = np.random.default_rng(a.seed)
-    raw, sp = raw_chunks(events, "train")
-    tok = Tokenizer2.fit([(c["events"], c["state"], c["lvq"]) for c in raw], dict(split="train", files_hash=sp["files_hash"], range=sp["train"]))
-    del raw
+    if a.tokenizer:
+        tok = Tokenizer2.from_json(json.loads(Path(a.tokenizer).read_text()))
+        sp = json.loads((events / "splits.json").read_text())
+        assert tok.fit_split["files_hash"] == sp["files_hash"] and tok.fit_split["split"] == "train"
+    else:
+        raw, sp = raw_chunks(events, "train")
+        tok = Tokenizer2.fit([(c["events"], c["state"], c["lvq"]) for c in raw], dict(split="train", files_hash=sp["files_hash"], range=sp["train"]))
+        del raw
     (out / "tokenizer.json").write_text(json.dumps(tok.to_json()))
     train, _ = load(events, "train", tok)
     val, _ = load(events, "val", tok)
     print(f"train events {sum(len(c['tokens']) for c in train):,} | val events {sum(len(c['tokens']) for c in val):,}", flush=True)
     nret = [tok.n_ret_bins(k) for k in range(len(HORIZONS))]
     ncnt = [tok.n_cnt_bins(k) for k in range(len(HORIZONS))]
-    model = MMFM2(tok.vocab, train[0]["feats"].shape[1], nret, ncnt, d=a.d, n_layers=a.layers, ctx=a.ctx)
+    if a.model == "b2":
+        model = FeatMLP(tok.vocab, train[0]["feats"].shape[1], d=a.d)
+        model.losses = lambda tk, ft, rt, ct: (-model.logp(tk, ft) / math.log(2), torch.zeros(len(HORIZONS)), torch.zeros(len(HORIZONS)))
+    else:
+        model = MMFM2(tok.vocab, train[0]["feats"].shape[1], nret, ncnt, d=a.d, n_layers=a.layers, ctx=a.ctx)
     opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=0.01)
     total_steps_guess = int(a.minutes * 60 / 0.25)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=a.lr, total_steps=max(total_steps_guess, 1000), pct_start=0.05,
@@ -134,14 +146,14 @@ def main():
             log["evals"].append(e)
             if score < best:
                 best = score
-                torch.save(dict(state=model.state_dict(), cfg=model.cfg, kind="mmfm2"), out / "model_uncal.pt")
+                torch.save(dict(state=model.state_dict(), cfg=model.cfg, kind=a.model), out / "model_uncal.pt")
                 log["best"] = e
             (out / "selection_log.json").write_text(json.dumps(log, indent=1))
             print(f"step {step} ev {e['event_bits']:.3f} ret {np.round(e['ret_bits'], 3)} cnt {np.round(e['cnt_bits'], 3)} best {best:.3f} {e['minutes']:.1f}m", flush=True)
     ck = torch.load(out / "model_uncal.pt", weights_only=True)
     model.load_state_dict(ck["state"])
-    log["calibration"] = calibrate(model, val, a.ctx)
-    torch.save(dict(state=model.state_dict(), cfg=model.cfg, kind="mmfm2"), out / "model.pt")
+    log["calibration"] = calibrate(model, val, a.ctx) if a.model == "mmfm2" else None
+    torch.save(dict(state=model.state_dict(), cfg=model.cfg, kind=a.model), out / "model.pt")
     log["model_hash"] = hashlib.sha256((out / "model.pt").read_bytes()).hexdigest()
     log["n_steps"] = step
     (out / "selection_log.json").write_text(json.dumps(log, indent=1))
