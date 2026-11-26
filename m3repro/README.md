@@ -102,8 +102,32 @@ Replaying the *real* decoded prompt from its 10-level snapshot: 68% of cancel qu
 depth, and 42.5% of cancels target prices never seen in the book (orders resting beyond level 10 before the
 window). The paper's matching engine silently drops these, so phantom liquidity is built into every replay.
 
-### 10. Closed-loop TWAP impact (single prompt)
-See the section filled in below once `results/twap_tiny_h120.json` exists.
+### 10. Closed-loop TWAP impact (single prompt): square-root law **not** reproduced (✗ sell, ? buy)
+`results/twap_{tiny,small}_h60.json`. Setup:
+* single released prompt
+* 60 s horizon, 10 children at 6 s intervals, each an aggressive limit order 10 ticks through the touch
+* Q ∈ {10k, 40k, 160k} shares, 6 rollouts per cell plus a no-trade baseline, 42 paths in total
+* rolling context and in-context encoding of the injected orders
+
+This is lighter than the paper's protocol (300 s, 64 prompts × 4 rollouts), which wasn't feasible on CPU.
+Daily volume and daily volatility for this stock-day are not released, so Q is in shares. Only the exponent is comparable to the paper's.
+
+| | tiny | small |
+|---|---|---|
+| baseline drift over 60 s, mean (sd) | **−105 bp** (46), n=4 | −33 bp (37), n=6 |
+| stalled paths (clock < 60 s after 4000 events) | **7/42**, 2 of them baseline | 1/42 |
+| buy impact median, 10k/40k/160k (bp) | 101 / 98 / 164 | 35 / 70 / 153 |
+| sell impact median, 10k/40k/160k (bp) | 93 / −18 / −62 | 123 / 99 / 66 |
+| buy β (log-log, 3 bins) [90% CI*] | 0.19 [0.02, 0.38] | **0.57** [0.32, 1.06] |
+| sell β | not fittable | −0.24 [−0.80, 0.45] |
+
+\*Approximate CI: cell medians resampled as N(median, SE); draws with non-positive impact dropped.
+
+* **Small, buy side**: β = 0.57 is close to the paper's 0.532. The CI is wide and covers both 0.5 and linear impact (1.0), so it does not confirm a square root.
+* **Sell side**: no concave increasing impact for either model. For small, impact *falls* with size.
+* **Tiny**: the baseline drifts about −1%/min, against −9.5 bp over 34 s in the real prompt replay. That drift swamps the impact signal.
+* **New failure mode, stalling**: in some paths the simulated clock freezes. 47–84% of their events decode to inter-arrival times ≤ 1 ms, against a median of 22–24% in healthy paths.
+  It also hits no-trade baseline paths, so the cause is generation under a rolling context, not the intervention.
 
 ## Not reproducible from the release
 
@@ -126,6 +150,7 @@ python3 -I scripts/run_audit.py nll
 python3 -I scripts/run_audit.py tokenizer
 python3 -I scripts/run_audit.py rollout --rollouts 32 --new 1024
 python3 -I scripts/run_audit.py decode_ablation
-python3 -I scripts/run_twap.py --model tiny --horizon 120 --children 20 --reps 12 --qgrid 5000,12500,31250,78000,195000
+python3 -I scripts/run_twap.py --model tiny  --horizon 60 --children 10 --reps 6 --qgrid 10000,40000,160000 --max-steps 4000
+python3 -I scripts/run_twap.py --model small --horizon 60 --children 10 --reps 6 --qgrid 10000,40000,160000 --max-steps 4000
 ```
 Runs on CPU only (4 cores). Seeds are fixed in the scripts.
