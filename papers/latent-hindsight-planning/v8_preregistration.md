@@ -37,3 +37,10 @@ planners hier:{forward, hindsight_posterior, oracle_latent}.
   latency <= dt = 50 ms.
 - R6 (graceful degradation): gain of hindsight_posterior over forward in deploy/both >= 0.5 x its gain in v7 K10/both.
 Ablations are descriptive.
+
+## Pre-run correction (before any v8 result existed)
+While verifying the simulator against closed-form dynamics for the browser demo, I found that changing
+`body_mass` after compilation does not change MuJoCo's mass matrix (it must be followed by `mj_setConst`).
+The mass-mismatch factor would have been a silent no-op. Fixed in `wmi/hier.apply_physics`; `tests/test_physics.py`
+now checks the simulator against the closed form with perturbed mass and damping (error < 1e-9).
+No experiment so far used a mass change (the throw experiment changes damping only, which takes effect).

@@ -8,6 +8,7 @@ Hindsight enters through the low-level predictor: every subgoal shares one belie
 """
 from __future__ import annotations
 
+import mujoco
 import numpy as np
 import torch
 
@@ -67,6 +68,14 @@ def act_hazard(pl, s, goal, hz=50.0):
     return plan
 
 
+def apply_physics(env, mass, damp):
+    """Per-episode mass and damping multipliers. mj_setConst is REQUIRED: without it MuJoCo keeps the compiled mass
+    matrix and a body_mass change is silently ignored (caught by tests/test_physics.py)."""
+    for e in range(env.E):
+        env.m[e].body_mass[env.body] *= mass[e]; env.m[e].dof_damping[:] *= damp[e]
+        mujoco.mj_setConst(env.m[e], env.d[e])
+
+
 def schedule(regime, rng, E, T, every=20):
     """Latent per step, (T, E, 3). none/wind/both persist for the whole episode; fresh redraws every `every` steps."""
     sched = np.zeros((T, E, 3)); sched[..., 0] = 1.0
@@ -100,8 +109,7 @@ def run_hier(planner, Mu, Mc, sched, cfg, seed, n_traj=6, world=None):
     T, E = sched.shape[:2]; K = cfg["K"]; W = world or {}
     env = PuckBatch(E)
     if "mass" in W:
-        for e in range(E):
-            env.m[e].body_mass[env.body] *= W["mass"][e]; env.m[e].dof_damping[:] *= W["damp"][e]
+        apply_physics(env, W["mass"], W["damp"])
     s = env.reset(np.tile(START, (E, 1)))
     nrng = np.random.default_rng(W.get("seed", 0)); osd = np.array(list(W.get("obs_sd", (0.0, 0.0))))
     sensor = lambda x: x + (np.r_[osd[0], osd[0], osd[1], osd[1]] * nrng.standard_normal(x.shape) if osd.any() else 0.0)
