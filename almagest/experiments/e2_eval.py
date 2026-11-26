@@ -201,11 +201,13 @@ def analyze(Ivis, Iblind, Irel, V, sig, did, child, free_drift, gamma, H, ref, o
     bd, bY = M.day_bootstrap(Iv, q, did, B=300)
     tost, ci90 = M.tost_pass(bd)
     vb = Ivis[:, -1].mean() / Iblind[:, -1].mean() if Iblind[:, -1].mean() > 0 else float('inf')
-    Ir = (Irel / sig[:, None]).mean(0)
+    Irows = Irel / sig[:, None]
+    Ir = Irows.mean(0)
     ep, slope = M.relaxation(Ir, N_REL_EXEC)
+    ep_ci = list(M.relax_bootstrap(Irows, did, N_REL_EXEC, B=200))
     r = dict(delta=d, Y=Y, delta_ci95=list(np.nanquantile(bd, [0.025, 0.975])), delta_ci90=list(ci90), tost=tost,
              Y_ci95=list(np.nanquantile(bY, [0.025, 0.975])), identified=bool(ok), delta_l2=d_l2, vb=vb,
-             ep=ep, slope=slope, drift=free_drift, gamma=gamma, H=H,
+             ep=ep, ep_ci95=ep_ci, slope=slope, drift=free_drift, gamma=gamma, H=H,
              curve=list(Iv.mean(0)), relax_curve=list(Ir))
     r['ladder'] = {k: (None if v is None else bool(v)) for k, v in M.ladder(ref, r, ow_ep).items()}
     return r

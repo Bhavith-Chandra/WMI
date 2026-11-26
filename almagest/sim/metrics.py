@@ -125,3 +125,16 @@ def ladder(ref, res, ow_ep=None):
     ep_bar = ow_ep if ow_ep is not None else res.get('ep_target', 2 / 3)
     C5 = (res['ep'] <= ep_bar and res['slope'] <= 0 and abs(res['drift']) < 20) if C2 else None
     return dict(C1=C1, C2=C2, C3=C3, C4=C4, C5=C5, TOST=res.get('tost'))
+
+
+def relax_bootstrap(Irows, day_id, n_exec, B=300, seed=0):
+    """Day-clustered bootstrap CI of end/peak from per-rollout relaxation curves Irows (n_roll, n_blocks)."""
+    rng = np.random.default_rng(seed)
+    days = np.unique(day_id)
+    groups = [np.where(day_id == d)[0] for d in days]
+    eps = []
+    for _ in range(B):
+        pick = rng.integers(0, len(days), len(days))
+        ii = np.concatenate([groups[p] for p in pick])
+        eps.append(relaxation(Irows[ii].mean(0), n_exec)[0])
+    return np.nanquantile(eps, [0.025, 0.975])

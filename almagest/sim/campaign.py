@@ -96,9 +96,10 @@ def evaluate(runner, par_world, n_days=20, win_per_day=16, base_seed=1000, ref=N
         V_r = np.array([stats[d]['V'] for d in sched_r[3]], float)
         sig_r = np.array([stats[d]['sigma'] for d in sched_r[3]], float)
         rr, _, _ = run_arms(runner, sched_r, 10, gap, 100, child, modes=(1,))
-        Irel = (rr[1] / sig_r[:, None]).mean(0)
+        Irows = rr[1] / sig_r[:, None]
+        Irel = Irows.mean(0)
         ep, slope = M.relaxation(Irel, 10)
-        out.update(ep=ep, slope=slope, relax_curve=Irel)
+        out.update(ep=ep, slope=slope, relax_curve=Irel, ep_ci95=M.relax_bootstrap(Irows, sched_r[3], 10, B=200))
     if ref is not None:
         out['ladder'] = M.ladder(ref, out)
     if verbose:
