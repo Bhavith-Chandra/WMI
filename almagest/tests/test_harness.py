@@ -77,11 +77,12 @@ def test_slowbank_online_equals_offline():
 def test_seed_splits_disjoint():
     calib = set(range(1000, 1000 + 64))
     evald = set(range(5000, 5000 + 64))
+    testd = set(range(9000, 9000 + 64))
     train = set(range(200000, 200000 + 64))
     val = set(range(300000, 300000 + 64))
-    s = [calib, evald, train, val]
-    for i in range(4):
-        for j in range(i + 1, 4):
+    s = [calib, evald, testd, train, val]
+    for i in range(5):
+        for j in range(i + 1, 5):
             assert not (s[i] & s[j])
 
 

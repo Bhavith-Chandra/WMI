@@ -31,7 +31,7 @@ def windows(n_days, wpd, base=5000):
 
 def truth_campaign(par, days, sidx, gap, child):
     nw = 20000 + sidx
-    rs = 10_000_000 + days * 1000 + (sidx - WIN0) // STRIDE
+    rs = 10_000_000 + days * 1000 + (sidx - WIN0) // STRIDE  # rollout seeds: function of test day only
     out = {}
     for mode in (1, 2, 0):
         for side in (0, 1):
@@ -228,7 +228,8 @@ if __name__ == '__main__':
     model, _ = make_model(ck['arm'])
     model.load_state_dict(ck['state'])
     model.eval()
-    days, sidx = windows(n_days, wpd)
+    TEST_BASE = 9000  # fresh test days: never used for calibration (1000+), confirmation/dev (5000+), training (200000+), validation (300000+)
+    days, sidx = windows(n_days, wpd, base=TEST_BASE)
     stats = C.day_stats(par, np.unique(days))
     phi = np.mean([s['phi'] for s in stats])
     child = int(round(np.median([s['med'] for s in stats])))
