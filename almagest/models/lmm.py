@@ -78,11 +78,15 @@ class DiagRec(nn.Module):
 
 class LMM(nn.Module):
     def __init__(self, d=64, h=128, layers=2, mode='learned', slowbank=False, nsize=NSIZE, ndt=0, size_all=False,
-                 src=False):
+                 src=False, cond_heads=False):
         """v1 (synthetic): nsize=4, ndt=0, size only for markets. v2 (real): nsize=12 for all types, ndt=11 (Dt head)."""
         super().__init__()
         self.cfg = dict(d=d, h=h, layers=layers, mode=mode, slowbank=slowbank, nsize=nsize, ndt=ndt, size_all=size_all,
-                        src=src)
+                        src=src, cond_heads=cond_heads)
+        # cond_heads: SEPARATE output weights per event type (side) and per (type, side) (level, size). Without it the
+        # state->side mapping is shared by limits/cancels/markets (only the bias differs), so market-order sides cannot
+        # depend on order-flow state (found 2026-11-26: model P(buy|market) flat at 0.5 vs empirical 0.32-0.67).
+        self.cond_heads = cond_heads
         self.src = src   # v1 only: token column 4 = source tag (0 market, 1 own/exogenous order); never a target
         self.nsize, self.ndt, self.size_all = nsize, ndt, size_all
         self.e_typ = nn.Embedding(3, d)
@@ -102,6 +106,10 @@ class LMM(nn.Module):
         self.c_lvl = nn.Embedding(6, d)
         self.h_lvl = nn.Linear(d, NLVL)
         self.h_size = nn.Linear(d, nsize)
+        if cond_heads:
+            self.hc_side = nn.Linear(d, 3 * 2)
+            self.hc_lvl = nn.Linear(d, 6 * NLVL)
+            self.hc_size = nn.Linear(d, 6 * nsize)
         self.c_size = nn.Embedding(nsize, d) if ndt else None
         self.h_dt = nn.Linear(d, ndt) if ndt else None
         self.hdim = h
@@ -142,11 +150,27 @@ class LMM(nn.Module):
     def heads_logits(self, z, typ, side):
         lt = self.h_typ(z)
         zs = z + self.c_side(typ)
-        ls = self.h_side(zs)
         zl = zs + self.c_lvl(typ * 2 + side)
+        if self.cond_heads:
+            ls = _pick(self.hc_side(zs), typ, 2)
+            ll = _pick(self.hc_lvl(zl), typ * 2 + side, NLVL)
+            lz = _pick(self.hc_size(zl), typ * 2 + side, self.nsize)
+            return lt, ls, ll, lz
+        ls = self.h_side(zs)
         ll = self.h_lvl(zl)
         lz = self.h_size(zl)
         return lt, ls, ll, lz
+
+    # generation-time head access (same math as heads_logits, usable step by step)
+    def side_logits(self, z, typ):
+        zs = z + self.c_side(typ)
+        return _pick(self.hc_side(zs), typ, 2) if self.cond_heads else self.h_side(zs)
+
+    def lvl_size_logits(self, z, typ, side):
+        zl = z + self.c_side(typ) + self.c_lvl(typ * 2 + side)
+        if self.cond_heads:
+            return _pick(self.hc_lvl(zl), typ * 2 + side, NLVL), _pick(self.hc_size(zl), typ * 2 + side, self.nsize)
+        return self.h_lvl(zl), self.h_size(zl)
 
     def loss(self, z, tgt, cmask):
         """tgt (B,T,4); cmask (B,T,2,D) cancel validity of the book BEFORE the event."""
@@ -183,6 +207,13 @@ class LMM(nn.Module):
              F.cross_entropy(lz.reshape(-1, self.nsize), size.reshape(-1), reduction='none'),
              F.cross_entropy(ld.reshape(-1, self.ndt), tgt[..., 4].reshape(-1), reduction='none')]
         return torch.stack(p, -1)
+
+
+def _pick(flat, idx, k):
+    """flat (..., G*k) -> (..., k) selecting group idx (...,)."""
+    sh = flat.shape[:-1]
+    g = flat.reshape(*sh, -1, k)
+    return torch.gather(g, -2, idx.unsqueeze(-1).unsqueeze(-1).expand(*sh, 1, k)).squeeze(-2)
 
 
 def mask_lvl(ll, typ, side, cmask):

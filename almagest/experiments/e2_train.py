@@ -104,7 +104,15 @@ def stack(streams, chunks):
     return out
 
 
-def make_model(arm):
+def make_model(arm, cond=None):
+    m, r = _make_model(arm)
+    if cond if cond is not None else bool(os.environ.get('COND_HEADS')):
+        cfg = dict(m.cfg); cfg['cond_heads'] = True
+        m = L.LMM(**cfg)
+    return m, r
+
+
+def _make_model(arm):
     if arm == 'short':
         return L.LMM(mode='learned'), 512
     if arm == 'stateful':
@@ -160,10 +168,11 @@ if __name__ == '__main__':
     print('data', time.time() - t0, 'train tokens', tr['tgt'].shape[0] * tr['tgt'].shape[1], flush=True)
     model, reset = make_model(arm)
     print(arm, 'params', model.n_params(), flush=True)
-    opt = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=0.01)
+    LR = float(os.environ.get('LR', 2e-3))
+    opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=0.01)
     T = 256
     nsteps = passes * (tr['tgt'].shape[1] // T)
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=2e-3, total_steps=nsteps + 5, pct_start=0.05)
+    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=LR, total_steps=nsteps + 5, pct_start=0.05)
 
     class _O:
         def zero_grad(self): opt.zero_grad()

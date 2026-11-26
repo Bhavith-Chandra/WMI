@@ -105,10 +105,10 @@ def collect(model, reset, par, days, sidx, steps, seed, beta=0.0):
         # model action executes (on-policy states)
         u = torch.rand(R, 4, generator=g)
         typ = L.inv_cdf(model.h_typ(z), u[:, 0])
-        side = L.inv_cdf(model.h_side(z + model.c_side(typ)), u[:, 1])
-        zl = z + model.c_side(typ) + model.c_lvl(typ * 2 + side)
-        lvl = L.inv_cdf(L.mask_lvl(model.h_lvl(zl), typ, side, torch.tensor(cm)), u[:, 2])
-        size = L.inv_cdf(model.h_size(zl), u[:, 3]) + 1
+        side = L.inv_cdf(model.side_logits(z, typ), u[:, 1])
+        ll, lz = model.lvl_size_logits(z, typ, side)
+        lvl = L.inv_cdf(L.mask_lvl(ll, typ, side, torch.tensor(cm)), u[:, 2])
+        size = L.inv_cdf(lz, u[:, 3]) + 1
         lvl = torch.where(typ == 2, torch.zeros_like(lvl), lvl)
         size = torch.where(typ == 2, size, torch.ones_like(size))
         ev = torch.stack([typ, side, lvl, size], 1)
@@ -139,7 +139,7 @@ def main():
     rows = int(sys.argv[5]) if len(sys.argv) > 5 else 64
     ck = torch.load(base, weights_only=False)
     par = make(ck['theta'])
-    model, reset = make_model(ck['arm'])
+    model, reset = make_model(ck['arm'], cond=ck.get('cfg', {}).get('cond_heads', False))
     model.load_state_dict(ck['state'])
     bs = build_stream_inj if ck['arm'].endswith('_src') else build_stream
     orig = stack([bs(par, S.TRAIN_BASE + i, 120_000) for i in range(8)], 1)

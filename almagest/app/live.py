@@ -49,7 +49,7 @@ class LiveModel:
     def __init__(self, ckpt_path, context_seed=7_000_001, context_len=20480):
         ck = torch.load(ckpt_path, weights_only=False)
         self.arm = ck['arm']
-        self.model, self.reset = make_model(ck['arm'])
+        self.model, self.reset = make_model(ck['arm'], cond=ck.get('cfg', {}).get('cond_heads', False))
         self.model.load_state_dict(ck['state'])
         self.model.eval()
         self.n_params = self.model.n_params()
@@ -125,12 +125,11 @@ class LiveModel:
         cm = torch.stack([torch.tensor(rows.cmb), torch.tensor(rows.cma)], 1)
         lt = m.h_typ(z)
         typ = L.inv_cdf(lt, u[:, 0]) if observed is None else observed[:, 0]
-        ls = m.h_side(z + m.c_side(typ))
+        ls = m.side_logits(z, typ)
         side = L.inv_cdf(ls, u[:, 1]) if observed is None else observed[:, 1]
-        zl = z + m.c_side(typ) + m.c_lvl(typ * 2 + side)
-        ll = L.mask_lvl(m.h_lvl(zl), typ, side, cm)
+        ll, lz = m.lvl_size_logits(z, typ, side)
+        ll = L.mask_lvl(ll, typ, side, cm)
         lvl = L.inv_cdf(ll, u[:, 2]) if observed is None else observed[:, 2]
-        lz = m.h_size(zl)
         size = (L.inv_cdf(lz, u[:, 3]) + 1) if observed is None else observed[:, 3]
         lvl = torch.where(typ == 2, torch.zeros_like(lvl), lvl)
         size = torch.where(typ == 2, size, torch.ones_like(size))

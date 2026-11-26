@@ -187,10 +187,10 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
             z = consume(np.ones(R, bool))
             u = torch.rand(nwin, 4, generator=gen)[torch.tensor(win_of)]
             typ = L.inv_cdf(model.h_typ(z), u[:, 0])
-            side = L.inv_cdf(model.h_side(z + model.c_side(typ)), u[:, 1])
-            zl = z + model.c_side(typ) + model.c_lvl(typ * 2 + side)
-            lvl = L.inv_cdf(L.mask_lvl(model.h_lvl(zl), typ, side, pend_cm), u[:, 2])
-            size = L.inv_cdf(model.h_size(zl), u[:, 3]) + 1
+            side = L.inv_cdf(model.side_logits(z, typ), u[:, 1])
+            ll, lz = model.lvl_size_logits(z, typ, side)
+            lvl = L.inv_cdf(L.mask_lvl(ll, typ, side, pend_cm), u[:, 2])
+            size = L.inv_cdf(lz, u[:, 3]) + 1
             lvl = torch.where(typ == 2, torch.zeros_like(lvl), lvl)
             size = torch.where(typ == 2, size, torch.ones_like(size))
             ev = pad(torch.stack([typ, side, lvl, size], 1), 0)
@@ -324,7 +324,7 @@ if __name__ == '__main__':
                truth_replicas=TRUTH_REPLICAS, nblk=NBLK, eta=ETA,
                win0=WIN0, gap=gap, child=child, phi_world=phi, code_rev=rev, burn=W.BURN, truth=truth, theta=theta)
     if ck is not None:
-        model, reset = make_model(ck['arm'])
+        model, reset = make_model(ck['arm'], cond=ck.get('cfg', {}).get('cond_heads', False))
         model.load_state_dict(ck['state'])
         model.eval()
         res, fmid, fsign = model_campaign(model, reset, par, days, sidx, gap, child, snaps, st)
