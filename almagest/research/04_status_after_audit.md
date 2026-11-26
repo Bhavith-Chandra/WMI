@@ -119,3 +119,37 @@ Fix: type-conditional heads (`cond_heads`), 61k -> 71k params [C]:
 - free-run collapse 0/12 within 5k events (was 9/12).
 
 Every E2 model number before this fix is superseded. The real-data v2 model gets the same fix.
+
+
+## 8. Main result so far (exploratory, World D, dev): own-order memory channel fixes the direction of reaction
+Diagnostics [C], teacher-forced on interventional validation streams. P(next background market order is a buy):
+
+| own tagged flow (last ~500 events) | World | no own-order channel | with own-order channel |
+|---|---|---|---|
+| strong own selling | 0.590 | 0.51 | 0.587 |
+| strong own buying | 0.390 | 0.46 | 0.396 |
+
+Dev campaign [C] (identical training data; the only difference is the channel):
+
+| | truth | src (cond heads) | src + own-order channel |
+|---|---|---|---|
+| δ | 0.60 | 0.98 | 0.78 [0.67, 0.88] |
+| Y | 0.61 | 2.9 | 1.22 [0.79, 1.62] |
+| visible/blind | 0.28 | 1.37 | 0.64 [0.40, 1.03] |
+| R100 end/peak | 0.34 | 1.22 | 0.62 [0.52, 0.69] |
+| slope100 | -21 | +12 | -25 |
+| R10 end/peak | 0.34 | 1.42 | 0.37 |
+| C1 | pass | pass | pass |
+
+Interpretation [L]: in observational data, a price deviation implies an active hidden metaorder, so continuation
+follows. After an exogenous order, the market leans against it. Only a persistent memory of how much recent flow was
+exogenous lets a next-event model learn the difference; a per-step tag does not.
+
+Still failing the pre-registered gates:
+- A3: |Δδ| 0.18
+- A4: Y ratio 2.0
+- A5: |ΔR100| 0.28
+- A6: v/b 2.3x
+- collapse 6% > 2%
+
+The truth is uncertified.
