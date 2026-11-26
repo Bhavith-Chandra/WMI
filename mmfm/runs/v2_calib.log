@@ -1,0 +1,4 @@
+dt_scale 1.0 temp 0.85 loss 2.555
+dt_scale 1.0 temp 1.0 loss 3.291
+dt_scale 1.0 temp 1.15 loss 3.537
+chosen 1.0 0.85 2.5551413569434502

@@ -1,0 +1,19 @@
+{
+ "freeze_utc": "2026-11-26T20:25:25Z",
+ "freeze_ns": 1795724725986508103,
+ "files": {
+  "runs/v2/model.pt": "66c25c4498451679e30747e6180d78b9f5d575c11b7362ed43eeaea4f57ba80a",
+  "runs/v2/tokenizer.json": "97094fdd764ab3643e1a2285cf173c0391ea2c3763bfc67394d41051f31cda3c",
+  "runs/v2/sim_calibration.json": "144615e64545942803dc49fb6f6cbfb9c6b9b31312eeb0309795a1733a309465",
+  "runs/v2/selection_log.json": "082245b6394d0d5f35c5fff7fd3359b32c26c2856d8031bc24cd237a2228c126",
+  "runs/v2_b2/model.pt": "d55c50a59d89bec5268c19d332d7971e2e24b8c927fb0a45fa8cca668d05ecdd",
+  "runs/v2_b2/tokenizer.json": "97094fdd764ab3643e1a2285cf173c0391ea2c3763bfc67394d41051f31cda3c",
+  "runs/v2_b2/selection_log.json": "98a6c1f126f95258e7196c173bdff1c9852b3bc914525df2ee13b76c9db098c7"
+ },
+ "sim_calibration": {
+  "dt_scale": 1.0,
+  "temp": 0.7,
+  "clock": "anchored"
+ },
+ "note": "EVAL_v2 forward test: window = [freeze+10 min, +90 min]; data built only after the window ends."
+}

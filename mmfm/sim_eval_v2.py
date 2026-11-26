@@ -76,7 +76,7 @@ class CountGen:
 class CountRollout(Rollout2):
     def __init__(self, gen, tok, ctx, n_paths, seed):
         self.gen = gen
-        self.tok, self.temp, self.dt_scale = tok, 1.0, 1.0
+        self.tok, self.temp, self.dt_scale, self.clock = tok, 1.0, 1.0, "model"  # baselines keep their own empirical clock
         self.rng = np.random.default_rng(seed)
         s0 = __import__("sim.rollout2", fromlist=["book_state"]).book_state(ctx.book)
         import copy
