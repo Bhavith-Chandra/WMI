@@ -18,7 +18,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--model", default="tiny"); ap.add_argument("--horizon", type=float, default=300)
 ap.add_argument("--children", type=int, default=20); ap.add_argument("--reps", type=int, default=16)
 ap.add_argument("--qgrid", default="2000,5000,10000,20000,50000,100000,200000")
-ap.add_argument("--seed", type=int, default=7); ap.add_argument("--max-steps", type=int, default=4000); ap.add_argument("--block", type=int, default=32)
+ap.add_argument("--seed", type=int, default=7); ap.add_argument("--max-steps", type=int, default=4000); ap.add_argument("--tag", default=""); ap.add_argument("--block", type=int, default=32)
 a = ap.parse_args()
 codes = torch.from_numpy(np.load(REL / "examples/prompt_ids.npy").astype(np.int64))
 c = np.load(REL / "examples/conditioning.npz"); lob = torch.tensor(c["lob"]).float(); st = torch.tensor(c["initial_state_float"]).float()
@@ -75,5 +75,8 @@ for side in ("buy", "sell"):
         res[f"fit_{side}"] = dict(beta=float(b), r2=float(1 - ss / st_), n_points=int(ok.sum()), n_excluded_nonpositive=int((~ok).sum()))
     else:
         res[f"fit_{side}"] = dict(beta=None, n_points=int(ok.sum()), note="<3 positive-impact bins")
-print(json.dumps(res, indent=1))
-(OUT / f"twap_{a.model}_h{int(a.horizon)}.json").write_text(json.dumps(res, indent=2))
+res["paths"] = [dict(cell=r[0], side=int(r[1]), Q=int(r[2]), rep=int(r[3]), reached=bool(reached[i]),
+                     logret=(None if not np.isfinite(lr[i]) else float(lr[i])),
+                     exec_qty=int(sum(f for _, _, f in sim.injected[i]))) for i, r in enumerate(rows)]
+print(json.dumps({k: v for k, v in res.items() if k != "paths"}, indent=1))
+(OUT / f"twap_{a.model}_h{int(a.horizon)}{a.tag}.json").write_text(json.dumps(res, indent=2))
