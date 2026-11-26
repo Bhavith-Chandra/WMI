@@ -17,6 +17,6 @@ CAL=$(python3 -c "import json;c=json.load(open('$RUN/sim_calibration.json'))['ch
 DT=$(echo $CAL | cut -d' ' -f1); TP=$(echo $CAL | cut -d' ' -f2)
 log m1; python3 -I evaluate_v2.py --events $FW --train-events $DES --mmfm $RUN --b2 $B2 --forward --out results/v2_forward_m1.json >> "$L" 2>&1
 log m1-heldout; python3 -I evaluate_v2.py --events $FW --train-events $DES --mmfm $RUN --b2 $B2 --forward --heldout --out results/v2_forward_m1_heldout.json >> "$L" 2>&1
-log sim; python3 -I sim_eval_v2.py --events $FW --train-events $DES --run $RUN --forward --pairs ethusd,xrpusd,dogeusd --starts 25 --paths 16 --dt-scale $DT --temp $TP --out results/v2_forward_sim.json >> "$L" 2>&1
-log sim-heldout; python3 -I sim_eval_v2.py --events $FW --train-events $DES --run $RUN --forward --heldout --pairs linkusd --starts 25 --paths 16 --dt-scale $DT --temp $TP --out results/v2_forward_sim_heldout.json >> "$L" 2>&1
+log sim; python3 -I sim_eval_v2.py --events $FW --train-events $DES --run $RUN --forward --pairs ethusd,xrpusd,dogeusd --starts 25 --paths 16 --dt-scale $DT --temp $TP --clock anchored --out results/v2_forward_sim.json >> "$L" 2>&1
+log sim-heldout; python3 -I sim_eval_v2.py --events $FW --train-events $DES --run $RUN --forward --heldout --pairs linkusd --starts 25 --paths 16 --dt-scale $DT --temp $TP --clock anchored --out results/v2_forward_sim_heldout.json >> "$L" 2>&1
 log done
