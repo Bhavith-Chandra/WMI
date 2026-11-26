@@ -37,7 +37,7 @@ def build(root, out_dir, hours_allowed):
             o = st.pack()
             hrs = np.array([hour_of(t) for t in o['times']])
             keep_ok = np.isin(hrs, list(allowed))
-            np.savez_compressed(out, ev=o['ev'], lots=o['lots'], feat=o['feat'], mids=o['mids'], cm=o['cm'],
+            np.savez_compressed(out, ev=o['ev'], lots=o['lots'], qv=o['qv'], feat=o['feat'], mids=o['mids'], cm=o['cm'],
                                 times=o['times'], hours=hrs, ok=keep_ok, hid=o['hid'], **X.ck_arrays(o['ck']))
             json.dump(dict(product=p, seg=seg, n=len(o['ev']), stats=o['stats'], last_hour=last,
                            kappa=float(st.real.k) if st.real else None, q0=X.Q0[p], DR=X.DR, KI=X.KI, NF=X.NF,

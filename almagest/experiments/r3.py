@@ -29,12 +29,14 @@ NQ = 64
 def arm_model(cfg=None):
     if cfg is not None:
         return L.LMM(**cfg)
-    return L.LMM(mode='modebank', slowbank=True, cond_heads=True, nsize=T.NSB, ndt=T.NDT, size_all=True,
+    return L.LMM(mode='modebank', slowbank=True, cond_heads=True, nsize=X.NSZ, ndt=T.NDT, size_all=True,
                  nlvl=X.NLVL, nimp=X.KI, nfeat=X.NF,
                  d=int(os.environ.get('D_MODEL', 64)), h=int(os.environ.get('H_MODEL', 128)))
 
 
-def inputs(ev, lots, feat, mids, cm):
+def inputs(ev, lots, feat, mids, cm, qv):
+    ev = ev.copy()
+    ev[:, 3] = X.size_class(ev[:, 0], lots, qv)          # v3.1 size classes (see coinbase_exact.size_class)
     first = np.array([[0, 0, 1, 0, 0]])
     prev = np.vstack([first, ev[:-1]])
     plots = np.concatenate([[0], lots[:-1]]).astype(float)
@@ -43,7 +45,7 @@ def inputs(ev, lots, feat, mids, cm):
     fv, dev = L.slowbank_offline(sv, dmid.astype(float))
     sb = L.sb_scale(torch.tensor(fv, dtype=torch.float32), torch.tensor(dev, dtype=torch.float32)).numpy()
     return dict(prev=prev, feat=feat.astype(np.float32), dmid=dmid, sb=sb, tgt=ev, cm=cm,
-                spread=feat[:, 20].astype(np.int64), lots=lots)
+                spread=feat[:, 20].astype(np.int64), lots=lots, qv=qv)
 
 
 def load_rows(cache, hours, with_meta=False):
@@ -60,7 +62,7 @@ def load_rows(cache, hours, with_meta=False):
         for run in np.split(idx, np.nonzero(np.diff(idx) > 1)[0] + 1):
             if len(run) < WIN * 2:
                 continue
-            d = inputs(z['ev'][run], z['lots'][run], z['feat'][run], z['mids'][run], z['cm'][run])
+            d = inputs(z['ev'][run], z['lots'][run], z['feat'][run], z['mids'][run], z['cm'][run], z['qv'][run])
             for s in range(0, len(run) - WIN + 1, CHUNK):
                 e = min(len(run), s + CHUNK)
                 n = ((e - s) // WIN) * WIN
@@ -105,15 +107,30 @@ def run(model, data, opt=None, parts=False):
 
 
 def lot_table(rows):
-    """FIT-only within-bucket lot quantiles per (type, size bucket): (3, NSB, NQ)."""
-    tab = np.zeros((3, T.NSB, NQ), np.int64)
+    """FIT-only within-class size quantiles: abs (3, NSZ, NQ) lots for limits/markets; frac (NSZ, NQ) queue fractions
+    for cancels (class NSZ-1 = whole queue)."""
+    ab = np.ones((3, X.NSZ, NQ), np.int64); fr = np.ones((X.NSZ, NQ))
     ev = np.concatenate([r['tgt'] for r in rows]); lots = np.concatenate([r['lots'] for r in rows])
+    qv = np.concatenate([r['qv'] for r in rows])
     q = (np.arange(NQ) + 0.5) / NQ
-    for t in range(3):
-        for b in range(T.NSB):
+    for t in (0, 2):
+        for b in range(X.NSZ):
             m = (ev[:, 0] == t) & (ev[:, 3] == b)
-            tab[t, b] = np.round(np.quantile(lots[m], q)).astype(np.int64) if m.sum() >= 20 else max(1, 2 ** b)
-    return tab
+            ab[t, b] = np.round(np.quantile(lots[m], q)) if m.sum() >= 20 else max(1, int(round(2 ** (b / 2 + 0.25))))
+    for b in range(X.NSZ - 1):
+        m = (ev[:, 0] == 1) & (ev[:, 3] == b)
+        lo = 0.0 if b == 0 else X.FRAC_EDGES[b - 1]; hi = X.FRAC_EDGES[b] if b < len(X.FRAC_EDGES) else 1.0
+        fr[b] = np.quantile(lots[m] / np.maximum(qv[m], 1), q) if m.sum() >= 20 else lo + q * (hi - lo)
+    return dict(abs=ab, frac=fr)
+
+
+def draw_lots(tab, evn, qv, u):
+    """Generator size rule: cancels = fraction of the queue they hit (whole queue for the FULL class), others from
+    the within-class lot quantiles."""
+    k = np.minimum((u * NQ).astype(int), NQ - 1)
+    a = tab['abs'][evn[:, 0], evn[:, 3], k]
+    c = np.where(evn[:, 3] == X.NSZ - 1, qv, np.maximum(1, np.round(tab['frac'][np.minimum(evn[:, 3], X.NSZ - 1), k] * qv)))
+    return np.where(evn[:, 0] == 1, np.minimum(c, np.maximum(qv, 1)), a).astype(np.int64)
 
 
 def train(cache, split, out, passes=4):
@@ -139,7 +156,7 @@ def train(cache, split, out, passes=4):
             val = np.mean([run(model, b) for b in batches(vrows, 16)]) if vrows else float('nan')
         hist.append((float(trl), float(val)))
         print(f'pass {p} fit {trl:.4f} select {val:.4f} t {time.time()-t0:.0f}s', flush=True)
-    torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3-real-exact',
+    torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3.1-real-exact',
                     lot_table=lot_table(rows), DR=X.DR, KI=X.KI, NF=X.NF), out)
 
 
@@ -156,6 +173,7 @@ def b1(cache, split, mp, out, which):
     for name, cond in (('marginal', False), ('table', True)):
         tm = TableModel(cond)
         tm.nlvl = X.NLVL
+        T.NSB = X.NSZ  # table baseline over the same size classes
         tm.fit(frows)
         base[name] = np.concatenate([tm.nll(r).sum(1) for r in rows])
     m = P.sum(1)
@@ -228,9 +246,16 @@ class Gen3:
         dtb = L.inv_cdf(m.h_dt(zl + m.c_size(szb)), u[:, 4])
         lvl = torch.where(typ == 2, torch.zeros_like(lvl), lvl)
         evn = torch.stack([typ, sd, lvl, szb, dtb], 1).numpy().astype(np.int64)
-        q = np.minimum((u[:, 5].numpy() * NQ).astype(int), NQ - 1)
-        lots = self.tab[evn[:, 0], evn[:, 3], q]
-        return evn, lots
+        return evn, draw_lots(self.tab, evn, self.queue(evn), u[:, 5].numpy())
+
+    def queue(self, evn):
+        """Queue volume each event would hit on the VIEW book (cancel: its level; market: opposite best)."""
+        r = np.arange(self.B)
+        el = X.eng_lvl(evn[:, 0], evn[:, 2])
+        qb = self.vb[r, np.clip(self.vbb - el, 0, W.P - 1)]; qa = self.va[r, np.clip(self.vba + el, 0, W.P - 1)]
+        qc = np.where(evn[:, 1] == 0, qb, qa)
+        qm = np.where(evn[:, 1] == 0, self.va[r, self.vba], self.vb[r, self.vbb])
+        return np.where(evn[:, 0] == 1, qc, np.where(evn[:, 0] == 2, qm, 0))
 
     def step(self, u):
         evn, lots = self.sample(u)
@@ -241,6 +266,18 @@ class Gen3:
         """Consume + apply GIVEN events (oracle plumbing check / context continuation)."""
         self._consume(np.ones(self.B, bool))
         self.apply(evn, lots)
+
+    def inject(self, side, lots, vis, inj):
+        """Our market order (child) of `lots`: hits REAL where inj, and VIEW (model sees it) where vis."""
+        old = 0.5 * (self.vbb + self.vba).astype(float)
+        if vis.any():
+            self._consume(vis)
+        E.inject(self.vb, self.va, self.rb, self.ra, self.vbb, self.vba, self.rbb, self.rba,
+                 np.asarray(side, np.int64), int(lots), vis.astype(np.int64), inj.astype(np.int64))
+        ev = torch.stack([torch.full((self.B,), 2), torch.as_tensor(np.asarray(side, np.int64)),
+                          torch.zeros(self.B, dtype=torch.long), torch.full((self.B,), int(X.size_class(2, lots, 0))),
+                          torch.zeros(self.B, dtype=torch.long)], 1)
+        self._pend(vis, ev, np.full(self.B, float(lots)), old)
 
     def mid(self):
         return 0.5 * (self.rbb + self.rba).astype(float)
@@ -340,7 +377,7 @@ def agg(cs):
     return out
 
 
-def b2_run(model, rows, picks, batch, gen, seed=1, oracle=False):
+def b2_run(model, rows, picks, batch, gen, seed=1, oracle=False, sampled=False):
     with torch.no_grad():
         g, _ = batch(1)
         evs, lts, feats, mids = [], [], [], [g.mid()]
@@ -349,6 +386,8 @@ def b2_run(model, rows, picks, batch, gen, seed=1, oracle=False):
             feats.append(g.feat.copy())
             if oracle:
                 evn = np.stack([rows[i]['tgt'][s + t] for i, s in picks]); lt = np.array([rows[i]['lots'][s + t] for i, s in picks])
+                if sampled:      # real event classes, sizes drawn by the generator's rule (size-representation ceiling)
+                    lt = draw_lots(g.tab, evn, g.queue(evn), torch.rand(len(picks), generator=gu).numpy())
                 g.teacher(evn, lt); e = evn
             else:
                 e, lt = g.step(torch.rand(len(picks), 6, generator=gu))
@@ -367,7 +406,8 @@ def b2(cache, split, mp, out, which, nwin=64, gen=4000):
     res = dict(which=which, model=mp, n_windows=nwin, gen_events=gen)
     ge, gf, gm = b2_run(model, rows, picks, batch, gen)
     oe, of, om = b2_run(model, rows, picks, batch, gen, oracle=True)
-    comps, floor, orc, fid = [], [], [], []
+    se, sf, sm = b2_run(model, rows, picks, batch, gen, oracle=True, sampled=True)
+    comps, floor, orc, fid, osm = [], [], [], [], []
     for w, (i, s) in enumerate(picks):
         r = rows[i]
         sl, sl2 = slice(s, s + gen), slice(s + gen, s + 2 * gen)
@@ -376,13 +416,15 @@ def b2(cache, split, mp, out, which, nwin=64, gen=4000):
         comps.append(compare(stats_from(ge[w], gf[w], gm[w, 1:]), real))
         floor.append(compare(real2, real))
         orc.append(compare(stats_from(oe[w], of[w], om[w, 1:]), real))
+        osm.append(compare(stats_from(se[w], sf[w], sm[w, 1:]), real))
         # representation ceiling: log-depth error of oracle replay vs recorded features at horizons
         e = np.abs(np.log1p(of[w][:, :20]) - np.log1p(r['feat'][sl][:, :20])).mean(1)
         fid.append([float(e[h - 1]) for h in (10, 100, 1000, gen)])
     res['model_vs_real'] = agg(comps); res['floor_real_vs_real'] = agg(floor); res['oracle_vs_real'] = agg(orc)
+    res['oracle_sampled_sizes_vs_real'] = agg(osm)
     res['oracle_logdepth_err_at_10_100_1000_gen'] = np.median(np.array(fid), 0).tolist()
     res['seconds'] = time.time() - t0
-    for k in ('model_vs_real', 'floor_real_vs_real', 'oracle_vs_real'):
+    for k in ('model_vs_real', 'floor_real_vs_real', 'oracle_vs_real', 'oracle_sampled_sizes_vs_real'):
         print(k, json.dumps(res[k]), flush=True)
     print('oracle depth err', res['oracle_logdepth_err_at_10_100_1000_gen'], flush=True)
     json.dump(res, open(out, 'x'), indent=1, default=float)

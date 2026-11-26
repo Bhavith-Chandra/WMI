@@ -35,6 +35,22 @@ def eng_lvl(typ, lvl):
 CK_EVERY = 2048           # full-book checkpoints (sparse) every CK_EVERY tokens -> exact deep seeding anywhere
 
 
+NSZ = 24                  # v3.1 size classes
+FRAC_EDGES = np.array([0.005, 0.01, 0.02, 0.03, 0.05, 0.075, 0.1, 0.15, 0.2, 0.25, 0.3, 0.375, 0.45, 0.525, 0.6,
+                       0.675, 0.75, 0.825, 0.9, 0.95, 0.98, 0.995])   # 22 edges -> bins 0..22; bin 23 = FULL queue
+
+
+def size_class(typ, lots, qv):
+    """v3.1 (vectorised): limits/markets -> half-octave of lots (0..23); cancels -> fraction of the queue it hits
+    (bins 0..22 by FRAC_EDGES, 23 = the whole queue, exact). Cancel sizes relative to the queue are what keep
+    generated queues from drifting (absolute within-bucket noise makes queues reflected random walks: depth x5)."""
+    typ, lots, qv = np.asarray(typ), np.asarray(lots, float), np.asarray(qv, float)
+    ab = np.minimum(NSZ - 1, np.floor(2 * np.log2(np.maximum(lots, 1)))).astype(np.int64)
+    fr = lots / np.maximum(qv, 1)
+    cb = np.where(lots >= qv, NSZ - 1, np.searchsorted(FRAC_EDGES, np.minimum(fr, 1.0), side='right'))
+    return np.where(typ == 1, cb, ab).astype(np.int64)
+
+
 def target_lots(v, q0):
     return 0 if v <= 1e-12 else max(1, int(round(v / q0)))
 
@@ -74,8 +90,15 @@ class ExactTokenizer:
         if n % CK_EVERY == 0 or self.need_ck:
             self._checkpoint(n)
             self.need_ck = False
+        el = int(eng_lvl(typ, lvl))
+        if typ == 1:
+            qv = self.bid[self.bb - el] if side == 0 else self.ask[self.ba + el]
+        elif typ == 2:
+            qv = self.ask[self.ba] if side == 0 else self.bid[self.bb]
+        else:
+            qv = 0
         self.toks.append(((typ, side, lvl, size_bucket(lots), dt_bucket(dt)), int(lots), f, cm,
-                          0.5 * (self.bb + self.ba) + self.base, t))
+                          0.5 * (self.bb + self.ba) + self.base, t, int(qv)))
         self.bb, self.ba, _ = W.apply_action(self.bid, self.ask, self.bb, self.ba, typ, side, int(eng_lvl(typ, lvl)),
                                              int(lots))
         self.stats['token_lots'] += int(lots)
@@ -223,11 +246,11 @@ class ExactTokenizer:
         toks = self.toks
         if not toks:
             z = np.zeros(0)
-            return dict(ev=np.zeros((0, 5), np.int64), lots=np.zeros(0, np.int64), feat=np.zeros((0, NF), np.float32),
+            return dict(ev=np.zeros((0, 5), np.int64), lots=np.zeros(0, np.int64), qv=np.zeros(0, np.int64), feat=np.zeros((0, NF), np.float32),
                         mids=z, cm=np.zeros((0, 2, DR), np.int8), times=z, hid=np.zeros((0, 4), np.int64),
                         ck=[], stats=self.stats, base=self.base)
-        ev, lots, f, cm, mid, t = zip(*toks)
-        return dict(ev=np.array(ev, np.int64), lots=np.array(lots, np.int64), feat=np.array(f, np.float32),
+        ev, lots, f, cm, mid, t, qv = zip(*toks)
+        return dict(ev=np.array(ev, np.int64), lots=np.array(lots, np.int64), qv=np.array(qv, np.int64), feat=np.array(f, np.float32),
                     mids=np.array(mid), cm=np.array(cm, np.int8), times=np.array(t),
                     hid=np.array(self.hid, np.int64).reshape(-1, 4), ck=self.cks, stats=self.stats)
 
