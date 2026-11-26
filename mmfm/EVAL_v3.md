@@ -63,3 +63,13 @@ Criteria 1–3 are per cell, all 9 cells (ethusd, xrpusd, dogeusd × 1, 5, 10 s)
 
 Also reported (not criteria): the same table **without** recalibration, the v2 frozen bundle on the v3 forward window,
 and MMFM-direct with and without recalibration.
+
+## Addendum v3-1 (memory; before any v3 model existed)
+The first MMFM-v3 launch was OOM-killed while fitting the tokenizer on all 30M train events (no model was produced).
+Changes:
+- The tokenizer is fit on a deterministic subsample: every ⌈N/10M⌉-th contiguous 20k-event block of TRAIN, recorded
+  in `fit_split`.
+- Raw chunks are freed as they are encoded.
+- Forecast targets are stored as int16 and widened per batch.
+
+Model, data, splits and budgets are unchanged.

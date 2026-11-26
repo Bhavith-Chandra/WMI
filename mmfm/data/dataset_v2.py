@@ -65,14 +65,17 @@ def raw_chunks(events: Path, split: str, include_heldout=False, forward=False, p
 def load(events: Path, split: str, tok: Tokenizer2, **kw):
     chunks, sp = raw_chunks(events, split, **kw)
     res = []
-    for c in chunks:
+    for i in range(len(chunks)):
+        c = chunks[i]
+        chunks[i] = None  # free raw arrays as we go (v3: ~30M train events)
         tokens, feats, valid = tok.encode(c["events"], c["state"], c["lvq"])
         rt, ct = tok.encode_targets(c["events"], c["state"])
+        rt, ct = rt.astype(np.int16), ct.astype(np.int16)  # bins < 64, -1 = masked; widened to int64 at batch time
         bad = set(np.flatnonzero(~valid).tolist())
         cuts = [0] + sorted(bad) + [len(valid)]
         for a, b in zip(cuts[:-1], cuts[1:]):
             a = a + (1 if a in bad else 0)
             if b - a > 64:
                 res.append(dict(pair=c["pair"], tokens=tokens[a:b], feats=feats[a:b], rt=rt[a:b], ct=ct[a:b],
-                                us=c["events"]["us"][a:b], file=c["file"], offset=c["offset"] + a))
+                                us=c["events"]["us"][a:b].copy(), file=c["file"], offset=c["offset"] + a))
     return res, sp

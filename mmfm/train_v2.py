@@ -36,7 +36,7 @@ def windows(chunks, T, rng, n):
         s = rng.integers(0, lens[c])
         for k in out:
             out[k].append(chunks[c][k][s:s + T])
-    return {k: torch.from_numpy(np.stack(v)) for k, v in out.items()}
+    return {k: torch.from_numpy(np.stack(v).astype(np.int64) if k in ("rt", "ct") else np.stack(v)) for k, v in out.items()}
 
 
 @torch.no_grad()
@@ -46,7 +46,8 @@ def evaluate(model, chunks, T, max_tiles=500):
     tiles = tiles[:: max(1, len(tiles) // max_tiles)]
     ev, fr, fc, n = 0.0, np.zeros(len(HORIZONS)), np.zeros(len(HORIZONS)), 0
     for c, s in tiles:
-        b = {k: torch.from_numpy(c[k][s:s + T])[None] for k in ("tokens", "feats", "rt", "ct")}
+        b = {k: torch.from_numpy(c[k][s:s + T].astype(np.int64) if k in ("rt", "ct") else c[k][s:s + T])[None]
+             for k in ("tokens", "feats", "rt", "ct")}
         e, lr, lc = model.losses(b["tokens"], b["feats"], b["rt"], b["ct"])
         ev += float(e.sum(-1).mean())
         fr += lr.numpy()
@@ -65,8 +66,8 @@ def calibrate(model, chunks, T, max_tiles=600):
     H, R, C = [], [], []
     for c, s in tiles:
         H.append(model.hidden(torch.from_numpy(c["tokens"][s:s + T])[None], torch.from_numpy(c["feats"][s:s + T])[None])[0])
-        R.append(torch.from_numpy(c["rt"][s:s + T]))
-        C.append(torch.from_numpy(c["ct"][s:s + T]))
+        R.append(torch.from_numpy(c["rt"][s:s + T].astype(np.int64)))
+        C.append(torch.from_numpy(c["ct"][s:s + T].astype(np.int64)))
     H, R, C = torch.cat(H), torch.cat(R), torch.cat(C)
     grid = torch.exp(torch.linspace(math.log(0.5), math.log(3.0), 41))
     res = {}
@@ -98,6 +99,7 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--model", choices=["mmfm2", "b2"], default="mmfm2")
     ap.add_argument("--tokenizer", default=None)
+    ap.add_argument("--fit-max-events", type=int, default=10_000_000)
     ap.add_argument("--init", default=None, help="initialise from this model.pt (EVAL_v3 scheduled-sampling fine-tune)")
     ap.add_argument("--ss-p", type=float, default=0.0, help="max scheduled-sampling replacement prob (ramp over 1st half)")
     a = ap.parse_args()
@@ -112,8 +114,20 @@ def main():
         assert tok.fit_split["files_hash"] == sp["files_hash"] and tok.fit_split["split"] == "train"
     else:
         raw, sp = raw_chunks(events, "train")
-        tok = Tokenizer2.fit([(c["events"], c["state"], c["lvq"]) for c in raw], dict(split="train", files_hash=sp["files_hash"], range=sp["train"]))
+        # v3: fit on a deterministic subsample of contiguous 20k-event blocks (every `stride`-th block) to bound memory
+        tot = sum(len(c["events"]) for c in raw)
+        stride = max(1, math.ceil(tot / a.fit_max_events))
+        segs, kblk = [], 0
+        for c in raw:
+            for s0 in range(0, len(c["events"]), 20000):
+                if kblk % stride == 0 and len(c["events"]) - s0 > 1000:
+                    sl = slice(s0, s0 + 20000)
+                    segs.append((c["events"][sl].copy(), c["state"][sl].copy(), c["lvq"][sl].copy()))  # copies: free raw
+                kblk += 1
         del raw
+        tok = Tokenizer2.fit(segs, dict(split="train", files_hash=sp["files_hash"], range=sp["train"],
+                                        fit_stride=stride, fit_events=int(sum(len(s[0]) for s in segs))))
+        del segs
     (out / "tokenizer.json").write_text(json.dumps(tok.to_json()))
     train, _ = load(events, "train", tok)
     val, _ = load(events, "val", tok)
