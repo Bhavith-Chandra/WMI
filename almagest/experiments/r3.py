@@ -335,8 +335,9 @@ def setup(model, rows, picks, tab):
             sbs.append(sb); prevs.append(torch.tensor(r['prev'][s][None])); pfeats.append(torch.tensor(r['feat'][s][None]))
             pdmids.append(torch.tensor([float(r['dmid'][s])]))
             f = r['_file']
-            if f not in zs:
-                zs[f] = dict(np.load(f))
+            if f not in zs:     # only what exact seeding needs (features/masks are multi-GB across segments)
+                with np.load(f) as zf:
+                    zs[f] = {k: zf[k] for k in ('ev', 'lots', 'hid') + tuple(k for k in zf.files if k.startswith('ck_'))}
             books.append(X.book_at(zs[f], int(r['_gidx'][s])))
 
     def batch(rep=1, sel=None):
