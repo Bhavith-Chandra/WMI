@@ -152,6 +152,19 @@ def test_real_tokenizer_offline_equals_streaming():
     assert len(a['ev']) >= 3 and 2 in a['ev'][:, 0]
 
 
+def test_mirror_involution():
+    from almagest.experiments.e2_train import build_stream, mirror
+    par = W.default_params()
+    d = build_stream(par, 4343, 2000)
+    mm = mirror(mirror(d))
+    for k in d:
+        assert np.array_equal(np.asarray(d[k]), np.asarray(mm[k])), k
+    m = mirror(d)
+    assert np.array_equal(m['tgt'][:, 1], 1 - d['tgt'][:, 1])
+    assert np.array_equal(m['feat'][:, :10], d['feat'][:, 10:20])
+    assert np.allclose(m['dmid'], -d['dmid'])
+
+
 if __name__ == '__main__':
     for name, f in list(globals().items()):
         if name.startswith('test_'):
