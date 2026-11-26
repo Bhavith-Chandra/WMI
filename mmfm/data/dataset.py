@@ -29,7 +29,7 @@ def _seal_check(events: Path, split: str):
     if not tok:
         raise SealError(f"split '{split}' is sealed (EVAL.md L3). Set MMFM_UNSEAL=<frozen model hash>.")
     purpose = os.environ.get("MMFM_PURPOSE")
-    if purpose not in ("M1", "M2"):
+    if purpose not in ("M1", "M2", "M1-CI"):
         raise SealError("set MMFM_PURPOSE to the pre-registered metric being computed (M1 or M2)")
     log = events / "test_access.log"
     prev = [json.loads(x) for x in log.read_text().splitlines()] if log.exists() else []
@@ -76,5 +76,5 @@ def load(events: Path, split: str, tok: Tokenizer):
         for a, b in zip(cuts[:-1], cuts[1:]):
             a = a + (1 if a in set(bad) else 0)
             if b - a > 64:
-                res.append(dict(pair=c["pair"], tokens=tokens[a:b], feats=feats[a:b]))
+                res.append(dict(pair=c["pair"], tokens=tokens[a:b], feats=feats[a:b], us=c["events"]["us"][a:b]))
     return res, sp

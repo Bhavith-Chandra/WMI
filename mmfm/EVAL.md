@@ -90,3 +90,12 @@ Let `[T0, T1)` be the collected span after exclusions.
 * At about 04:38 UTC, after the final configuration was committed (04:37:55), I ran the live UI with a dev model on
   ETH for about 1 min. That falls inside the test window. Only one qualitative observation was made (the realised mid left
   the forecast band). No configuration, code or selection decision was made after it.
+
+## Addendum 4 (CI implementation defect found after the first test unseal; fixed and disclosed)
+* §4 pre-registers 5-min block-bootstrap CIs. The `evaluate.py` used for the first unseal grouped tiles by
+  20,000-event index blocks instead. That gives far too few blocks (held-out pair ≈ 2), so the reported CIs
+  were much too narrow. The **point estimates are unaffected**.
+* Fix: group tiles by 5-min wall-clock blocks per pair, and save per-tile scores.
+* The CIs are recomputed on the **same frozen model** (`0fd55e8e…`) with the same data and tiles. This is a logged unseal
+  with purpose `M1-CI`. There is no model change and no selection, and the only output is variance estimation. Both
+  the original and the corrected CIs are reported.

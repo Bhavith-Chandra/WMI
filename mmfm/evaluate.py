@@ -74,13 +74,15 @@ def main():
         with torch.no_grad():
             scores[name] = [bits(m.logp(torch.from_numpy(ev_chunks[i]["tokens"][s:s + T])[None],
                                         torch.from_numpy(ev_chunks[i]["feats"][s:s + T])[None]))[0].numpy() for i, s in til]
-    # block bootstrap: tiles grouped by (chunk, 5-min block of the tile start position ~ proxy by tile index)
-    groups = np.array([hash((ev_chunks[i]["pair"], s // 20000)) for i, s in til])
+    # block bootstrap over 5-minute WALL-CLOCK blocks per pair (EVAL.md §4), by tile start timestamp
+    groups = np.array([hash((ev_chunks[i]["pair"], int(ev_chunks[i]["us"][s] // BLOCK_US))) for i, s in til])
+    res_blocks = int(len(np.unique(groups)))
     ug = np.unique(groups)
     rng = np.random.default_rng(0)
     per_tile = {k: np.array([x.sum() for x in v]) for k, v in scores.items()}
     n_ev = np.array([len(x) for x in scores["B0_zero_intelligence"]])
-    res = dict(split=a.split, n_tiles=len(til), n_events=int(n_ev.sum()), T=T, models={}, model_hashes=hashes,
+    res = dict(split=a.split, n_tiles=len(til), n_events=int(n_ev.sum()), T=T, n_blocks=res_blocks, block_us=BLOCK_US,
+               models={}, model_hashes=hashes,
                tokenizer_hash=tok.to_json()["hash"], splits_files_hash=sp["files_hash"])
     best_base = None
     for k in scores:
@@ -106,6 +108,7 @@ def main():
     res["_provenance"] = dict(git_commit=subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip(),
                               argv=sys.argv, utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
     out = Path(a.out or ROOT / "results" / f"m1_{a.split}.json")
+    np.savez_compressed(out.with_suffix(".tiles.npz"), groups=groups, n_ev=n_ev, **{k: v for k, v in per_tile.items()})
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(res, indent=1))
     for k, v in res["models"].items():
