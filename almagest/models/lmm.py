@@ -81,12 +81,12 @@ class DiagRec(nn.Module):
 class LMM(nn.Module):
     def __init__(self, d=64, h=128, layers=2, mode='learned', slowbank=False, nsize=NSIZE, ndt=0, size_all=False,
                  src=False, cond_heads=False, tagch=False, ndom=0, tag_gain=1.0, gen_cal=None, nlvl=NLVL, nimp=0,
-                 nfeat=21):
+                 nfeat=21, nsb_extra=0):
         """v1 (synthetic): nsize=4, ndt=0, size only for markets. v2 (real): nsize=12 for all types, ndt=11 (Dt head)."""
         super().__init__()
         self.cfg = dict(d=d, h=h, layers=layers, mode=mode, slowbank=slowbank, nsize=nsize, ndt=ndt, size_all=size_all,
                         src=src, cond_heads=cond_heads, tagch=tagch, ndom=ndom, tag_gain=tag_gain,
-                        nlvl=nlvl, nimp=nimp, nfeat=nfeat)
+                        nlvl=nlvl, nimp=nimp, nfeat=nfeat, nsb_extra=nsb_extra)
         # v3 (replay-exact real data): nlvl = DR + 1 + nimp level classes; the last nimp limit classes mean 'improve
         # own best by k = 2..nimp+1 buckets' (valid only if spread > k); cancels use the first DR classes (book mask)
         self.nlvl, self.nimp, self.nfeat = nlvl, nimp, nfeat
@@ -111,7 +111,7 @@ class LMM(nn.Module):
         self.e_dt = nn.Embedding(ndt, d) if ndt else None
         self.e_src = nn.Embedding(2, d) if src else None
         self.e_dom = nn.Embedding(ndom, d) if ndom else None
-        nsb = (2 + (1 if tagch else 0)) * len(SB_TAUS) if slowbank else 0
+        nsb = ((2 + (1 if tagch else 0)) * len(SB_TAUS) if slowbank else 0) + nsb_extra   # extra: FlowBank (v3)
         # src models get a SEPARATE slow-bank channel of OWN/exogenous (tagged) signed volume: the market reacts to
         # how much of recent flow was exogenous; mixing it into the total-flow channel hides that (2026-11-26).
         self.slowbank = slowbank
@@ -323,3 +323,52 @@ def tag_offline(signed_tag):
     lam = np.exp(-1.0 / SB_TAUS)
     ft = np.stack([lfilter([1 - l], [1, -l], signed_tag) for l in lam], -1)
     return ft * (np.sqrt(SB_TAUS) / 4.0)
+
+
+# ---------------- v3 FlowBank: order-flow memory that is NOT dominated by a few huge orders (found 2026-11-26: with
+# signed-VOLUME EMAs only, the model's teacher-forced trade-sign ACF(1) was 0.27 vs real 0.47).
+FB_MTAUS = np.array([1, 2, 4, 8, 16, 32, 64, 128], dtype=np.float64)   # in MARKET-ORDER time
+NFB = 2 * len(FB_MTAUS)
+
+
+class FlowBank:
+    """Online: EMAs of market-order signs (updated only on market orders, market-time taus) and event-time EMAs of
+    sign * log1p(lots) of market orders (SB_TAUS)."""
+    def __init__(self, B):
+        self.lm = torch.tensor(np.exp(-1.0 / FB_MTAUS), dtype=torch.float32)
+        self.le = torch.tensor(np.exp(-1.0 / SB_TAUS), dtype=torch.float32)
+        self.s = torch.zeros(B, len(FB_MTAUS)); self.v = torch.zeros(B, len(SB_TAUS))
+
+    def update(self, is_mkt, sign, lots):
+        """is_mkt (B,) bool, sign (B,) +-1, lots (B,)"""
+        m = is_mkt.unsqueeze(-1)
+        self.s = torch.where(m, self.lm * self.s + (1 - self.lm) * sign.unsqueeze(-1), self.s)
+        x = torch.where(is_mkt, sign * torch.log1p(lots), torch.zeros_like(lots))
+        self.v = self.le * self.v + (1 - self.le) * x.unsqueeze(-1)
+
+    def feat(self):
+        return torch.cat([self.s * 2.0, self.v * torch.tensor(np.sqrt(SB_TAUS), dtype=torch.float32) / 4.0], -1)
+
+    def select(self, mask, other):
+        k = mask.unsqueeze(-1)
+        self.s = torch.where(k, self.s, other.s); self.v = torch.where(k, self.v, other.v)
+
+    def clone(self):
+        c = FlowBank.__new__(FlowBank); c.lm, c.le = self.lm, self.le; c.s, c.v = self.s.clone(), self.v.clone()
+        return c
+
+
+def flowbank_offline(is_mkt, sign, lots):
+    """Exactly FlowBank's recursion over a stream (numpy). Row t = state after updates with events 0..t."""
+    from scipy.signal import lfilter
+    n = len(is_mkt)
+    lm = np.exp(-1.0 / FB_MTAUS)
+    S = np.zeros((n, len(FB_MTAUS)))
+    idx = np.nonzero(is_mkt)[0]
+    if len(idx):
+        sm = np.stack([lfilter([1 - l], [1, -l], sign[idx].astype(float)) for l in lm], -1)
+        pos = np.searchsorted(idx, np.arange(n), side='right') - 1
+        S = np.where((pos >= 0)[:, None], sm[np.maximum(pos, 0)], 0.0)
+    x = np.where(is_mkt, sign * np.log1p(lots.astype(float)), 0.0)
+    V = np.stack([lfilter([1 - l], [1, -l], x) for l in np.exp(-1.0 / SB_TAUS)], -1)
+    return np.concatenate([S * 2.0, V * (np.sqrt(SB_TAUS) / 4.0)], -1).astype(np.float32)

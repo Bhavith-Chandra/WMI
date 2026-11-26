@@ -24,13 +24,14 @@ torch.set_num_threads(int(os.environ.get('TORCH_THREADS', 4)))
 CHUNK = 32768
 WIN = 256
 NQ = 64
+FLOW = os.environ.get('FLOW', '1') == '1'      # v3.3 FlowBank channel (default on)
 
 
 def arm_model(cfg=None):
     if cfg is not None:
         return L.LMM(**cfg)
     return L.LMM(mode='modebank', slowbank=True, cond_heads=True, nsize=X.NSZ, ndt=T.NDT, size_all=True,
-                 nlvl=X.NLVL, nimp=X.KI, nfeat=X.NF,
+                 nlvl=X.NLVL, nimp=X.KI, nfeat=X.NF, nsb_extra=L.NFB if FLOW else 0,
                  d=int(os.environ.get('D_MODEL', 64)), h=int(os.environ.get('H_MODEL', 128)))
 
 
@@ -44,6 +45,8 @@ def inputs(ev, lots, feat, mids, cm, qv):
     sv = np.where(prev[:, 0] == 2, np.where(prev[:, 1] == 0, 1.0, -1.0) * plots, 0.0)
     fv, dev = L.slowbank_offline(sv, dmid.astype(float))
     sb = L.sb_scale(torch.tensor(fv, dtype=torch.float32), torch.tensor(dev, dtype=torch.float32)).numpy()
+    fb = L.flowbank_offline(prev[:, 0] == 2, np.where(prev[:, 1] == 0, 1.0, -1.0), plots)
+    sb = np.concatenate([sb, fb], 1)        # flow features always computed; the model uses them iff nsb_extra > 0
     return dict(prev=prev, feat=feat.astype(np.float32), dmid=dmid, sb=sb, tgt=ev, cm=cm,
                 spread=feat[:, 20].astype(np.int64), lots=lots, qv=qv)
 
@@ -85,13 +88,18 @@ def batches(rows, bsz):
         yield {k: torch.tensor(np.stack([r[k][:n] for r in grp])) for k in TK}
 
 
+def sbx(model, sb):
+    """Slow-bank input for this model (drop FlowBank dims for models without them)."""
+    return sb if getattr(model, 'cfg', {}).get('nsb_extra', 0) else sb[..., :2 * len(L.SB_TAUS)]
+
+
 def run(model, data, opt=None, parts=False):
     B, N = data['tgt'].shape[:2]
     state = model.init_state(B)
     tot, cnt, acc = 0.0, 0, []
     for s in range(0, N - WIN + 1, WIN):
         sl = slice(s, s + WIN)
-        x = model.embed(data['prev'][:, sl], data['feat'][:, sl], data['dmid'][:, sl], data['sb'][:, sl])
+        x = model.embed(data['prev'][:, sl], data['feat'][:, sl], data['dmid'][:, sl], sbx(model, data['sb'][:, sl]))
         z, state = model.trunk_seq(x, state)
         if parts:
             acc.append(model.loss_parts(z, data['tgt'][:, sl], data['cm'][:, sl], data['spread'][:, sl]).detach())
@@ -138,7 +146,8 @@ def draw_lots(tab, evn, qv, u):
     lim = np.maximum(1, np.round(v))
     mk = np.where(evn[:, 3] < X.MKT_CLEAR, np.clip(np.round(v * q), 1, np.maximum(q - 1, 1)),
                   np.where(evn[:, 3] == X.MKT_CLEAR, q, q + np.maximum(1, np.round(v))))
-    c = np.where(evn[:, 3] == X.NSZ - 1, q, np.maximum(1, np.round(tab['frac'][np.minimum(evn[:, 3], X.NSZ - 1), k] * q)))
+    c = np.where(evn[:, 3] == X.NSZ - 1, q,     # partial cancels never empty the level (that is the FULL class)
+                 np.clip(np.round(tab['frac'][np.minimum(evn[:, 3], X.NSZ - 1), k] * q), 1, np.maximum(q - 1, 1)))
     return np.where(evn[:, 0] == 1, np.minimum(c, q), np.where(evn[:, 0] == 2, mk, lim)).astype(np.int64)
 
 
@@ -165,7 +174,7 @@ def train(cache, split, out, passes=4):
             val = np.mean([run(model, b) for b in batches(vrows, 16)]) if vrows else float('nan')
         hist.append((float(trl), float(val)))
         print(f'pass {p} fit {trl:.4f} select {val:.4f} t {time.time()-t0:.0f}s', flush=True)
-    torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3.1-real-exact',
+    torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3.3-real-exact',
                     lot_table=lot_table(rows), DR=X.DR, KI=X.KI, NF=X.NF), out)
 
 
@@ -203,8 +212,10 @@ def b1(cache, split, mp, out, which):
 # ------------------------------------------------------------------ generator
 class Gen3:
     """Batched generator on the v3 representation. VIEW/REAL books as in the synthetic engine (B5-ready)."""
-    def __init__(self, model, state, sb, prev, pfeat, pdmid, bid, ask, bb, ba, lot_tab):
+    def __init__(self, model, state, sb, prev, pfeat, pdmid, bid, ask, bb, ba, lot_tab, fb=None):
         self.m, self.state, self.sb, self.prev, self.pfeat, self.pdmid = model, state, sb, prev, pfeat, pdmid
+        self.fb = fb if fb is not None else L.FlowBank(len(bb))
+        self.use_fb = bool(model.cfg.get('nsb_extra', 0))
         self.vb, self.va, self.rb, self.ra = bid, ask, bid.copy(), ask.copy()
         self.vbb, self.vba, self.rbb, self.rba = bb, ba, bb.copy(), ba.copy()
         self.B = len(bb); self.tab = lot_tab
@@ -213,7 +224,8 @@ class Gen3:
         E.observe3(self.vb, self.va, self.vbb, self.vba, self.feat, self.cmb, self.cma)
 
     def _consume(self, mask):
-        x = self.m.embed(self.prev, self.pfeat, self.pdmid, self.sb.feat())
+        sbf = torch.cat([self.sb.feat(), self.fb.feat()], -1) if self.use_fb else self.sb.feat()
+        x = self.m.embed(self.prev, self.pfeat, self.pdmid, sbf)
         z, ns = self.m.trunk_step(x, self.state)
         mm = torch.tensor(mask).unsqueeze(-1)
         self.state = [torch.where(mm, n, o) for n, o in zip(ns, self.state)]
@@ -229,6 +241,9 @@ class Gen3:
         lt = torch.tensor(lots, dtype=torch.float32)
         sv = torch.where(ev[:, 0] == 2, torch.where(ev[:, 1] == 0, 1.0, -1.0) * lt, torch.zeros(self.B))
         f0, p0, e0 = self.sb.fv.clone(), self.sb.p.clone(), self.sb.ep.clone()
+        fb0 = self.fb.clone()
+        self.fb.update(ev[:, 0] == 2, torch.where(ev[:, 1] == 0, 1.0, -1.0), lt)
+        self.fb.select(mm, fb0)
         self.sb.update(sv, d, None)
         k = mm.unsqueeze(-1)
         self.sb.fv = torch.where(k, self.sb.fv, f0); self.sb.p = torch.where(k, self.sb.p, p0)
@@ -296,7 +311,7 @@ class Gen3:
 
 def setup(model, rows, picks, tab):
     zs = {}
-    states, sbs, prevs, pfeats, pdmids, books = [], [], [], [], [], []
+    states, sbs, prevs, pfeats, pdmids, books, fbs = [], [], [], [], [], [], []
     from scipy.signal import lfilter
     lam = np.exp(-1.0 / L.SB_TAUS)
     with torch.no_grad():
@@ -307,8 +322,9 @@ def setup(model, rows, picks, tab):
             for s0 in range(0, s, WIN):
                 sl = slice(s0, s0 + WIN)
                 _, st = model.trunk_seq(model.embed(d['prev'][:, sl], d['feat'][:, sl], d['dmid'][:, sl],
-                                                    d['sb'][:, sl]), st)
+                                                    sbx(model, d['sb'][:, sl])), st)
             states.append(st)
+            fbs.append(torch.tensor(r['sb'][s, 2 * len(L.SB_TAUS):][None]))
             sb = L.SlowBank(1)
             pr = r['prev'][:s + 1]; pl = np.concatenate([[0], r['lots'][:s]]).astype(float)
             sv = np.where(pr[:, 0] == 2, np.where(pr[:, 1] == 0, 1, -1) * pl, 0.0)
@@ -331,8 +347,11 @@ def setup(model, rows, picks, tab):
         sb.ep = torch.cat([sbs[i].ep for i in idx])
         bid = np.stack([books[i][0] for i in idx]); ask = np.stack([books[i][1] for i in idx])
         bb = np.array([books[i][2] for i in idx], np.int64); ba = np.array([books[i][3] for i in idx], np.int64)
+        fb = L.FlowBank(len(idx)); F = torch.cat([fbs[i] for i in idx]).float()
+        k = len(L.FB_MTAUS)
+        fb.s = F[:, :k] / 2.0; fb.v = F[:, k:] / (torch.tensor(np.sqrt(L.SB_TAUS), dtype=torch.float32) / 4.0)
         return Gen3(model, st, sb, torch.cat([prevs[i] for i in idx]), torch.cat([pfeats[i] for i in idx]),
-                    torch.cat([pdmids[i] for i in idx]), bid, ask, bb, ba, tab), idx
+                    torch.cat([pdmids[i] for i in idx]), bid, ask, bb, ba, tab, fb), idx
     return batch, zs
 
 
