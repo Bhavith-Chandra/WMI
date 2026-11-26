@@ -65,7 +65,9 @@ def world_runner(par):
         if key not in cache:
             cache.clear()
             cache[key] = W.Snapshots(par, np.unique(ds), np.unique(nw))
+        f.snap = cache[key]
         return cache[key].run(ds, nw, rs, n_child, gap, n_silent, side, child, mode)
+    f.snap = None
     return f
 
 
@@ -116,6 +118,13 @@ def evaluate(runner, par_world, n_days=20, win_per_day=16, base_seed=1000, ref=N
         Irel = Irows.mean(0)
         ep, slope = M.relaxation(Irel, 10)
         out.update(ep=ep, slope=slope, relax_curve=Irel, ep_ci95=M.relax_bootstrap(Irows, sched_r[3], 10, B=200))
+    # hidden-state excursions at window starts (realism): fundamental and long-reference gaps in daily-sigma units
+    snap = getattr(runner, 'snap', None)
+    if snap is not None:
+        mid = 0.5 * (snap.sbb + snap.sba).astype(float)
+        sig_d = np.array([stats[d]['sigma'] for d in range(len(stats))])[:, None]
+        out['exc_F'] = float(np.std((snap.sema[:, :, W.IF] - mid) / sig_d))
+        out['exc_r'] = float(np.std((snap.sema[:, :, W.NEMA - 1] - mid) / sig_d))
     if ref is not None:
         out['ladder'] = M.ladder(ref, out)
     if verbose:

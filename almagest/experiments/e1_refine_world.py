@@ -40,6 +40,7 @@ if __name__ == '__main__':
                 L, r = score(th)
                 kids.append((L, th))
                 f.write(json.dumps(dict(gen=g, theta=th.tolist(), loss=L, delta=float(r['delta']), Y=float(r['Y']),
+                                        exc_F=float(r.get('exc_F', -1)), exc_r=float(r.get('exc_r', -1)),
                                         ep=float(r['ep']), ep100=float(r['ep100']), slope=float(r['slope']), H=float(r['H']),
                                         gamma=float(r['gamma']))) + '\n')
                 f.flush()
