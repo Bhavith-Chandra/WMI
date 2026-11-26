@@ -48,3 +48,9 @@ theory predicts. Relabeling (anchor on the past outcome closest to the goal) bea
 multiplicative, and combining relabeling with latent inference is the best non-oracle planner in every persistent
 regime, cutting the remaining miss by 29-49% relative to hindsight alone. Everything is worse than forward when the
 latent is redrawn each attempt.
+
+## Execution log
+- Seed 2 was lost to a container restart and rerun. The rerun's provenance records a dirty tree at launch (commit
+  8eec7c3). `git diff 8eec7c3 HEAD -- wmi/ scripts/run_throw.py` is empty and its forward results equal v6 exactly, so
+  the dirty file was not code the run used; to close the question, seed 2 is rerun on a clean tree after v8 and must be
+  bit-identical.
