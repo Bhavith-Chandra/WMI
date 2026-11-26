@@ -64,7 +64,7 @@ Then open http://127.0.0.1:8765. It shows:
 
 **No real orders can be sent.** Moving to real execution needs exchange keys, a risk layer and your explicit decision.
 
-![dev screenshot](serve/screenshot_dev.png)
+![final model on the live ETH market](serve/screenshot_final.png)
 
 ## Verdict (qualitative; all numbers are in the generated block below)
 * **Next-event prediction (M1): MMFM wins on the sealed test** against every baseline, including a tuned feature MLP
