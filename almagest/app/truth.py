@@ -87,26 +87,38 @@ class TruthLive(LiveModel):
         return fill
 
     def whatif(self, side='buy', children=20, child_size=2, gap=40, tail_blocks=20, paths=64, seed=0):
+        """Directional impact = (I_buy - I_sell)/2 (protocol definition; cancels direction-independent effects) for
+        BOTH the model and the exact World counterfactual; raw effect of the chosen side also reported."""
         self._sync_rows()
-        out = super().whatif(side=side, children=children, child_size=child_size, gap=gap, tail_blocks=tail_blocks,
-                             paths=paths, seed=seed)
+        opp = 'sell' if side in ('buy', 0) else 'buy'
+        mb = LiveModel.whatif(self, side=side, children=children, child_size=child_size, gap=gap,
+                              tail_blocks=tail_blocks, paths=paths, seed=seed)
+        self._sync_rows()
+        ms = LiveModel.whatif(self, side=opp, children=children, child_size=child_size, gap=gap,
+                              tail_blocks=tail_blocks, paths=paths, seed=seed)
+        out = _antisym(mb, ms, children)
         s = 0 if side in ('buy', 0) else 1
-        sgn = 1 if s == 0 else -1
         nblk = children + tail_blocks
-        diffs = np.zeros((paths, nblk + 1))
+        raw = {0: np.zeros((paths, nblk + 1)), 1: np.zeros((paths, nblk + 1))}
         t0 = time.perf_counter()
         for p in range(paths):
-            mids = {}
-            for mode in (1, 0):
-                om = np.zeros(nblk)
-                m0, _, _ = W.run_from(self.par, self.wb.copy(), self.wa.copy(), self.wbb, self.wba, self.wema.copy(),
-                                      self.wss.copy(), self.wsr.copy(), 90_000_000 + seed * 1000 + p, children, gap,
-                                      tail_blocks, s, child_size, mode, om)
-                mids[mode] = np.concatenate([[0.0], om - m0])
-            diffs[p] = sgn * (mids[1] - mids[0])
-        mu = diffs.mean(0); se = diffs.std(0, ddof=1) / np.sqrt(paths)
+            for sd in (0, 1):
+                mids = {}
+                for mode in (1, 0):
+                    om = np.zeros(nblk)
+                    m0, _, _ = W.run_from(self.par, self.wb.copy(), self.wa.copy(), self.wbb, self.wba,
+                                          self.wema.copy(), self.wss.copy(), self.wsr.copy(),
+                                          90_000_000 + seed * 1000 + p, children, gap, tail_blocks, sd, child_size,
+                                          mode, om)
+                    mids[mode] = np.concatenate([[0.0], om - m0])
+                raw[sd][p] = mids[1] - mids[0]
+        sgn = 1 if s == 0 else -1
+        d = 0.5 * (raw[0] - raw[1])          # (I_buy - I_sell)/2: directional impact, same for either chosen side
+        mu = d.mean(0); se = d.std(0, ddof=1) / np.sqrt(paths)
         out['truth'] = dict(mean=mu.tolist(), lo=(mu - 1.96 * se).tolist(), hi=(mu + 1.96 * se).tolist(),
                             peak=float(mu[children]), end=float(mu[-1]))
+        rs = raw[s] * sgn
+        out['truth_raw'] = dict(mean=rs.mean(0).tolist(), peak=float(rs.mean(0)[children]), end=float(rs.mean(0)[-1]))
         out['truth_seconds'] = time.perf_counter() - t0
         return out
 
@@ -114,3 +126,17 @@ class TruthLive(LiveModel):
         st = super().status()
         st['truth_mode'] = True
         return st
+
+
+def _antisym(mb, ms, children):
+    """Directional impact D = (I_buy - I_sell)/2 from forks each signed by its own side: D = (mb + ms)/2."""
+    out = dict(mb)
+    for k in ('visible', 'blind'):
+        a = np.array(mb[k]['mean']); b = np.array(ms[k]['mean'])
+        sa = (np.array(mb[k]['hi']) - a) / 1.96; sb = (np.array(ms[k]['hi']) - b) / 1.96
+        mu = 0.5 * (a + b); se = 0.5 * np.sqrt(sa ** 2 + sb ** 2)   # both forks already signed by their own side
+        out[k] = dict(mean=mu.tolist(), lo=(mu - 1.96 * se).tolist(), hi=(mu + 1.96 * se).tolist())
+    out['peak'] = float(out['visible']['mean'][children]); out['end'] = float(out['visible']['mean'][-1])
+    out['raw_visible'] = mb['visible']
+    out['impact_definition'] = 'antisymmetric (I_side - I_opposite)/2, paired common random numbers'
+    return out
