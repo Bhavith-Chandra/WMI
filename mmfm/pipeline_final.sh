@@ -9,7 +9,7 @@ log(){ echo "=== $* ($(date -u +%T))" | tee -a "$L"; }
 log build; python3 -I data/build.py --out $EV --until-ns "$CUT_NS" >> "$L" 2>&1
 log splits; python3 -I data/splits.py --events $EV >> "$L" 2>&1
 log train-mmfm; python3 -I train.py --events $EV --out runs/final_mmfm --ctx "${CTX:-64}" --batch "${BATCH:-64}" --lr "${LR:-1e-3}" --minutes "$MMFM_MIN" --eval-every 400 >> "$L" 2>&1
-log train-b2; python3 -I train.py --events $EV --out runs/final_b2 --model b2 --minutes "$B2_MIN" --eval-every 400 --tokenizer runs/final_mmfm/tokenizer.json >> "$L" 2>&1
+log train-b2; python3 -I train.py --events $EV --out runs/final_b2 --model b2 --ctx "${CTX:-64}" --batch "${BATCH:-64}" --lr "${LR:-1e-3}" --minutes "$B2_MIN" --eval-every 400 --tokenizer runs/final_mmfm/tokenizer.json >> "$L" 2>&1
 log m1-val; python3 -I evaluate.py --events $EV --runs runs/final_mmfm runs/final_b2 --split val --T "${CTX:-64}" --out results/m1_val.json >> "$L" 2>&1
 H=$(python3 -c "import json;print(json.load(open('runs/final_mmfm/selection_log.json'))['model_hash'])")
 log "freeze model $H (sha256 of runs/final_mmfm/model.pt); unsealing test ONCE"
