@@ -98,3 +98,24 @@ Fix in progress:
 - real data (no oracle): rollout-based post-training.
 - New gate: collapse rate < 2% over the evaluation horizon before any impact metric is interpreted. Every evaluation
   now reports `collapse_rate` per arm.
+
+
+## 7. ROOT CAUSE of the collapse: shared linear output heads (fixed)
+Ruled out [C]:
+- capacity: 295k params, 83% collapse;
+- long memory, source tags, mirror augmentation;
+- DAgger with oracle: v1 22 -> 55 -> 34% one-sided; v2 2 -> 12 -> 22 -> 45% as beta decays.
+
+Found [C]:
+- Teacher-forced, the old model's P(next market order is a buy) was flat at 0.50-0.53 whatever the preceding sign run.
+  The World's empirical value is 0.32 after 8 sells and 0.67 after 8 buys.
+- A linear probe on the slow-bank inputs beats chance (56% held-out), so the information was available.
+- Cause: side/level/size heads were linear in (z + type embedding). Type only shifted a bias, so the state->side
+  mapping was shared by limits, cancels and markets, and market sides became state-independent.
+
+Fix: type-conditional heads (`cond_heads`), 61k -> 71k params [C]:
+- val NLL 3.648 -> 3.562 (vs < 0.001 for every earlier change);
+- persistence curve matches the World (0.28 vs 0.32 after 8 sells, 0.34 vs 0.31 after 4);
+- free-run collapse 0/12 within 5k events (was 9/12).
+
+Every E2 model number before this fix is superseded. The real-data v2 model gets the same fix.
