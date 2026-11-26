@@ -70,3 +70,10 @@ Let `[T0, T1)` be the collected span after exclusions.
 * Every number in the report comes from `results/*.json` via a generator; there are no hand-typed metrics.
 * Negative results are reported with the same prominence as positive ones.
 * A metric computed on test before the model hash is frozen invalidates that model version.
+
+## Addendum 1 (development data rule, committed before any training)
+* A **dev build** cut at `dev_cut_ns = 1795663953517049564` (2026-11-26T03:32:33Z) is used to develop the tokenizer and model and to debug.
+* The final frozen build is only valid if its train region contains the whole dev window:
+  train_end ≥ dev_cut + 10 min. `data/splits.py` refuses otherwise.
+  With collection start ≈ 02:27 UTC, the final cut must be ≥ ≈ 04:45 UTC.
+* Nothing at or after `dev_cut_ns` is inspected before the final freeze.

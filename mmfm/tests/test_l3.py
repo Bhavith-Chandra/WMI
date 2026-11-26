@@ -85,3 +85,15 @@ def test_idbook_levels_have_no_float_dust():
 def test_events_before_anchor_snapshot_are_dropped():
     r = run([o("order_created", 900, 9, 0, 99.98, 0.5)])  # us <= snapshot microtimestamp
     assert len(r["events"]) == 0
+
+
+def test_state_is_pre_event_and_aligned():
+    """L7: the state attached to each event is the book BEFORE that event (no lookahead)."""
+    msgs = [t(2000, 0, 100.02, 1.5, 9, 3), o("order_created", 2000, 9, 0, 100.05, 1.5),
+            o("order_deleted", 2000, 3, 1, 100.02, 0, "1.5"), o("order_deleted", 2000, 9, 0, 100.05, 0, "1.5"),
+            o("order_created", 3000, 10, 0, 100.01, 0.7)]
+    r = rebuild("x", SNAP, 1000, msgs, [], [], 0, tick=0.01, want_state=True)
+    assert r["state"].shape == (len(r["events"]), 6)
+    take, add = r["state"][0], r["state"][1]
+    assert take[1] == 100.02  # best ask before the TAKE consumed it
+    assert add[1] == 100.03 and add[0] == 100.00  # state before the ADD, after the sweep

@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+from sortedcontainers import SortedDict
 
 ADD, CANCEL, TAKE = 0, 1, 2
 BUY, SELL = 1, 0  # 1 = bid/buy, 0 = ask/sell (Bitstamp order_type 0 = buy, 1 = sell)
@@ -114,7 +115,7 @@ def pair_messages(hours, pair):
 class IdBook:
     """id -> [side, price, amount] plus an incrementally maintained price-level aggregate per side."""
     orders: dict = field(default_factory=dict)
-    agg: tuple = field(default_factory=lambda: ({}, {}))  # index by side: agg[SELL]=asks, agg[BUY]=bids
+    agg: tuple = field(default_factory=lambda: (SortedDict(), SortedDict()))  # agg[SELL]=asks, agg[BUY]=bids
 
     @classmethod
     def from_snapshot(cls, snap):
@@ -149,9 +150,23 @@ class IdBook:
         return prev
 
     def levels(self, side, n=20):
-        d = {k: v[0] for k, v in self.agg[side].items() if v[0] > 1e-12}  # zero-qty orders don't make a level
-        ks = heapq.nlargest(n, d) if side == BUY else heapq.nsmallest(n, d)
-        return [(k, d[k]) for k in ks]
+        d = self.agg[side]
+        keys = reversed(d.keys()) if side == BUY else iter(d.keys())
+        out = []
+        for k in keys:
+            q = d[k][0]
+            if q > 1e-12:  # zero-qty (fully matched, not yet deleted) orders don't make a level
+                out.append((k, q))
+                if len(out) == n:
+                    break
+        return out
+
+    def state(self):
+        """(best_bid, best_ask, q_bid1, q_ask1, q_bid5, q_ask5) from the current book (NaN if a side is empty)."""
+        lb, la = self.levels(BUY, 5), self.levels(SELL, 5)
+        if not lb or not la:
+            return (np.nan,) * 6
+        return (lb[0][0], la[0][0], lb[0][1], la[0][1], sum(q for _, q in lb), sum(q for _, q in la))
 
 
 def compare_levels(a_levels, b_levels, rel=1e-9):
@@ -175,7 +190,7 @@ def compare(book: IdBook, snap, n=20):
 
 
 # ---------------------------------------------------------------------------------------------- segments
-def segments(root: Path, pair: str, tick: float | None = None, lockstep_every: int = 50):
+def segments(root: Path, pair: str, tick: float | None = None, lockstep_every: int = 50, want_state=False):
     hours = hour_dirs(root)
     conn = load_conn(hours)
     msgs = pair_messages(hours, pair)
@@ -190,7 +205,7 @@ def segments(root: Path, pair: str, tick: float | None = None, lockstep_every: i
         snap = load_snapshot(hours, pair, anch[0]["us"])
         seg_msgs = [x for x in msgs if c_ns <= x[0] < t_hi]
         yield rebuild(pair, snap, int(anch[0]["us"]), seg_msgs, anch[1:], hours, k, tick, lockstep_every,
-                      t_lo_ns=c_ns, t_hi_ns=t_hi)
+                      t_lo_ns=c_ns, t_hi_ns=t_hi, want_state=want_state)
 
 
 def _lv_ticks(levels, tick):
@@ -198,7 +213,7 @@ def _lv_ticks(levels, tick):
 
 
 def rebuild(pair, snap, snap_us, msgs, verify_snaps, hours, seg_id, tick=None, lockstep_every=50, t_lo_ns=None,
-            t_hi_ns=None, debug=None):
+            t_hi_ns=None, debug=None, want_state=False):
     from sim.book import LevelBook  # local import: sim.book imports this module's constants
 
     book = IdBook.from_snapshot(snap)
@@ -215,7 +230,7 @@ def rebuild(pair, snap, snap_us, msgs, verify_snaps, hours, seg_id, tick=None, l
             px_ = float(d["price"])
             taker_worst[tid] = (max if d["type"] == 0 else min)(taker_worst.get(tid, px_), px_)
             traded_ids.setdefault(us, set()).update((int(d["buy_order_id"]), int(d["sell_order_id"])))
-    rows, verify = [], []
+    rows, verify, states = [], [], []
     led = {oid: list(v) for oid, v in book.orders.items()}  # event-level ledger, starts equal to the snapshot
     pend = sorted(verify_snaps, key=lambda p: p["us"])
     taken = set()
@@ -227,6 +242,8 @@ def rebuild(pair, snap, snap_us, msgs, verify_snaps, hours, seg_id, tick=None, l
         us = int(d["microtimestamp"])
         if us <= snap_us:
             continue
+        n_before = len(rows)
+        pre = book.state() if want_state else None
         if last_us is not None and us != last_us:
             n_ms += 1
             if lvl is not None:
@@ -257,6 +274,8 @@ def rebuild(pair, snap, snap_us, msgs, verify_snaps, hours, seg_id, tick=None, l
             px = max(float(x["price"]) for x in same) if d["type"] == 0 else min(float(x["price"]) for x in same)
             rows.append((us, TAKE, BUY if d["type"] == 0 else SELL, px, qty, taker))
             taken.add((us, taker))
+            if want_state:
+                states.extend([pre] * (len(rows) - n_before))
             continue
         oid = int(d["id"])
         side = BUY if int(d["order_type"]) == 0 else SELL
@@ -302,6 +321,8 @@ def rebuild(pair, snap, snap_us, msgs, verify_snaps, hours, seg_id, tick=None, l
             q = min(amt, L[2]) if L is not None else 0.0
             if q > 1e-12:
                 rows.append((us, CANCEL, side, L[1], q, oid))
+        if want_state:
+            states.extend([pre] * (len(rows) - n_before))
     for p in pend:
         verify.append(dict(us=p["us"], **compare(book, load_snapshot(hours, pair, p["us"]))))
     final = None
@@ -310,6 +331,7 @@ def rebuild(pair, snap, snap_us, msgs, verify_snaps, hours, seg_id, tick=None, l
             lvl.apply(r[1], r[2], int(round(r[3] / tick)), r[4])
         final = dict(bid=compare_levels(_lv_ticks(book.levels(BUY, 50), tick), lvl.levels(BUY, 50), 1e-7),
                      ask=compare_levels(_lv_ticks(book.levels(SELL, 50), tick), lvl.levels(SELL, 50), 1e-7))
-    return dict(pair=pair, seg=seg_id, snap_us=snap_us, events=np.array(rows, dtype=EV_DTYPE), verify=verify,
+    st = np.array(states, dtype=np.float64).reshape(-1, 6) if want_state else None
+    return dict(pair=pair, seg=seg_id, snap_us=snap_us, events=np.array(rows, dtype=EV_DTYPE), verify=verify, state=st,
                 final_book=book, snapshot=snap, events_book=lvl, t_lo_ns=t_lo_ns, t_hi_ns=t_hi_ns,
                 lockstep=dict(ms=n_ms, checked=n_checked, diverged=n_div, final_top50_match=final))
