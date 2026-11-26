@@ -84,3 +84,9 @@ Let `[T0, T1)` be the collected span after exclusions.
 * Reason: M1 (NLL) and M2 (simulation realism) are both pre-registered test metrics of the same frozen model.
 * Horizons for M2/M3 are 1/5/10 s, not 60 s. Event-level rollouts on CPU can't reach 60 s on fast pairs
   in reasonable time (measured: 8 ms/step for 16 paths). This is reported under M5.
+
+## Addendum 3 (disclosure, written while the final models train, before any test access)
+* Frozen splits: train 02:27–04:04 UTC, val 04:14–04:19 (5.3 min; small, so selection is noisy), test 04:29–05:00, held-out linkusd.
+* At about 04:38 UTC, after the final configuration was committed (04:37:55), I ran the live UI with a dev model on
+  ETH for about 1 min. That falls inside the test window. Only one qualitative observation was made (the realised mid left
+  the forecast band). No configuration, code or selection decision was made after it.
