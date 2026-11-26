@@ -29,7 +29,7 @@ def _seal_check(events: Path, split: str):
     if not tok:
         raise SealError(f"split '{split}' is sealed (EVAL.md L3). Set MMFM_UNSEAL=<frozen model hash>.")
     purpose = os.environ.get("MMFM_PURPOSE")
-    if purpose not in ("M1", "M2", "M1-CI"):
+    if purpose not in ("M1", "M2", "M1-CI", "M2-fix"):
         raise SealError("set MMFM_PURPOSE to the pre-registered metric being computed (M1 or M2)")
     log = events / "test_access.log"
     prev = [json.loads(x) for x in log.read_text().splitlines()] if log.exists() else []

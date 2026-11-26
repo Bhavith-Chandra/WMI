@@ -182,8 +182,9 @@ def main():
                 wall = time.perf_counter() - t0
                 m = R.mid_grid(np.array(H))
                 sim_ret = np.log(m / mid0) * 1e4
-                n_ev = np.array([p["n_ev"] for p in R.paths])
-                rows[g].append(dict(real={h: real[h] for h in H}, sim=sim_ret.tolist(), n_ev=n_ev.tolist(), wall=wall,
+                # events generated within each horizon (paths keep stepping until ALL paths pass the horizon)
+                n_ev = {h: [int(np.sum((np.array(p["t"][1:]) - R.t0) <= h * 1e6)) for p in R.paths] for h in H}
+                rows[g].append(dict(real={h: real[h] for h in H}, sim=sim_ret.tolist(), n_ev=n_ev, wall=wall,
                                     steps=R.n_steps))
         summ = {}
         for g, rr in rows.items():
@@ -192,19 +193,26 @@ def main():
             s = {}
             for k, h in enumerate(H):
                 sims = [np.array(r["sim"])[:, k] for r in rr]
-                reals = np.array([r["real"][h]["ret"] for r in rr])
-                pit = np.array([np.mean(np.nan_to_num(sm, nan=0) < rv) + 0.5 * np.mean(np.nan_to_num(sm, nan=0) == rv) for sm, rv in zip(sims, reals)])
-                crps = np.mean([np.mean(np.abs(np.nan_to_num(sm) - rv)) - 0.5 * np.mean(np.abs(np.nan_to_num(sm)[:, None] - np.nan_to_num(sm)[None])) for sm, rv in zip(sims, reals)])
-                pooled = np.concatenate([np.nan_to_num(sm) for sm in sims])
-                w1 = float(np.mean(np.abs(np.sort(np.quantile(pooled, np.linspace(.01, .99, 99))) - np.sort(np.quantile(reals, np.linspace(.01, .99, 99))))))
-                p_up = np.array([np.mean(np.nan_to_num(sm) > 0) for sm in sims])
+                nan_frac = float(np.mean([np.mean(~np.isfinite(sm)) for sm in sims]))
+                sims = [sm[np.isfinite(sm)] for sm in sims]  # unfinished/dead paths are excluded, not set to 0
+                keep = [len(sm) > 0 for sm in sims]
+                sims = [sm for sm, kk in zip(sims, keep) if kk]
+                reals = np.array([r["real"][h]["ret"] for r, kk in zip(rr, keep) if kk])
+                pit = np.array([np.mean(sm < rv) + 0.5 * np.mean(sm == rv) for sm, rv in zip(sims, reals)])
+                crps = np.mean([np.mean(np.abs(sm - rv)) - 0.5 * np.mean(np.abs(sm[:, None] - sm[None])) for sm, rv in zip(sims, reals)])
+                pooled = np.concatenate(sims)
+                qs = np.linspace(.01, .99, 99)
+                w1 = float(np.mean(np.abs(np.quantile(pooled, qs) - np.quantile(reals, qs))))
+                p_up = np.array([np.mean(sm > 0) for sm in sims])
                 y = (reals > 0).astype(float)
                 nz = reals != 0
                 brier = float(np.mean((p_up[nz] - y[nz]) ** 2)) if nz.any() else None
-                ratio = np.median([np.mean(r["n_ev"]) / max(r["real"][h]["n"], 1) for r in rr]) if k == len(H) - 1 else None
-                s[str(h)] = dict(n_starts=len(rr), pit_mean=float(pit.mean()), pit_in_central_80=float(np.mean((pit >= .1) & (pit <= .9))),
+                ratio = float(np.median([np.mean(r["n_ev"][h]) / max(r["real"][h]["n"], 1) for r in rr]))
+                s[str(h)] = dict(n_starts=len(reals), nan_path_frac=nan_frac, pit_mean=float(pit.mean()),
+                                 pit_in_central_80=float(np.mean((pit >= .1) & (pit <= .9))),
                                  crps_bp=float(crps), w1_bp=w1, real_abs_ret_med=float(np.median(np.abs(reals))),
-                                 sim_abs_ret_med=float(np.median(np.abs(pooled))), brier=brier, event_count_ratio=ratio)
+                                 sim_abs_ret_med=float(np.median(np.abs(pooled))), real_zero_ret_frac=float(np.mean(reals == 0)),
+                                 sim_zero_ret_frac=float(np.mean(pooled == 0)), brier=brier, event_count_ratio=ratio)
             s["wall_s_per_start"] = float(np.mean([r["wall"] for r in rr]))
             s["sim_seconds_per_wall_second"] = float(max(H) * len(rr) / sum(r["wall"] for r in rr))
             summ[g] = s

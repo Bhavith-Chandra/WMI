@@ -1,0 +1,283 @@
+=== build (05:01:15)
+btcusd 0 0 excluded
+btcusd 1 914403 ok
+btcusd 2 1265012 ok
+ethusd 1 549745 ok
+ethusd 2 616156 ok
+solusd 0 14515 ok
+solusd 1 346181 ok
+solusd 2 388846 ok
+xrpusd 0 15244 ok
+xrpusd 1 404551 ok
+xrpusd 2 517482 ok
+btceur 0 11526 ok
+btceur 1 305088 ok
+btceur 2 356313 ok
+ltcusd 0 3112 ok
+ltcusd 1 77257 ok
+ltcusd 2 77280 ok
+dogeusd 0 7280 ok
+dogeusd 1 187380 ok
+dogeusd 2 179572 ok
+linkusd 0 2955 ok
+linkusd 1 91739 ok
+linkusd 2 104732 ok
+=== splits (05:11:29)
+{
+ "t0_us": 1795660020339000,
+ "t1_us": 1795669199928000,
+ "train": [
+  1795660020339000,
+  1795665846051300
+ ],
+ "val": [
+  1795666446051300,
+  1795666764010200
+ ],
+ "test": [
+  1795667364010200,
+  1795669199928000
+ ],
+ "embargo_us": 600000000,
+ "heldout_pair": "linkusd",
+ "files_hash": "06cf74d60276ca788b90000c4e432677e68b764d0771b47fc8215d34625c6a9c",
+ "build_until_ns": 1795669200000000000,
+ "rule": "EVAL.md \u00a71: 70/10/20 by wall clock, 10-min embargo before val and test",
+ "dev_cut_us": 1795663953517049
+}
+=== train-mmfm (05:11:29)
+train chunks 19 events 4127266 | val events 202792
+/home/user/WMI/mmfm/train.py:109: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:820.)
+  ev.update(step=step, train_bits=float(loss), minutes=(time.time() - t0) / 60)
+step 400 train 11.070 val 10.7805 best 10.7805 1.0min
+step 800 train 10.400 val 10.3845 best 10.3845 1.9min
+step 1200 train 10.785 val 10.1930 best 10.1930 2.8min
+step 1600 train 10.820 val 10.0581 best 10.0581 3.7min
+step 2000 train 10.329 val 9.9768 best 9.9768 4.6min
+step 2400 train 10.485 val 9.9131 best 9.9131 5.5min
+step 2800 train 10.338 val 9.8701 best 9.8701 6.5min
+step 3200 train 10.337 val 9.8058 best 9.8058 7.4min
+step 3600 train 10.598 val 9.7654 best 9.7654 8.4min
+step 4000 train 10.033 val 9.7299 best 9.7299 9.4min
+step 4400 train 9.699 val 9.7060 best 9.7060 10.4min
+step 4800 train 9.798 val 9.6818 best 9.6818 11.4min
+step 5200 train 9.508 val 9.6636 best 9.6636 12.3min
+step 5600 train 9.563 val 9.6343 best 9.6343 13.3min
+step 6000 train 10.113 val 9.6183 best 9.6183 14.2min
+step 6400 train 10.564 val 9.6078 best 9.6078 15.2min
+step 6800 train 9.715 val 9.5866 best 9.5866 16.1min
+step 7200 train 9.949 val 9.5572 best 9.5572 17.0min
+step 7600 train 9.502 val 9.5438 best 9.5438 17.9min
+step 8000 train 9.541 val 9.5269 best 9.5269 18.9min
+step 8400 train 9.670 val 9.5010 best 9.5010 19.9min
+step 8800 train 9.880 val 9.5031 best 9.5010 20.7min
+step 9200 train 9.896 val 9.4874 best 9.4874 21.6min
+step 9600 train 9.865 val 9.4804 best 9.4804 22.6min
+step 10000 train 9.556 val 9.4526 best 9.4526 23.5min
+step 10400 train 9.504 val 9.4700 best 9.4526 24.4min
+step 10800 train 9.670 val 9.4351 best 9.4351 25.3min
+step 11200 train 10.041 val 9.4319 best 9.4319 26.2min
+step 11600 train 9.461 val 9.4290 best 9.4290 27.1min
+step 12000 train 9.968 val 9.4299 best 9.4290 28.0min
+step 12400 train 9.889 val 9.3981 best 9.3981 28.9min
+step 12800 train 9.736 val 9.3963 best 9.3963 29.9min
+model hash 0fd55e8ebc15825c9f7c7cf6e2c16875837516e8090345b241a83a2959eb56d3
+=== train-b2 (05:41:47)
+train chunks 19 events 4127266 | val events 202792
+/home/user/WMI/mmfm/train.py:109: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:820.)
+  ev.update(step=step, train_bits=float(loss), minutes=(time.time() - t0) / 60)
+step 400 train 11.149 val 10.8544 best 10.8544 0.5min
+step 800 train 10.547 val 10.5911 best 10.5911 1.0min
+step 1200 train 11.036 val 10.4701 best 10.4701 1.5min
+step 1600 train 11.118 val 10.3977 best 10.3977 2.0min
+step 2000 train 10.715 val 10.3420 best 10.3420 2.5min
+step 2400 train 10.832 val 10.3155 best 10.3155 3.0min
+step 2800 train 10.749 val 10.2771 best 10.2771 3.5min
+step 3200 train 10.778 val 10.2508 best 10.2508 4.0min
+step 3600 train 11.068 val 10.2340 best 10.2340 4.6min
+step 4000 train 10.517 val 10.2169 best 10.2169 5.1min
+step 4400 train 10.136 val 10.2003 best 10.2003 5.6min
+step 4800 train 10.258 val 10.1941 best 10.1941 6.1min
+step 5200 train 9.963 val 10.1873 best 10.1873 6.6min
+step 5600 train 10.105 val 10.1703 best 10.1703 7.1min
+step 6000 train 10.720 val 10.1725 best 10.1703 7.6min
+step 6400 train 11.180 val 10.1522 best 10.1522 8.1min
+step 6800 train 10.263 val 10.1339 best 10.1339 8.7min
+step 7200 train 10.575 val 10.1329 best 10.1329 9.2min
+step 7600 train 10.097 val 10.1346 best 10.1329 9.7min
+step 8000 train 10.112 val 10.1189 best 10.1189 10.3min
+step 8400 train 10.270 val 10.1153 best 10.1153 10.8min
+step 8800 train 10.498 val 10.1186 best 10.1153 11.4min
+step 9200 train 10.514 val 10.1026 best 10.1026 11.9min
+step 9600 train 10.509 val 10.0986 best 10.0986 12.5min
+step 10000 train 10.256 val 10.0966 best 10.0966 13.0min
+step 10400 train 10.118 val 10.1055 best 10.0966 13.5min
+step 10800 train 10.187 val 10.0903 best 10.0903 14.1min
+step 11200 train 10.671 val 10.0785 best 10.0785 14.6min
+step 11600 train 10.137 val 10.0858 best 10.0785 15.1min
+step 12000 train 10.599 val 10.0932 best 10.0785 15.7min
+step 12400 train 10.581 val 10.0701 best 10.0701 16.2min
+step 12800 train 10.465 val 10.0733 best 10.0701 16.7min
+step 13200 train 10.418 val 10.0692 best 10.0692 17.2min
+step 13600 train 10.412 val 10.0726 best 10.0692 17.7min
+step 14000 train 10.493 val 10.0564 best 10.0564 18.2min
+step 14400 train 10.520 val 10.0583 best 10.0564 18.7min
+step 14800 train 9.787 val 10.0532 best 10.0532 19.3min
+step 15200 train 10.572 val 10.0472 best 10.0472 19.8min
+step 15600 train 10.303 val 10.0511 best 10.0472 20.4min
+step 16000 train 9.956 val 10.0478 best 10.0472 20.9min
+step 16400 train 10.314 val 10.0373 best 10.0373 21.5min
+step 16800 train 10.273 val 10.0375 best 10.0373 22.0min
+step 17200 train 10.519 val 10.0356 best 10.0356 22.6min
+step 17600 train 10.394 val 10.0390 best 10.0356 23.1min
+step 18000 train 10.346 val 10.0358 best 10.0356 23.7min
+step 18400 train 10.372 val 10.0343 best 10.0343 24.2min
+step 18800 train 10.117 val 10.0111 best 10.0111 24.7min
+step 19200 train 10.460 val 10.0184 best 10.0111 25.2min
+step 19600 train 10.415 val 10.0110 best 10.0110 25.8min
+step 20000 train 10.272 val 10.0284 best 10.0110 26.3min
+step 20400 train 10.009 val 10.0251 best 10.0110 26.9min
+step 20800 train 10.623 val 10.0171 best 10.0110 27.4min
+step 21200 train 10.080 val 10.0023 best 10.0023 28.0min
+step 21600 train 9.873 val 10.0269 best 10.0023 28.6min
+step 22000 train 10.349 val 10.0109 best 10.0023 29.1min
+step 22400 train 10.278 val 10.0111 best 10.0023 29.7min
+model hash 5e3f208352fcd0d4e9c719e258b7a028ac6be0de7ab9451753a84823712d7326
+=== m1-val (06:11:54)
+B0_zero_intelligence                     15.1607 bits/event  CI95 [15.0935 15.229 ]  
+B1_markov                                13.4535 bits/event  CI95 [12.9213 14.0155]  
+final_mmfm:MMFM                          9.3834 bits/event  CI95 [ 8.5028 10.3106]  {'baseline': 'final_b2:FeatMLP', 'delta_bits': -0.6127309799194336, 'delta_ci95': [-0.7063101936345868, -0.5387133264623674]}
+final_b2:FeatMLP                         9.9961 bits/event  CI95 [ 9.0556 11.0048]  
+=== freeze model 0fd55e8ebc15825c9f7c7cf6e2c16875837516e8090345b241a83a2959eb56d3 (sha256 of runs/final_mmfm/model.pt); unsealing test ONCE (06:12:22)
+=== m1-test (06:12:22)
+B0_zero_intelligence                     15.2080 bits/event  CI95 [15.1646 15.2508]  
+B1_markov                                13.6665 bits/event  CI95 [13.4192 13.919 ]  
+final_mmfm:MMFM                          9.3564 bits/event  CI95 [8.9736 9.7514]  {'baseline': 'final_b2:FeatMLP', 'delta_bits': -0.6116456985473633, 'delta_ci95': [-0.6595812715350674, -0.5639496223804167]}
+final_b2:FeatMLP                         9.9680 bits/event  CI95 [ 9.5568 10.3901]  
+=== m1-heldout (06:12:51)
+B0_zero_intelligence                     15.6703 bits/event  CI95 [15.6404 15.7198]  
+B1_markov                                15.3715 bits/event  CI95 [15.3057 15.4804]  
+final_mmfm:MMFM                          13.4421 bits/event  CI95 [13.3259 13.5123]  {'baseline': 'final_b2:FeatMLP', 'delta_bits': 0.2988128662109375, 'delta_ci95': [0.2956864255286771, 0.3039900373729747]}
+final_b2:FeatMLP                         13.1433 bits/event  CI95 [13.0219 13.2166]  
+=== m5 (06:13:17)
+{
+ "model_hash": "0fd55e8ebc15825c9f7c7cf6e2c16875837516e8090345b241a83a2959eb56d3",
+ "n_params": 839909,
+ "threads": 4,
+ "update_latency_ms": {
+  "p50": 2.047704500000691,
+  "p99": 4.263612670474684
+ },
+ "pair_event_rates_per_s": {
+  "btceur": {
+   "median": 75.35,
+   "p99": 155.12500000000009
+  },
+  "btcusd": {
+   "median": 259.25,
+   "p99": 435.116
+  },
+  "dogeusd": {
+   "median": 44.3,
+   "p99": 106.7090000000001
+  },
+  "ethusd": {
+   "median": 154.7,
+   "p99": 280.989
+  },
+  "ltcusd": {
+   "median": 18.1,
+   "p99": 58.22800000000003
+  },
+  "solusd": {
+   "median": 88.1,
+   "p99": 176.91199999999986
+  },
+  "xrpusd": {
+   "median": 105.7,
+   "p99": 202.4390000000002
+  }
+ },
+ "rollout": {
+  "1": {
+   "ms_per_step": 2.921089813329066,
+   "sim_events_per_path_per_s": 342.337984760672,
+   "realtime_factor_vs_median_rate": {
+    "btceur": 4.5433043763858265,
+    "btcusd": 1.3204936731366326,
+    "dogeusd": 7.727719746290565,
+    "ethusd": 2.212915221465236,
+    "ltcusd": 18.913700815506736,
+    "solusd": 3.8857887032993417,
+    "xrpusd": 3.2387699598928283
+   },
+   "realtime_factor_vs_p99_rate": {
+    "btceur": 2.206852440036563,
+    "btcusd": 0.7867740665952804,
+    "dogeusd": 3.2081453744358175,
+    "ethusd": 1.2183323360013096,
+    "ltcusd": 5.879267444539943,
+    "solusd": 1.9350749794285986,
+    "xrpusd": 1.6910673573801078
+   }
+  },
+  "8": {
+   "ms_per_step": 8.139420070001506,
+   "sim_events_per_path_per_s": 122.85887586581029,
+   "realtime_factor_vs_median_rate": {
+    "btceur": 1.6305093014706078,
+    "btcusd": 0.4739011605238584,
+    "dogeusd": 2.773338055661632,
+    "ethusd": 0.7941750217570155,
+    "ltcusd": 6.7877831970060925,
+    "solusd": 1.3945388861045436,
+    "xrpusd": 1.1623356278695391
+   },
+   "realtime_factor_vs_p99_rate": {
+    "btceur": 0.7919991997795985,
+    "btcusd": 0.2823589016855512,
+    "dogeusd": 1.151345021186687,
+    "ethusd": 0.4372373148621843,
+    "ltcusd": 2.109962146489837,
+    "solusd": 0.6944632125904991,
+    "xrpusd": 0.6068933153483774
+   }
+  },
+  "16": {
+   "ms_per_step": 12.33043042000645,
+   "sim_events_per_path_per_s": 81.10016973758462,
+   "realtime_factor_vs_median_rate": {
+    "btceur": 1.0763128034185088,
+    "btcusd": 0.31282611277756844,
+    "dogeusd": 1.8307036058145514,
+    "ethusd": 0.5242415626217494,
+    "ltcusd": 4.4806723611925205,
+    "solusd": 0.9205467620611195,
+    "xrpusd": 0.7672674525788516
+   },
+   "realtime_factor_vs_p99_rate": {
+    "btceur": 0.5228052843679908,
+    "btcusd": 0.18638746848560986,
+    "dogeusd": 0.7600124613442591,
+    "ethusd": 0.28862400214095435,
+    "ltcusd": 1.3928036294838322,
+    "solusd": 0.4584209648728446,
+    "xrpusd": 0.40061534456100134
+   }
+  },
+  "32": {
+   "ms_per_step": 21.881120313337306,
+   "sim_events_per_path_per_s": 45.70149908597071,
+   "realtime_factor_vs_median_rate": {
+    "btceur": 0.6065228810347806,
+    "btcusd": 0.17628350659969416,
+    "dogeusd": 1.0316365482160432,
+    "ethusd": 0.29542016215882816,
+    "ltcusd": 2.5249447008823593,
+=== m2-test (06:13:35)
+ethusd {"MMFM": {"1.0": {"n_starts": 15, "pit_mean": 0.388, "pit_in_central_80": 0.867, "crps_bp": 0.11, "w1_bp": 0.099, "real_abs_ret_med": 0.0, "sim_abs_ret_med": 0.0, "brier": 0.047, "event_count_ratio": null}, "5.0": {"n_starts": 15, "pit_mean": 0.383, "pit_in_central_80": 0.4, "crps_bp": 1.225, "w1_bp": 1.038, "real_abs_ret_med": 1.352, "sim_abs_ret_med": 0.264, "brier": 0.217, "event_count_ratio": null}, "10.0": {"n_starts": 15, "pit_mean": 0.271, "pit_in_central_80": 0.267, "crps_bp": 0.974, "w1_bp": 0.879, "real_abs_ret_med": 1.234, "sim_abs_ret_med": 0.294, "brier": 0.22, "event_count_ratio": 4.514}, "wall_s_per_start": 49.088, "sim_seconds_per_wall_second": 0.204}, "B1": {"1.0": {"n_starts": 15, "pit_mean": 0.562, "pit_in_central_80": 0.933, "crps_bp": 0.105, "w1_bp": 0.089, "real_abs_ret_med": 0.0, "sim_abs_ret_med": 0.059, "brier": 0.026, "event_count_ratio": null}, "5.0": {"n_starts": 15, "pit_mean": 0.404, "pit_in_central_80": 0.267, "crps_bp": 1.248, "w1_bp": 1.1, "real_abs_ret_med": 1.352, "sim_abs_ret_med": 0.147, "brier": 0.175, "event_count_ratio": null}, "10.0": {"n_starts": 15, "pit_mean": 0.263, "pit_in_central_80": 0.2, "crps_bp": 1.038, "w1_bp": 0.944, "real_abs_ret_med": 1.234, "sim_abs_ret_med": 0.176, "brier": 0.154, "event_count_ratio": 1.354}, "wall_s_per_start": 2.001, "sim_seconds_per_wall_second": 4.999}, "B0": {"1.0": {"n_starts": 15, "pit_mean": 0.537, "pit_in_central_80": 0.933, "crps_bp": 0.147, "w1_bp": 0.183, "real_abs_ret_med": 0.0, "sim_abs_ret_med": 0.162, "brier": 0.214, "event_count_ratio": null}, "5.0": {"n_starts": 15, "pit_mean": 0.379, "pit_in_central_80": 0.2, "crps_bp": 1.292, "w1_bp": 1.027, "real_abs_ret_med": 1.352, "sim_abs_ret_med": 0.265, "brier": 0.349, "event_count_ratio": null}, "10.0": {"n_starts": 15, "pit_mean": 0.263, "pit_in_central_80": 0.2, "crps_bp": 1.086, "w1_bp": 0.919, "real_abs_ret_med": 1.234, "sim_abs_ret_med": 0.323, "brier": 0.281, "event_count_ratio": 1.36}, "wall_s_per_start": 1.789, "sim_seconds_per_wall_second": 5.589}}
+xrpusd {"MMFM": {"1.0": {"n_starts": 15, "pit_mean": 0.492, "pit_in_central_80": 0.8, "crps_bp": 0.275, "w1_bp": 0.219, "real_abs_ret_med": 0.0, "sim_abs_ret_med": 0.261, "brier": 0.23, "event_count_ratio": null}, "5.0": {"n_starts": 15, "pit_mean": 0.588, "pit_in_central_80": 0.667, "crps_bp": 0.788, "w1_bp": 0.331, "real_abs_ret_med": 0.523, "sim_abs_ret_med": 0.497, "brier": 0.325, "event_count_ratio": null}, "10.0": {"n_starts": 15, "pit_mean": 0.571, "pit_in_central_80": 0.667, "crps_bp": 0.928, "w1_bp": 0.422, "real_abs_ret_med": 0.626, "sim_abs_ret_med": 0.574, "brier": 0.242, "event_count_ratio": 5.182}, "wall_s_per_start": 40.773, "sim_seconds_per_wall_second": 0.245}, "B1": {"1.0": {"n_starts": 15, "pit_mean": 0.542, "pit_in_central_80": 0.933, "crps_bp": 0.302, "w1_bp": 0.199, "real_abs_ret_med": 0.0, "sim_abs_ret_med": 0.209, "brier": 0.57, "event_count_ratio": null}, "5.0": {"n_starts": 15, "pit_mean": 0.529, "pit_in_central_80": 0.733, "crps_bp": 0.663, "w1_bp": 0.224, "real_abs_ret_med": 0.523, "sim_abs_ret_med": 0.418, "brier": 0.283, "event_count_ratio": null}, "10.0": {"n_starts": 15, "pit_mean": 0.467, "pit_in_central_80": 0.733, "crps_bp": 0.81, "w1_bp": 0.414, "real_abs_ret_med": 0.626, "sim_abs_ret_med": 0.522, "brier": 0.258, "event_count_ratio": 1.639}, "wall_s_per_start": 1.947, "sim_seconds_per_wall_second": 5.136}, "B0": {"1.0": {"n_starts": 15, "pit_mean": 0.504, "pit_in_central_80": 0.8, "crps_bp": 0.279, "w1_bp": 0.171, "real_abs_ret_med": 0.0, "sim_abs_ret_med": 0.209, "brier": 0.281, "event_count_ratio": null}, "5.0": {"n_starts": 15, "pit_mean": 0.525, "pit_in_central_80": 0.533, "crps_bp": 0.662, "w1_bp": 0.262, "real_abs_ret_med": 0.523, "sim_abs_ret_med": 0.392, "brier": 0.245, "event_count_ratio": null}, "10.0": {"n_starts": 15, "pit_mean": 0.442, "pit_in_central_80": 0.6, "crps_bp": 0.887, "w1_bp": 0.555, "real_abs_ret_med": 0.626, "sim_abs_ret_med": 0.47, "brier": 0.276, "event_count_ratio": 1.56}, "wall_s_per_start": 1.758, "sim_seconds_per_wall_second": 5.687}}
+dogeusd {"MMFM": {"1.0": {"n_starts": 15, "pit_mean": 0.596, "pit_in_central_80": 0.867, "crps_bp": 0.102, "w1_bp": 0.29, "real_abs_ret_med": 0.0, "sim_abs_ret_med": 0.0, "brier": 0.102, "event_count_ratio": null}, "5.0": {"n_starts": 15, "pit_mean": 0.625, "pit_in_central_80": 0.8, "crps_bp": 0.708, "w1_bp": 0.512, "real_abs_ret_med": 0.0, "sim_abs_ret_med": 0.615, "brier": 0.239, "event_count_ratio": null}, "10.0": {"n_starts": 15, "pit_mean": 0.675, "pit_in_central_80": 0.6, "crps_bp": 1.096, "w1_bp": 0.778, "real_abs_ret_med": 0.352, "sim_abs_ret_med": 0.967, "brier": 0.311, "event_count_ratio": 21.8}, "wall_s_per_start": 43.05, "sim_seconds_per_wall_second": 0.232}, "B1": {"1.0": {"n_starts": 15, "pit_mean": 0.6, "pit_in_central_80": 1.0, "crps_bp": 0.181, "w1_bp": 0.394, "real_abs_ret_med": 0.0, "sim_abs_ret_med": 0.352, "brier": 0.078, "event_count_ratio": null}, "5.0": {"n_starts": 15, "pit_mean": 0.517, "pit_in_central_80": 0.867, "crps_bp": 0.487, "w1_bp": 0.394, "real_abs_ret_med": 0.0, "sim_abs_ret_med": 0.528, "brier": 0.205, "event_count_ratio": null}, "10.0": {"n_starts": 15, "pit_mean": 0.621, "pit_in_central_80": 0.533, "crps_bp": 0.909, "w1_bp": 0.537, "real_abs_ret_med": 0.352, "sim_abs_ret_med": 0.616, "brier": 0.204, "event_count_ratio": 4.995}, "wall_s_per_start": 1.367, "sim_seconds_per_wall_second": 7.315}, "B0": {"1.0": {"n_starts": 15, "pit_mean": 0.658, "pit_in_central_80": 1.0, "crps_bp": 0.21, "w1_bp": 0.472, "real_abs_ret_med": 0.0, "sim_abs_ret_med": 0.396, "brier": 0.203, "event_count_ratio": null}, "5.0": {"n_starts": 15, "pit_mean": 0.446, "pit_in_central_80": 0.867, "crps_bp": 0.61, "w1_bp": 0.397, "real_abs_ret_med": 0.0, "sim_abs_ret_med": 0.528, "brier": 0.172, "event_count_ratio": null}, "10.0": {"n_starts": 15, "pit_mean": 0.471, "pit_in_central_80": 0.667, "crps_bp": 1.061, "w1_bp": 0.409, "real_abs_ret_med": 0.352, "sim_abs_ret_med": 0.659, "brier": 0.243, "event_count_ratio": 6.286}, "wall_s_per_start": 1.735, "sim_seconds_per_wall_second": 5.763}}
+=== done (06:49:58)

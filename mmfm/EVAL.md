@@ -99,3 +99,12 @@ Let `[T0, T1)` be the collected span after exclusions.
 * The CIs are recomputed on the **same frozen model** (`0fd55e8e…`) with the same data and tiles. This is a logged unseal
   with purpose `M1-CI`. There is no model change and no selection, and the only output is variance estimation. Both
   the original and the corrected CIs are reported.
+
+## Addendum 5 (M2 metric defects found after the first M2 unseal; fixed and disclosed before re-running)
+* The `event_count_ratio` counted events generated after a path had passed the horizon: `Rollout.run` steps all paths
+  until every path has passed it. This inflated the ratio for every generator (B0 showed 6×).
+* PIT/CRPS set the returns of unfinished or dead paths to 0 instead of excluding them.
+* The return metrics (W1, PIT, CRPS) read mids on a time grid. Those values were otherwise unaffected, apart from the NaN→0 issue.
+* Fix: per-horizon event counts (t ≤ h), NaN paths excluded and counted (`nan_path_frac`), and tie fractions reported.
+* M2 is recomputed on the **same frozen model** with the same start points and seeds, as a logged unseal with purpose `M2-fix`.
+  Both versions stay in the repo (`m2_test.json` original, `m2_test_fixed.json`).
