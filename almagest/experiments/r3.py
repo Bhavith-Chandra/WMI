@@ -339,8 +339,8 @@ def setup(model, rows, picks, tab):
                 zs[f] = dict(np.load(f))
             books.append(X.book_at(zs[f], int(r['_gidx'][s])))
 
-    def batch(rep=1):
-        idx = np.repeat(np.arange(len(picks)), rep)
+    def batch(rep=1, sel=None):
+        idx = np.repeat(np.arange(len(picks)) if sel is None else np.asarray(sel), rep)
         st = [torch.cat([states[i][li] for i in idx]) for li in range(len(model.blocks))]
         sb = L.SlowBank(len(idx))
         sb.fv = torch.cat([sbs[i].fv for i in idx]); sb.p = torch.cat([sbs[i].p for i in idx])
