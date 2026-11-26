@@ -24,7 +24,8 @@ from almagest.models import lmm as L
 torch.set_num_threads(4)
 WIN0, STRIDE, CH = 20480, 2048, 256     # 32 windows/day -> last window ends at 20480+31*2048+8910 < T_DAY
 N_EXEC, N_REL_EXEC, N_SIL = 100, 10, 100
-NBLK = N_REL_EXEC + N_SIL
+NBLK = N_EXEC + N_SIL          # 200: V arms = 100-child build-up + 100 silent blocks (R100); R arms use first 110 (R10)
+TRUTH_REPLICAS = 8             # truth is cheap (numba snapshots): 8 rollout seeds per window
 
 
 def windows(n_days, wpd, base):
@@ -37,20 +38,24 @@ def windows(n_days, wpd, base):
     return days, sidx
 
 
-def roll_seeds(days, sidx):
-    return S.ROLL_OFFSET + days * 1000 + (sidx - WIN0) // STRIDE
+def roll_seeds(days, sidx, replica=0):
+    return np.array([S.roll_seed(int(d), int((s - WIN0) // STRIDE), replica) for d, s in zip(days, sidx)], np.int64)
 
 
-def truth_campaign(par, days, sidx, gap, child, snaps):
-    nw = 20000 + sidx
-    rs = roll_seeds(days, sidx)
-    out = {}
+def truth_campaign(par, days, sidx, gap, child, snaps, replicas=TRUTH_REPLICAS):
+    D = np.repeat(days, replicas)
+    Sx = np.repeat(sidx, replicas)
+    rs = np.concatenate([[S.roll_seed(int(d), int((s - WIN0) // STRIDE), r) for r in range(replicas)]
+                         for d, s in zip(days, sidx)]).astype(np.int64)
+    nw = 20000 + Sx
+    out = {'days': D}
     for mode in (1, 2, 0):
         for side in (0, 1):
-            o, m0, h, _ = snaps.run(days, nw, rs, N_EXEC, gap, 0, side, child, mode)
+            tail = N_SIL if mode == 1 else 0
+            o, m0, h, _ = snaps.run(D, nw, rs, N_EXEC, gap, tail, side, child, mode)
             out[(mode, side)] = (o - m0[:, None], h)
     for side in (0, 1):
-        o, m0, _, _ = snaps.run(days, nw, rs, N_REL_EXEC, gap, N_SIL, side, child, 1)
+        o, m0, _, _ = snaps.run(D, nw, rs, N_REL_EXEC, gap, N_SIL, side, child, 1)
         out[('R', side)] = (o - m0[:, None], None)
     return out
 
@@ -209,6 +214,12 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
 
 
 def analyze(Ivis, Iblind, Irel, V, sig, did, child, free_drift, gamma, H, ref):
+    """Ivis: (n, N_EXEC + N_SIL) visible build-up + silent tail; Irel: (n, >=110) R10 arm."""
+    I100 = Ivis / sig[:, None]
+    ep100, slope100 = M.relaxation(I100.mean(0), N_EXEC)
+    ep100_ci = list(M.relax_bootstrap(I100, did, N_EXEC, B=200))
+    Ivis = Ivis[:, :N_EXEC]
+    Irel = Irel[:, :N_REL_EXEC + N_SIL]
     q = (np.arange(1, N_EXEC + 1)[None, :] * child) / V[:, None]
     q_edge = float(np.median(q[:, -1]))
     Iv = Ivis / sig[:, None]
@@ -225,7 +236,8 @@ def analyze(Ivis, Iblind, Irel, V, sig, did, child, free_drift, gamma, H, ref):
     r = dict(delta=d, Y=Y, q_edge=q_edge, delta_ci95=list(np.nanquantile(bd, [0.025, 0.975])), delta_ci90=list(ci90),
              tost=tost, Y_ci95=list(np.nanquantile(bY, [0.025, 0.975])), identified=bool(ok), delta_l2=d_l2,
              vb=vb, vb_ci95=list(vb_ci), ep=ep, ep_ci95=ep_ci, slope=slope, drift=free_drift, gamma=gamma, H=H,
-             curve=list(Iv.mean(0)), relax_curve=list(Ir))
+             curve=list(Iv.mean(0)), relax_curve=list(Ir), ep100=ep100, ep100_ci95=ep100_ci, slope100=slope100,
+             relax100_curve=list(I100.mean(0)))
     r['ladder'] = {k: (None if v is None else bool(v)) for k, v in M.ladder(ref, r).items()}
     return r
 
@@ -244,7 +256,7 @@ def git_rev():
 if __name__ == '__main__':
     mpath, out_path, split = sys.argv[1], sys.argv[2], sys.argv[3]
     n_days = int(sys.argv[4]) if len(sys.argv) > 4 else 32
-    wpd = int(sys.argv[5]) if len(sys.argv) > 5 else 32
+    wpd = int(sys.argv[5]) if len(sys.argv) > 5 else 30   # 30 windows: last window + 200-block horizon stays inside T_DAY
     assert split in ('dev', 'test')
     assert not os.path.exists(out_path), f'refusing to overwrite {out_path}'
     base = S.DEV_BASE if split == 'dev' else S.TEST_BASE
@@ -278,6 +290,9 @@ if __name__ == '__main__':
     Tb = 0.5 * (tr[(2, 0)][0] - tr[(2, 1)][0])
     Tr = 0.5 * (tr[('R', 0)][0] - tr[('R', 1)][0])
     t_drift = float(tr[(0, 0)][0][:, N_EXEC - 1].mean())
+    tdid = tr['days'] - days.min()
+    tV = np.array([stats[d]['V'] for d in tdid], float)
+    tsig = np.array([stats[d]['sigma'] for d in tdid], float)
     hor = gap * NBLK
     tm, ts = [], []
     for d, s0 in zip(days, sidx):
@@ -287,11 +302,13 @@ if __name__ == '__main__':
         ts.append(np.where(s['tgt'][s0:s0 + hor, 0] == 2, np.where(s['tgt'][s0:s0 + hor, 1] == 0, 1, -1), 0))
     tg, tH = M.pooled_gamma(ts), M.pooled_hurst(tm)
     ref = dict(gamma=tg, H=tH)
-    truth = analyze(Tv, Tb, Tr, V, sig, did, child, t_drift, tg, tH, ref)
+    truth = analyze(Tv, Tb, Tr, tV, tsig, tdid, child, t_drift, tg, tH, ref)
+    truth['n_rollouts'] = int(len(tdid))
     truth['blind_invariant'] = truth_blind_ok
     print('truth', {k: v for k, v in truth.items() if k not in ('curve', 'relax_curve')}, f'{time.time()-t0:.0f}s',
           flush=True)
     rec = dict(split=split, base=base, days=sorted(set(days.tolist())), n_days=n_days, wpd=wpd, stride=STRIDE,
+               truth_replicas=TRUTH_REPLICAS, nblk=NBLK,
                win0=WIN0, gap=gap, child=child, phi_world=phi, code_rev=rev, burn=W.BURN, truth=truth, theta=theta)
     if ck is not None:
         model, reset = make_model(ck['arm'])
@@ -301,12 +318,12 @@ if __name__ == '__main__':
         blind_inv = bool(np.all(res['hB+'] == res['hF']) and np.all(res['hB-'] == res['hF']))
         vis_differs = bool(np.mean(res['hV+'] != res['hF']) > 0.5)
         assert blind_inv and vis_differs, (blind_inv, vis_differs)
-        Iv = 0.5 * (res['V+'][:, :N_EXEC] - res['V-'][:, :N_EXEC])
+        Iv = 0.5 * (res['V+'] - res['V-'])
         Ib = 0.5 * (res['B+'][:, :N_EXEC] - res['B-'][:, :N_EXEC])
         Ir = 0.5 * (res['R+'] - res['R-'])
         drift = float(res['F'][:, N_EXEC - 1].mean())
         mres = analyze(Iv, Ib, Ir, V, sig, did, child, drift, M.pooled_gamma(fsign), M.pooled_hurst(fmid), ref)
-        mres.update(blind_invariant=blind_inv, visible_differs=vis_differs, phi_model=res['phi_model'],
+        mres.update(n_rollouts=int(len(did)), blind_invariant=blind_inv, visible_differs=vis_differs, phi_model=res['phi_model'],
                     participation_model=1.0 / (1.0 + gap * res['phi_model']))
         print('model', ck['arm'], {k: v for k, v in mres.items() if k not in ('curve', 'relax_curve')},
               f'{time.time()-t0:.0f}s', flush=True)
