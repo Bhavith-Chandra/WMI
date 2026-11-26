@@ -78,11 +78,13 @@ class DiagRec(nn.Module):
 
 class LMM(nn.Module):
     def __init__(self, d=64, h=128, layers=2, mode='learned', slowbank=False, nsize=NSIZE, ndt=0, size_all=False,
-                 src=False, cond_heads=False, tagch=False):
+                 src=False, cond_heads=False, tagch=False, ndom=0):
         """v1 (synthetic): nsize=4, ndt=0, size only for markets. v2 (real): nsize=12 for all types, ndt=11 (Dt head)."""
         super().__init__()
         self.cfg = dict(d=d, h=h, layers=layers, mode=mode, slowbank=slowbank, nsize=nsize, ndt=ndt, size_all=size_all,
-                        src=src, cond_heads=cond_heads, tagch=tagch)
+                        src=src, cond_heads=cond_heads, tagch=tagch, ndom=ndom)
+        # v2 token columns: 0 typ, 1 side, 2 lvl, 3 size bucket, 4 dt bucket, [5 src], [6 domain]
+        self.ndom = ndom
         self.tagch = tagch
         # cond_heads: SEPARATE output weights per event type (side) and per (type, side) (level, size). Without it the
         # state->side mapping is shared by limits/cancels/markets (only the bias differs), so market-order sides cannot
@@ -96,6 +98,7 @@ class LMM(nn.Module):
         self.e_size = nn.Embedding(nsize, d)
         self.e_dt = nn.Embedding(ndt, d) if ndt else None
         self.e_src = nn.Embedding(2, d) if src else None
+        self.e_dom = nn.Embedding(ndom, d) if ndom else None
         nsb = (2 + (1 if tagch else 0)) * len(SB_TAUS) if slowbank else 0
         # src models get a SEPARATE slow-bank channel of OWN/exogenous (tagged) signed volume: the market reacts to
         # how much of recent flow was exogenous; mixing it into the total-flow channel hides that (2026-11-26).
@@ -121,9 +124,13 @@ class LMM(nn.Module):
         return sum(p.numel() for p in self.parameters())
 
     def embed(self, ev, feat, dmid, sb):
-        if self.ndt:   # v2 token (typ, side, lvl, size_bucket, dt_bucket)
+        if self.ndt:   # v2 token (typ, side, lvl, size_bucket, dt_bucket, [src], [domain])
             e = (self.e_typ(ev[..., 0]) + self.e_side(ev[..., 1]) + self.e_lvl(ev[..., 2]) + self.e_size(ev[..., 3])
                  + self.e_dt(ev[..., 4]))
+            if self.src and ev.shape[-1] > 5:
+                e = e + self.e_src(ev[..., 5])
+            if self.ndom and ev.shape[-1] > 6:
+                e = e + self.e_dom(ev[..., 6])
         else:
             e = self.e_typ(ev[..., 0]) + self.e_side(ev[..., 1]) + self.e_lvl(ev[..., 2]) + self.e_size(ev[..., 3] - 1)
             if self.src and ev.shape[-1] > 4:
@@ -189,6 +196,9 @@ class LMM(nn.Module):
             zl = z + self.c_side(typ) + self.c_lvl(typ * 2 + side)
             ld = self.h_dt(zl + self.c_size(size))
             nll = nll + F.cross_entropy(ld.reshape(-1, self.ndt), tgt[..., 4].reshape(-1), reduction='none')
+            if self.src and tgt.shape[-1] > 5:     # own/exogenous orders are inputs, never targets
+                w = (tgt[..., 5] == 0).reshape(-1).float()
+                return (nll * w).sum() / w.sum().clamp(min=1)
             return nll.mean()
         m_z = (typ == 2).reshape(-1).float()
         nll = nll + m_z * F.cross_entropy(lz.reshape(-1, NSIZE), (size - 1).reshape(-1), reduction='none')

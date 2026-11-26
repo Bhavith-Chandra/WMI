@@ -20,8 +20,12 @@ WIN = 256
 FIELDS = ('typ', 'side', 'lvl', 'size', 'dt')
 
 
-def arm_model(arm, cond=True):
+def arm_model(arm, cond=True, cfg=None):
+    if cfg is not None:
+        return L.LMM(**cfg), (512 if arm == 'short' else None)
     kw = dict(nsize=T.NSB, ndt=T.NDT, size_all=True, cond_heads=cond)   # type-conditional heads (see lmm.cond_heads)
+    if arm == 'unified':   # one model for synthetic-causal (domain 0) + real (domain 1) data
+        return L.LMM(mode='modebank', slowbank=True, src=True, tagch=True, ndom=2, **kw), None
     if arm == 'short':
         return L.LMM(mode='learned', **kw), 512
     if arm == 'modebank':
@@ -31,18 +35,25 @@ def arm_model(arm, cond=True):
     raise ValueError(arm)
 
 
-def inputs_from_tokens(ev, feat, mids, cm):
-    """Model inputs aligned exactly as in synthetic training: input t = (event t-1, book before t, dmid t, sb t)."""
-    prev = np.vstack([[0, 0, 1, 0, 0], ev[:-1]])
+def inputs_from_tokens(ev, feat, mids, cm, unified=False, domain=1):
+    """Model inputs aligned exactly as in synthetic training: input t = (event t-1, book before t, dmid t, sb t).
+    unified=True: 7-column tokens (src, domain) and the own-order (tagged) slow-bank channel."""
+    if unified and ev.shape[1] == 5:     # real data: no own orders
+        ev = np.concatenate([ev, np.zeros((len(ev), 1), np.int64), np.full((len(ev), 1), domain, np.int64)], 1)
+    first = [0, 0, 1, 0, 0] + ([0, domain] if unified else [])
+    prev = np.vstack([first, ev[:-1]])
     dmid = np.concatenate([[0.0], np.diff(mids)]).astype(np.float32)
     lots = np.power(2.0, prev[:, 3])
     sv = np.where(prev[:, 0] == 2, np.where(prev[:, 1] == 0, 1, -1) * lots, 0.0)
     fv, dev = L.slowbank_offline(sv, dmid.astype(float))
     sb = L.sb_scale(torch.tensor(fv, dtype=torch.float32), torch.tensor(dev, dtype=torch.float32)).numpy()
+    if unified:
+        st = np.where(prev[:, 5] == 1, sv, 0.0)
+        sb = np.concatenate([sb, L.tag_offline(st).astype(np.float32)], 1)
     return dict(prev=prev, feat=feat.astype(np.float32), dmid=dmid, sb=sb, tgt=ev, cm=cm)
 
 
-def load_rows(cache_dir, hours):
+def load_rows(cache_dir, hours, unified=False):
     hours = set(hours)
     rows = []
     for f in sorted(glob.glob(os.path.join(cache_dir, '*.npz'))):
@@ -56,7 +67,7 @@ def load_rows(cache_dir, hours):
         for run in np.split(idx, breaks + 1):
             if len(run) < WIN * 2:
                 continue
-            d = inputs_from_tokens(z['ev'][run], z['feat'][run], z['mids'][run], z['cm'][run])
+            d = inputs_from_tokens(z['ev'][run], z['feat'][run], z['mids'][run], z['cm'][run], unified=unified)
             for s in range(0, len(run) - WIN + 1, CHUNK):
                 e = min(len(run), s + CHUNK)
                 n = ((e - s) // WIN) * WIN
@@ -153,11 +164,12 @@ def b1(cache_dir, split, model_path, out_path, which):
     fit_rows = load_rows(cache_dir, split['fit'])
     ev_rows = load_rows(cache_dir, split[which])
     ck = torch.load(model_path, weights_only=False)
-    model, reset = arm_model(ck['arm'], cond=ck.get('cfg', {}).get('cond_heads', False))
+    model, reset = arm_model(ck['arm'], cfg=ck.get('cfg'))
     model.load_state_dict(ck['state']); model.eval()
+    m_rows = load_rows(cache_dir, split[which], unified=(ck['arm'] == 'unified'))   # same events, model's format
     res = {}
     with torch.no_grad():
-        per = [run(model, reset, {k: torch.tensor(r[k][None]) for k in r}, parts=True).numpy() for r in ev_rows]
+        per = [run(model, reset, {k: torch.tensor(r[k][None]) for k in r}, parts=True).numpy() for r in m_rows]
     # align: model parts cover WIN-multiples from row start
     base = {}
     for name, cond in (('marginal', False), ('table_ctx', True)):
@@ -186,9 +198,37 @@ def b1(cache_dir, split, model_path, out_path, which):
     print(json.dumps({k: v for k, v in res.items() if k != 'split'}, default=float)[:1500])
 
 
+def world_rows(theta_path, K, n_streams=8, n=120_000):
+    """Synthetic causal streams (domain 0) in v2 format; seeds from the TRAIN range only."""
+    from almagest import splits as S
+    from almagest.data.world_v2 import world_v2_stream
+    from almagest.experiments.e1_calibrate_world import make
+    par = make(json.load(open(theta_path))['theta'])
+    rows = []
+    for i in range(n_streams):
+        o = world_v2_stream(par, S.TRAIN_BASE + 100 + i, n, K)
+        d = inputs_from_tokens(o['ev'], o['feat'], o['mids'], o['cm'], unified=True, domain=0)
+        for s0 in range(0, n - WIN + 1, CHUNK):
+            m = ((min(n, s0 + CHUNK) - s0) // WIN) * WIN
+            rows.append({k: v[s0:s0 + m] for k, v in d.items()})
+    return rows
+
+
 def train(cache_dir, split, arm, out, passes=4):
-    rows = load_rows(cache_dir, split['fit'])
-    vrows = load_rows(cache_dir, split['select'])
+    U = arm == 'unified'
+    rows = load_rows(cache_dir, split['fit'], unified=U)
+    vrows = load_rows(cache_dir, split['select'], unified=U)
+    K = None
+    if U:
+        from almagest.data.world_v2 import depth_scale, world_v2_stream
+        from almagest.experiments.e1_calibrate_world import make
+        from almagest import splits as S
+        wp = os.environ['WORLD_THETA']
+        probe = world_v2_stream(make(json.load(open(wp))['theta']), S.TRAIN_BASE + 99, 20000, 1.0)
+        K = depth_scale(np.concatenate([r['feat'] for r in rows]), probe['feat'])
+        wr = world_rows(wp, K, int(os.environ.get('WORLD_STREAMS', 8)))
+        print('unified: K', round(K, 2), 'world rows', len(wr), 'events', sum(len(r['tgt']) for r in wr), flush=True)
+        rows = rows + wr
     print('fit rows', len(rows), 'events', sum(len(r['tgt']) for r in rows), 'select events',
           sum(len(r['tgt']) for r in vrows), flush=True)
     torch.manual_seed(0)
@@ -205,7 +245,7 @@ def train(cache_dir, split, arm, out, passes=4):
         hist.append((float(trl), float(val)))
         print(f'pass {p} fit {trl:.4f} select {val:.4f} t {time.time()-t0:.0f}s', flush=True)
     torch.save(dict(state=model.state_dict(), cfg=model.cfg, arm=arm, hist=hist, split=split, version='v2-real',
-                    dev_only=bool(os.environ.get('DEV_ONLY'))), out)
+                    dev_only=bool(os.environ.get('DEV_ONLY')), K=K, world=os.environ.get('WORLD_THETA')), out)
 
 
 def smoke(raw_root):
