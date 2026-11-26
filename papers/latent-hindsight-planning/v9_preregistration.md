@@ -31,3 +31,20 @@ Mean miss over attempts 2-10 per episode, ratio to forward (paired bootstrap, 10
   (upper CI < 1); and attempt-10 miss of hindsight_anchor <= 2 x oracle in at least two of the three regimes.
 - G4 (control): fresh: anchor and hindsight_anchor are not better than forward (lower CI >= 1).
 - R0 (replication): v9 forward equals v6 forward exactly; otherwise v9 comparisons with stored results are void.
+
+## Outcome (3 seeds x 200 episodes; analysis rules from e41be85). All rules SUPPORTED.
+Mean miss over attempts 2-10, ratio to forward (95% paired bootstrap):
+| regime | gap_ilc (literal proposal) | residual | gap_mean | anchor (relabeling) | hindsight | hindsight + anchor | oracle |
+|---|---|---|---|---|---|---|---|
+| wind | 0.187 | 0.180 | 0.147 | 0.113 | 0.189 | **0.096** [0.089, 0.103] | 0.030 |
+| damping | 0.634 | 0.603 | 0.477 | 0.379 | 0.321 | **0.209** [0.195, 0.223] | 0.138 |
+| both | 0.414 | 0.391 | 0.321 | 0.269 | 0.238 | **0.169** [0.154, 0.184] | 0.125 |
+| fresh | 1.416 | 1.407 | 1.143 | 1.326 | 1.269 | 1.341 | 0.107 |
+Attempt-10 miss relative to the oracle: hindsight 6.0 / 2.2 / 1.8 (wind / damping / both); hindsight + anchor
+1.8 / 1.2 / 1.1. The v6 rule T4 (<= 2 x oracle), which hindsight failed, is met by hindsight + anchor in all three.
+
+Reading: the literal gap proposal (integral correction of the outcome-to-goal gap) behaves like residual reuse, as the
+theory predicts. Relabeling (anchor on the past outcome closest to the goal) beats it wherever the latent is
+multiplicative, and combining relabeling with latent inference is the best non-oracle planner in every persistent
+regime, cutting the remaining miss by 29-49% relative to hindsight alone. Everything is worse than forward when the
+latent is redrawn each attempt.

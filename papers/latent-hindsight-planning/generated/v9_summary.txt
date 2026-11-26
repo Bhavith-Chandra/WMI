@@ -1,0 +1,14 @@
+wind {'forward': (1.0, [1.0, 1.0]), 'hindsight': (0.189, [0.18, 0.198]), 'oracle': (0.03, [0.025, 0.036]), 'residual': (0.18, [0.172, 0.189]), 'anchor': (0.113, [0.107, 0.119]), 'gap_ilc': (0.187, [0.179, 0.197]), 'gap_mean': (0.147, [0.141, 0.155]), 'hindsight_anchor': (0.096, [0.089, 0.103])}
+   attempt-10 / oracle: {'hindsight': 5.99, 'hindsight_anchor': 1.84, 'anchor': 2.75, 'residual': 6.18, 'gap_ilc': 6.43}
+damping {'forward': (1.0, [1.0, 1.0]), 'hindsight': (0.321, [0.304, 0.338]), 'oracle': (0.138, [0.124, 0.154]), 'residual': (0.603, [0.585, 0.622]), 'anchor': (0.379, [0.368, 0.388]), 'gap_ilc': (0.634, [0.616, 0.652]), 'gap_mean': (0.477, [0.468, 0.485]), 'hindsight_anchor': (0.209, [0.195, 0.223])}
+   attempt-10 / oracle: {'hindsight': 2.17, 'hindsight_anchor': 1.15, 'anchor': 1.99, 'residual': 4.19, 'gap_ilc': 4.49}
+both {'forward': (1.0, [1.0, 1.0]), 'hindsight': (0.238, [0.224, 0.253]), 'oracle': (0.125, [0.11, 0.142]), 'residual': (0.391, [0.372, 0.411]), 'anchor': (0.269, [0.255, 0.283]), 'gap_ilc': (0.414, [0.393, 0.434]), 'gap_mean': (0.321, [0.307, 0.336]), 'hindsight_anchor': (0.169, [0.154, 0.184])}
+   attempt-10 / oracle: {'hindsight': 1.83, 'hindsight_anchor': 1.11, 'anchor': 1.65, 'residual': 3.06, 'gap_ilc': 3.34}
+fresh {'forward': (1.0, [1.0, 1.0]), 'hindsight': (1.269, [1.255, 1.284]), 'oracle': (0.107, [0.099, 0.114]), 'residual': (1.407, [1.389, 1.425]), 'anchor': (1.326, [1.308, 1.346]), 'gap_ilc': (1.416, [1.397, 1.435]), 'gap_mean': (1.143, [1.133, 1.152]), 'hindsight_anchor': (1.341, [1.321, 1.36])}
+   attempt-10 / oracle: {'hindsight': 9.85, 'hindsight_anchor': 11.29, 'anchor': 11.28, 'residual': 11.77, 'gap_ilc': 11.84}
+SUPPORTED R0 replication: v9 forward == v6 forward
+SUPPORTED G1 gap_ilc: wind < 0.5; loses to hindsight on damping/both; worse than forward on fresh
+SUPPORTED G2 anchor beats residual on damping and both
+SUPPORTED G3a hindsight_anchor beats hindsight on wind, damping, both
+SUPPORTED G3b attempt-10 hindsight_anchor <= 2 x oracle in >= 2 of 3 regimes
+SUPPORTED G4 fresh: anchor and hindsight_anchor not better than forward
