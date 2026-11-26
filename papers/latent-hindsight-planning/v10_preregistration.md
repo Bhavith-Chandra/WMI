@@ -43,3 +43,20 @@ oracle|oracle.
 - S5 (no harm without a latent): none: hindsight|post - hindsight|prior lower CI > -0.05.
 - S6 (control): fresh: hindsight|post - hindsight|prior NOT significantly > 0.
 Descriptive: route-choice agreement with the oracle high level; failures by route; time to goal.
+
+## Outcome of the v10 gate (oracle low level): FAILED on every rung -> v10 invalid as designed
+With the oracle low level, B succeeded where A failed in 0% of gate episodes at every rung (A-only 0.05-0.17). A
+controller that knows the latent executes the narrow route in any wind, so the route choice does not depend on the
+latent for it. Reported as a finding: redrawing subgoals can only matter when the low level cannot execute the risky
+subgoal.
+
+# v10b (amendment, committed before any v10b run)
+Same task, planners, calibration, test and hypotheses S1-S6, with three changes:
+1. The gate uses the FORWARD low level (gates may use forward and oracle results only; no hindsight result is used):
+   pass if forward A-only >= 0.15 and forward B-only >= 0.15. Oracle numbers are recorded for reference.
+2. Ladder: the eight v10 rungs idealised, then the same eight rungs with v8 deployment realism (unmodelled mass and
+   damping, sensor noise, 1-step actuation delay, measured compute delay: forward 2, hindsight 2, oracle 1 steps).
+   The first passing rung fixes (narrow, T, realism) for calibration and test.
+3. Seeds: gate schedule 99997, planner 97, world 99996; calibration world 420000+s; test world 700000+s
+   (all disjoint; tested). Results: fork_gate_v10b, fork_calib_v10b, fork_main_v10b.
+Belief and fork detection use the observed (noisy) state, never the true state.

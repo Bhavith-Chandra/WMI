@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from wmi.harness import load_results  # noqa: E402
 
 rng = np.random.default_rng(0)
-R = sorted(load_results("fork_main"), key=lambda r: r["provenance"]["config"]["seed"])
+R = sorted(load_results("fork_main_v10b"), key=lambda r: r["provenance"]["config"]["seed"])
 get = lambda reg, k, f="success": np.concatenate([np.array(r["metrics"]["regimes"][reg][k][f]) for r in R])
 
 

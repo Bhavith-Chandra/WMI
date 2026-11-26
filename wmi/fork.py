@@ -113,10 +113,18 @@ def choose(hl, E, feats_belief, z_true, models, b_penalty):
     return np.where(p["A"] >= p["B"] - b_penalty, "A", "B")
 
 
-def run_fork(ll, hl, Mu, Mc, sched, cfg, seed, models=None, b_penalty=0.05, n_traj=6):
-    """ll: Planner3 kind for the low level; hl: high-level rule. Returns outcomes, routes, belief and latent at the fork."""
-    T, E = sched.shape[:2]; K = cfg["K"]
-    env = PuckBatch(E); s = env.reset(np.tile(START, (E, 1)))
+def run_fork(ll, hl, Mu, Mc, sched, cfg, seed, models=None, b_penalty=0.05, n_traj=6, world=None):
+    """ll: Planner3 kind for the low level; hl: high-level rule. Returns outcomes, routes, belief and latent at the fork.
+    world: deployment realism as in hier.run_hier (mass, damp, obs_sd, act_delay, compute_steps, seed)."""
+    T, E = sched.shape[:2]; K = cfg["K"]; W = world or {}
+    env = PuckBatch(E)
+    if "mass" in W:
+        hier.apply_physics(env, W["mass"], W["damp"])
+    s = env.reset(np.tile(START, (E, 1)))
+    nrng = np.random.default_rng(W.get("seed", 0)); osd = np.array(list(W.get("obs_sd", (0.0, 0.0))))
+    sensor = lambda x: x + (np.r_[osd[0], osd[0], osd[1], osd[1]] * nrng.standard_normal(x.shape) if osd.any() else 0.0)
+    d_act, L = int(W.get("act_delay", 0)), int(W.get("compute_steps", 0))
+    queue = [np.zeros((E, 2))] * d_act; o = sensor(s); pending = None; plan, k0 = np.zeros((E, cfg["H"], 2)), 0
     pl = Planner3(ll, Mu, Mc, E, cfg, np.random.default_rng(seed))
     shadow = pl if ll == "hindsight_posterior" else Planner3("hindsight_posterior", Mu, Mc, E, cfg, np.random.default_rng(seed + 1))
     goal = np.tile(FORK, (E, 1)); sgs = [None] * E; idx = np.zeros(E, int)
@@ -127,19 +135,26 @@ def run_fork(ll, hl, Mu, Mc, sched, cfg, seed, models=None, b_penalty=0.05, n_tr
     for t in range(T):
         env.set_phi(sched[t]); pl.phi_true = sched[t]; shadow.phi_true = sched[t]
         # high-level decision at the fork (or at the latest after 3 s)
-        ready = (~decided) & ((np.linalg.norm(s[:, :2] - FORK, axis=1) < hier.REACH) | (t >= 60))
+        ready = (~decided) & ((np.linalg.norm(o[:, :2] - FORK, axis=1) < hier.REACH) | (t >= 60))
         if ready.any():
             fb[ready] = belief_features(shadow.post)[ready]; zf[ready] = sched[t][ready]; t_dec[ready] = t
             ch = choose(hl, E, fb, zf, models, b_penalty)
             for e in np.flatnonzero(ready):
                 routes[e] = ch[e]; sgs[e] = route_subgoals(ch[e]); goal[e] = sgs[e][0]; decided[e] = True
         if t % K == 0:
-            plan = hier.act_hazard(pl, s, goal, haz=hazard_t); k0 = t
-        a = np.clip(plan[:, t - k0], -1, 1)
-        s2 = env.step(a)
-        pl.observe(s, a, s2)
+            new = hier.act_hazard(pl, o, goal, haz=hazard_t)
+            if L == 0:
+                plan, k0 = new, t
+            else:
+                pending = (new, t + L)
+        if pending is not None and t == pending[1]:
+            plan, k0 = pending[0], t - L; pending = None
+        cmd = np.clip(plan[:, min(t - k0, plan.shape[1] - 1)], -1, 1)
+        queue.append(cmd); a = queue.pop(0)
+        s2 = env.step(a); o2 = sensor(s2)
+        pl.observe(o, cmd, o2)
         if shadow is not pl:
-            shadow.observe(s, a, s2)
+            shadow.observe(o, cmd, o2)
         live = ~done; hit = np.zeros(E, bool)
         for f in np.linspace(0, 1, 6)[1:]:
             hit |= hazard_np(s[:, :2] + f * (s2[:, :2] - s[:, :2]))
@@ -147,9 +162,9 @@ def run_fork(ll, hl, Mu, Mc, sched, cfg, seed, models=None, b_penalty=0.05, n_tr
         for e in np.flatnonzero(decided & ~done):
             if idx[e] == 2 and np.linalg.norm(s2[e, :2] - GOAL) < hier.GOAL_R:
                 success[e] = True; t_done[e] = t; done[e] = True
-            elif idx[e] < 2 and np.linalg.norm(s2[e, :2] - sgs[e][idx[e]]) < hier.REACH:
+            elif idx[e] < 2 and np.linalg.norm(o2[e, :2] - sgs[e][idx[e]]) < hier.REACH:
                 idx[e] += 1; goal[e] = sgs[e][idx[e]]
-        s = s2
+        s, o = s2, o2
         traj[t + 1] = np.where(done[:n_traj, None], traj[t], s[:n_traj, :2])
     return {"success": success.astype(int).tolist(), "fail": fail.astype(int).tolist(), "t_done": t_done.tolist(),
             "route": routes.tolist(), "t_decide": t_dec.tolist(), "belief": np.round(fb, 6).tolist(),
