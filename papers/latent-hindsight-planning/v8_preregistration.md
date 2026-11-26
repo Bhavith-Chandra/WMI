@@ -44,3 +44,21 @@ While verifying the simulator against closed-form dynamics for the browser demo,
 The mass-mismatch factor would have been a silent no-op. Fixed in `wmi/hier.apply_physics`; `tests/test_physics.py`
 now checks the simulator against the closed form with perturbed mass and damping (error < 1e-9).
 No experiment so far used a mass change (the throw experiment changes damping only, which takes effect).
+
+## Outcome (sealed seeds 100, 101, 102 x 50 episodes; all runs from clean trees; rules from 67738b9). All SUPPORTED.
+Measured compute delay (1 thread, p95, 50 ms steps): 2 steps for every planner except the oracle (1).
+| condition | hier fwd | + residual | + online SGD | + hindsight | + hindsight (particles) | oracle |
+|---|---|---|---|---|---|---|
+| idealised v7, gain + wind | 0.547 | 0.773 | 0.640 | 0.860 | 0.833 | 0.893 |
+| deployment, gain + wind | 0.053 | 0.000 | 0.153 | 0.413 (+0.360 [0.28, 0.44]) | 0.373 (+0.320) | 0.720 |
+| deployment, no latent | 0.980 | 0.000 | 1.000 | 0.993 | 0.913 (-0.067 [-0.12, -0.02]) | 0.980 |
+| deployment, fresh latent | 0.027 | 0.000 | 0.033 | 0.033 | 0.060 | 0.760 |
+One factor at a time (gain + wind): mismatch only 0.513 / 0.840 / 0.867 (fwd / hindsight / oracle); noise only
+0.513 / 0.773 / 0.840; actuation + compute delay only 0.067 / 0.460 / 0.820.
+R1-R6 supported (R6: gain 0.360 under deployment vs 0.313 idealised).
+
+Reading: the absolute success of every planner falls under realism, mostly because of delay; forward planning nearly
+collapses (0.053), hindsight keeps 0.413, so its gain survives and is slightly larger, but it recovers only about half
+of the oracle's headroom (vs 90% idealised). Last-residual reuse fails completely under sensor noise, including with no
+latent (Theorem 4). The particle posterior costs 6.7 points of success when there is no latent.
+Also: v9 seed-2 rerun on a clean tree (commit 16d9882) is bit-identical to the run flagged dirty.

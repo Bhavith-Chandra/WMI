@@ -54,3 +54,4 @@ latent is redrawn each attempt.
   8eec7c3). `git diff 8eec7c3 HEAD -- wmi/ scripts/run_throw.py` is empty and its forward results equal v6 exactly, so
   the dirty file was not code the run used; to close the question, seed 2 is rerun on a clean tree after v8 and must be
   bit-identical.
+- The dirty-flagged seed-2 file was moved to results/_superseded/ and replaced by the bit-identical clean rerun (results/throw_v9/clean_rerun_seed2.json, provenance experiment _v9_rerun_check).

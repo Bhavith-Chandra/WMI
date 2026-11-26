@@ -1,0 +1,12 @@
+\begin{tabular}{lccc}
+\toprule
+Planner & decision p50 (ms) & decision p95 (ms) & belief update p95 (ms) \\
+\midrule
+forward & 48 & 51 & 0.06 \\
+residual reuse & 49 & 52 & 0.35 \\
+online SGD & 48 & 57 & 0.85 \\
+hindsight (posterior) & 73 & 79 & 0.68 \\
+hindsight (particles) & 54 & 57 & 1.37 \\
+oracle & 48 & 49 & 0.05 \\
+\bottomrule
+\end{tabular}

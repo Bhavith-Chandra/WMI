@@ -1,0 +1,36 @@
+v8 sealed seeds [100, 101, 102], compute_steps {'forward': 2, 'hindsight_latent_pf_adapt': 2, 'hindsight_posterior': 2, 'online_sgd': 2, 'oracle_latent': 1, 'residual': 2}
+deploy/both {'hier:forward': 0.053, 'hier:hindsight_latent_pf_adapt': 0.373, 'hier:hindsight_posterior': 0.413, 'hier:online_sgd': 0.153, 'hier:oracle_latent': 0.72, 'hier:residual': 0.0}
+   hier:hindsight_latent_pf_adapt - forward = +0.320 [0.24, 0.4]
+   hier:hindsight_posterior - forward = +0.360 [0.28, 0.44]
+   hier:online_sgd - forward = +0.100 [0.053, 0.147]
+   hier:oracle_latent - forward = +0.667 [0.593, 0.74]
+   hier:residual - forward = -0.053 [-0.093, -0.02]
+deploy/fresh {'hier:forward': 0.027, 'hier:hindsight_latent_pf_adapt': 0.06, 'hier:hindsight_posterior': 0.033, 'hier:online_sgd': 0.033, 'hier:oracle_latent': 0.76, 'hier:residual': 0.0}
+   hier:hindsight_latent_pf_adapt - forward = +0.033 [-0.013, 0.08]
+   hier:hindsight_posterior - forward = +0.007 [-0.013, 0.033]
+   hier:online_sgd - forward = +0.007 [-0.013, 0.027]
+   hier:oracle_latent - forward = +0.733 [0.66, 0.8]
+   hier:residual - forward = -0.027 [-0.053, -0.007]
+deploy/none {'hier:forward': 0.98, 'hier:hindsight_latent_pf_adapt': 0.913, 'hier:hindsight_posterior': 0.993, 'hier:online_sgd': 1.0, 'hier:oracle_latent': 0.98, 'hier:residual': 0.0}
+   hier:hindsight_latent_pf_adapt - forward = -0.067 [-0.12, -0.02]
+   hier:hindsight_posterior - forward = +0.013 [-0.013, 0.04]
+   hier:online_sgd - forward = +0.020 [0.0, 0.047]
+   hier:oracle_latent - forward = +0.000 [-0.033, 0.033]
+   hier:residual - forward = -0.980 [-1.0, -0.953]
+only_delay/both {'hier:forward': 0.067, 'hier:hindsight_posterior': 0.46, 'hier:oracle_latent': 0.82}
+   hier:hindsight_posterior - forward = +0.393 [0.307, 0.48]
+   hier:oracle_latent - forward = +0.753 [0.687, 0.82]
+only_mismatch/both {'hier:forward': 0.513, 'hier:hindsight_posterior': 0.84, 'hier:oracle_latent': 0.867}
+   hier:hindsight_posterior - forward = +0.327 [0.253, 0.407]
+   hier:oracle_latent - forward = +0.353 [0.28, 0.433]
+only_noise/both {'hier:forward': 0.513, 'hier:hindsight_posterior': 0.773, 'hier:oracle_latent': 0.84}
+   hier:hindsight_posterior - forward = +0.260 [0.193, 0.333]
+   hier:oracle_latent - forward = +0.327 [0.253, 0.407]
+latency (1 thread) {'forward': (51.3, 0.06), 'hindsight_latent_pf_adapt': (56.6, 1.37), 'hindsight_posterior': (78.7, 0.68), 'online_sgd': (57.1, 0.85), 'oracle_latent': (49.4, 0.05), 'residual': (52.1, 0.35)}
+gain v7 0.313, gain v8 0.360
+SUPPORTED R1 deploy/both: posterior > forward
+SUPPORTED R2 deploy/both: particles (with compute delay) > forward
+SUPPORTED R3 deploy/none: posterior - forward lower CI > -0.05
+SUPPORTED R4 deploy/fresh: posterior not significantly > forward
+SUPPORTED R5 posterior p95 act <= 500 ms and observe <= 50 ms
+SUPPORTED R6 v8 gain >= 0.5 x v7 gain
