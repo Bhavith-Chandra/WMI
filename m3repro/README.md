@@ -48,6 +48,8 @@ Every checkpoint's `train_args` has `val_split: "test"`, both the tokenizer and 
 `best.pt` is chosen by loss on the test split (Dec 2025), the same period the paper calls "strictly
 held-out". The released `base` checkpoint is from step 19,000 of 40,000, picked as best on that split.
 The scaling-law "validation loss" is therefore test loss. The paper does not disclose this.
+The single real evaluation window we have (example, split `test`, 2025-12-01) also comes from this
+**selection split**, so every likelihood number on it is in-sample with respect to checkpoint selection.
 
 ### 4. Likelihood on the held-out example matches the reported val loss (✓)
 `results/nll.json`. Mean NLL over 512 tokens is 7.22 / 6.88 / 6.73 (tiny / small / base). That is above the

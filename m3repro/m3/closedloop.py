@@ -125,7 +125,7 @@ class ClosedLoop:
                 print(f"[cl] steps={steps} sim_t min/med/max={el.min():.1f}/{np.median(el):.1f}/{el.max():.1f}s "
                       f"done={(el >= horizon_s).sum()}/{self.B} wall={time.time() - self._w0:.0f}s", flush=True)
             # decode the block in context (last <=1024 codes, training layout)
-            W = min(1024, len(self.codes[0]))
+            W = min(1024, min(len(c) for c in self.codes))  # uniform tail window valid for every row
             win = torch.tensor([c[-W:] for c in self.codes], dtype=torch.long)
             fd = self.tok.decode(win).numpy()[:, -self.block:]
             inject_rows = {}

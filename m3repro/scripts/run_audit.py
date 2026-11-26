@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from m3.model import M3, VQTokenizer, n_params  # noqa: E402
 from m3.engine import Book, decode_to_orders, replay  # noqa: E402
+from m3.provenance import stamp  # noqa: E402
 
 REL = Path("/home/user/ext/m3-market-microstructure")
 OUT = ROOT / "results"
@@ -33,7 +34,16 @@ def load_example():
     return codes, torch.tensor(c["lob"]).float(), torch.tensor(c["initial_state_float"]).float()
 
 
+USED = {"scaling": ["tiny", "small", "base"], "nll": ["tiny", "small", "base", "example_prompt_ids", "example_conditioning"],
+        "tokenizer": ["tokenizer", "example_prompt_ids", "example_conditioning"],
+        "rollout": ["tokenizer", "tiny", "small", "base", "example_prompt_ids", "example_conditioning"],
+        "decode_ablation": ["tokenizer", "example_prompt_ids", "example_conditioning"]}
+
+
 def dump(name, obj):
+    if not isinstance(obj, dict):
+        obj = {"rows": obj}
+    obj["_provenance"] = stamp(USED[name])
     p = OUT / f"{name}.json"
     p.write_text(json.dumps(obj, indent=2, default=float))
     print(f"-> {p}")

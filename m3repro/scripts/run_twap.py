@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]; sys.path.insert(0, str(ROOT))
 from m3.model import M3, VQTokenizer
 from m3.engine import Book, decode_to_orders, replay
 from m3.closedloop import ClosedLoop
+from m3.provenance import stamp
 REL = Path("/home/user/ext/m3-market-microstructure"); OUT = ROOT / "results"
 torch.set_num_threads(4)
 ap = argparse.ArgumentParser()
@@ -75,6 +76,7 @@ for side in ("buy", "sell"):
         res[f"fit_{side}"] = dict(beta=float(b), r2=float(1 - ss / st_), n_points=int(ok.sum()), n_excluded_nonpositive=int((~ok).sum()))
     else:
         res[f"fit_{side}"] = dict(beta=None, n_points=int(ok.sum()), note="<3 positive-impact bins")
+res["_provenance"] = stamp(["tokenizer", a.model, "example_prompt_ids", "example_conditioning"])
 res["paths"] = [dict(cell=r[0], side=int(r[1]), Q=int(r[2]), rep=int(r[3]), reached=bool(reached[i]),
                      logret=(None if not np.isfinite(lr[i]) else float(lr[i])),
                      exec_qty=int(sum(f for _, _, f in sim.injected[i]))) for i, r in enumerate(rows)]
