@@ -74,8 +74,10 @@ class LiveReal:
     def _new_session(self):
         self.tok = T.StreamTokenizer(self.product)
         self.state = self.model.init_state(1)
-        self.sb = L.SlowBank(1)
-        self.prev = torch.tensor([[0, 0, 1, 0, 0]])
+        self.U = bool(getattr(self.model, 'ndom', 0))          # unified foundation model (src + domain columns)
+        self.TAG = bool(getattr(self.model, 'tagch', False))
+        self.sb = L.SlowBank(1, tag=self.TAG)
+        self.prev = torch.tensor([[0, 0, 1, 0, 0] + ([0, 1] if self.U else [])])
         self.last_mid = None
         self.since = 0
         self.n = 0
@@ -107,7 +109,7 @@ class LiveReal:
             t0 = time.perf_counter()
             dmid = 0.0 if self.last_mid is None else mid - self.last_mid
             self.last_mid = mid
-            evt = torch.tensor([ev])
+            evt = torch.tensor([list(ev) + ([0, 1] if self.U else [])])   # live market events: src 0, domain real
             pv = self.prev
             lots = 2.0 ** float(pv[0, 3])
             sv = (1.0 if pv[0, 1] == 0 else -1.0) * lots if pv[0, 0] == 2 else 0.0
@@ -179,8 +181,9 @@ class LiveReal:
         feat = np.zeros((B, 21)); cmb = np.zeros((B, W.D), np.int64); cma = np.zeros_like(cmb)
         E.observe(vb, va, vbb, vba, feat, cmb, cma)
         state = [h.repeat(B, 1) for h in self.state]
-        sb = L.SlowBank(B)
+        sb = L.SlowBank(B, tag=self.TAG)
         sb.fv = self.sb.fv.repeat(B, 1); sb.p = self.sb.p.repeat(B, 1); sb.ep = self.sb.ep.repeat(B, 1)
+        sb.ft = self.sb.ft.repeat(B, 1)
         prev = self.prev.repeat(B, 1)
         pfeat = torch.tensor(feat, dtype=torch.float32)
         pdmid = torch.zeros(B)
@@ -212,10 +215,12 @@ class LiveReal:
             pdmid = torch.where(mm, d, pdmid)
             lots = torch.pow(2.0, ev[:, 3].float())
             sv = torch.where(ev[:, 0] == 2, torch.where(ev[:, 1] == 0, 1.0, -1.0) * lots, torch.zeros(B))
-            f0, p0, e0 = sb.fv.clone(), sb.p.clone(), sb.ep.clone()
-            sb.update(sv, d)
+            stag = torch.where(ev[:, 5] == 1, sv, torch.zeros(B)) if (self.TAG and ev.shape[-1] > 5) else None
+            f0, p0, e0, t0_ = sb.fv.clone(), sb.p.clone(), sb.ep.clone(), sb.ft.clone()
+            sb.update(sv, d, stag)
             k = mm.unsqueeze(-1)
             sb.fv = torch.where(k, sb.fv, f0); sb.p = torch.where(k, sb.p, p0); sb.ep = torch.where(k, sb.ep, e0)
+            sb.ft = torch.where(k, sb.ft, t0_)
 
         csb = T.size_bucket(child_lots)
         for blk in range(nblk):
@@ -226,7 +231,7 @@ class LiveReal:
                 old = 0.5 * (vbb + vba).astype(float)
                 E.inject(vb, va, rb, ra, vbb, vba, rbb, rba, np.full(B, side, np.int64), int(child_lots),
                          vis.astype(np.int64), inj.astype(np.int64))
-                set_pending(vis, torch.tensor([[2, side, 0, csb, 0]]).repeat(B, 1), old)
+                set_pending(vis, torch.tensor([[2, side, 0, csb, 0] + ([1, 1] if self.U else [])]).repeat(B, 1), old)  # OUR order: src 1
             for _ in range(gap):
                 z = consume(np.ones(B, bool))
                 u = torch.rand(paths, 5, generator=g)[torch.tensor(path)]
@@ -240,6 +245,8 @@ class LiveReal:
                 dtb = L.inv_cdf(m.h_dt(zl + m.c_size(szb)), u[:, 4])
                 lvl = torch.where(typ == 2, torch.zeros_like(lvl), lvl)
                 ev = torch.stack([typ, sd, lvl, szb, dtb], 1)
+                if self.U:
+                    ev = torch.cat([ev, torch.zeros(B, 1, dtype=ev.dtype), torch.ones(B, 1, dtype=ev.dtype)], 1)
                 evn = ev.numpy().astype(np.int64)
                 lots = np.power(2, evn[:, 3]).astype(np.int64)
                 old = 0.5 * (vbb + vba).astype(float)
