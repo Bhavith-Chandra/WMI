@@ -64,5 +64,39 @@
     ]
   },
   "val_split": "test",
-  "clip_stats_file": "/home/dataset-assist-0/vq_windows/hs300_csi500_openmid/feature_clip_q005_q995.json"
+  "clip_stats_file": "/home/dataset-assist-0/vq_windows/hs300_csi500_openmid/feature_clip_q005_q995.json",
+  "_provenance": {
+    "git_commit": "7180a570a28f219d6f54a9416cbf9b22dea22f3b",
+    "git_dirty": true,
+    "argv": [
+      "scripts/run_audit.py",
+      "tokenizer",
+      "--rollouts",
+      "32",
+      "--new",
+      "1024"
+    ],
+    "utc": "2026-11-26T02:02:40.900820+00:00",
+    "versions": {
+      "python": "3.13.18",
+      "torch": "2.15.0+cpu",
+      "transformers": "5.24.1",
+      "numpy": "2.5.3"
+    },
+    "inputs": {
+      "tokenizer": {
+        "path": "/home/user/ext/m3-market-microstructure/tokenizer/base/best.pt",
+        "sha256": "3431f077d0fcff6c4e4c7a0ecc4cbe1f9e88685e035aa7c1a5cdb908dfcdb41a"
+      },
+      "example_prompt_ids": {
+        "path": "/home/user/ext/m3-market-microstructure/examples/prompt_ids.npy",
+        "sha256": "5a91b39b5a65cff66638cb13ee86d6606057427761fc7afe378ac255abe2de37"
+      },
+      "example_conditioning": {
+        "path": "/home/user/ext/m3-market-microstructure/examples/conditioning.npz",
+        "sha256": "d522fbf84e0997ac2305bf050a1cea70c15331bd0126a33b838b8dc04b322060"
+      }
+    },
+    "data_scope": "ONLY the released held-out example window (split=test, 2025-12-01) is real market data; everything else is model-generated."
+  }
 }

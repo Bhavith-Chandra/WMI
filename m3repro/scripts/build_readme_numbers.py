@@ -142,10 +142,10 @@ def main():
     for name, fn in BLOCKS.items():
         lines = fn()
         body = "\n".join(lines)
-        pat = re.compile(rf"(<!-- AUTO:{name} -->\n).*?(\n<!-- /AUTO:{name} -->)", re.S)
+        pat = re.compile(rf"(<!-- AUTO:{name} -->\n).*?(<!-- /AUTO:{name} -->)", re.S)
         if not pat.search(txt):
             raise SystemExit(f"README is missing markers for block {name!r}")
-        txt = pat.sub(lambda m: m.group(1) + body + m.group(2), txt)
+        txt = pat.sub(lambda m: m.group(1) + body + "\n" + m.group(2), txt)
         lits += [ln for ln in lines if ln.strip() and not ln.startswith("|---")]
     (ROOT / "README.md").write_text(txt)
     (R / "readme_claims.json").write_text(json.dumps({"literals": lits, "_provenance": stamp([])}, indent=1))

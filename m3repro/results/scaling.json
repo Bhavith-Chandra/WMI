@@ -1,47 +1,83 @@
-[
-  {
-    "size": "tiny",
-    "N_M": 9.659776,
-    "step": 40000,
-    "max_steps": 40000,
-    "tokens_per_step": 786432,
-    "D_B": 31.45728,
-    "ckpt_val_loss": 6.227858809232712,
-    "eq2_pred": 6.387979793838742,
-    "rel_err_pct": 2.571043909483827,
-    "val_split": "test",
-    "train_split": "train",
-    "val_tokens": 131072.0,
-    "val_batches": 100.0
-  },
-  {
-    "size": "small",
-    "N_M": 24.989952,
-    "step": 40000,
-    "max_steps": 40000,
-    "tokens_per_step": 786432,
-    "D_B": 31.45728,
-    "ckpt_val_loss": 6.005080604553223,
-    "eq2_pred": 6.183259495033111,
-    "rel_err_pct": 2.967135700806209,
-    "val_split": "test",
-    "train_split": "train",
-    "val_tokens": 131072.0,
-    "val_batches": 100.0
-  },
-  {
-    "size": "base",
-    "N_M": 74.75456,
-    "step": 19000,
-    "max_steps": 40000,
-    "tokens_per_step": 786432,
-    "D_B": 14.942208,
-    "ckpt_val_loss": 5.886128697395325,
-    "eq2_pred": 6.112296473908298,
-    "rel_err_pct": 3.842385855631307,
-    "val_split": "test",
-    "train_split": "train",
-    "val_tokens": 98304.0,
-    "val_batches": 100.0
+{
+  "rows": [
+    {
+      "size": "tiny",
+      "N_M": 9.659776,
+      "step": 40000,
+      "max_steps": 40000,
+      "tokens_per_step": 786432,
+      "D_B": 31.45728,
+      "ckpt_val_loss": 6.227858809232712,
+      "eq2_pred": 6.387979793838742,
+      "rel_err_pct": 2.571043909483827,
+      "val_split": "test",
+      "train_split": "train",
+      "val_tokens": 131072.0,
+      "val_batches": 100.0
+    },
+    {
+      "size": "small",
+      "N_M": 24.989952,
+      "step": 40000,
+      "max_steps": 40000,
+      "tokens_per_step": 786432,
+      "D_B": 31.45728,
+      "ckpt_val_loss": 6.005080604553223,
+      "eq2_pred": 6.183259495033111,
+      "rel_err_pct": 2.967135700806209,
+      "val_split": "test",
+      "train_split": "train",
+      "val_tokens": 131072.0,
+      "val_batches": 100.0
+    },
+    {
+      "size": "base",
+      "N_M": 74.75456,
+      "step": 19000,
+      "max_steps": 40000,
+      "tokens_per_step": 786432,
+      "D_B": 14.942208,
+      "ckpt_val_loss": 5.886128697395325,
+      "eq2_pred": 6.112296473908298,
+      "rel_err_pct": 3.842385855631307,
+      "val_split": "test",
+      "train_split": "train",
+      "val_tokens": 98304.0,
+      "val_batches": 100.0
+    }
+  ],
+  "_provenance": {
+    "git_commit": "7180a570a28f219d6f54a9416cbf9b22dea22f3b",
+    "git_dirty": true,
+    "argv": [
+      "scripts/run_audit.py",
+      "scaling",
+      "--rollouts",
+      "32",
+      "--new",
+      "1024"
+    ],
+    "utc": "2026-11-26T02:02:16.008132+00:00",
+    "versions": {
+      "python": "3.13.18",
+      "torch": "2.15.0+cpu",
+      "transformers": "5.24.1",
+      "numpy": "2.5.3"
+    },
+    "inputs": {
+      "tiny": {
+        "path": "/home/user/ext/m3-market-microstructure/tiny/best.pt",
+        "sha256": "ba0b7c361f88a9c0248b7966d6e10ebcd6785341738fe133e1cd2a1c552d8934"
+      },
+      "small": {
+        "path": "/home/user/ext/m3-market-microstructure/small/best.pt",
+        "sha256": "0651859904c8210949d7224229fe7c2109f87df7ed6b425fafb8f85f7dd3ab81"
+      },
+      "base": {
+        "path": "/home/user/ext/m3-market-microstructure/base/best.pt",
+        "sha256": "0971fc75d58a78bd41f2e85dd832510ba5e0c11d5144ab9cea36f3192a76b5a1"
+      }
+    },
+    "data_scope": "ONLY the released held-out example window (split=test, 2025-12-01) is real market data; everything else is model-generated."
   }
-]
+}

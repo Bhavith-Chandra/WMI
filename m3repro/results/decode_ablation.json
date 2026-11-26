@@ -2,9 +2,9 @@
   "tiny": {
     "A_release_gen_only": {
       "end_ret_bp": {
-        "mean": -25.068722719342126,
-        "median": -24.55703788867666,
-        "frac_negative": 0.9375
+        "mean": -15.597802040677804,
+        "median": -15.086117210012384,
+        "frac_negative": 0.78125
       },
       "elapsed_s": {
         "mean": 15.091998745396268,
@@ -41,9 +41,9 @@
     },
     "B_context_aware": {
       "end_ret_bp": {
-        "mean": -14.577122856533556,
-        "median": -14.20975611482182,
-        "frac_negative": 0.9375
+        "mean": -5.106202177869212,
+        "median": -4.738835436157326,
+        "frac_negative": 0.65625
       },
       "elapsed_s": {
         "mean": 16.184446247913,
@@ -82,9 +82,9 @@
   "small": {
     "A_release_gen_only": {
       "end_ret_bp": {
-        "mean": -25.91853878087847,
-        "median": -25.41955294631081,
-        "frac_negative": 0.875
+        "mean": -16.44761810221407,
+        "median": -15.948632267646136,
+        "frac_negative": 0.71875
       },
       "elapsed_s": {
         "mean": 44.65667149094952,
@@ -121,9 +121,9 @@
     },
     "B_context_aware": {
       "end_ret_bp": {
-        "mean": -17.040994477748264,
-        "median": -16.364501304953986,
-        "frac_negative": 0.84375
+        "mean": -7.570073799083968,
+        "median": -6.893580626290166,
+        "frac_negative": 0.65625
       },
       "elapsed_s": {
         "mean": 43.93539811405935,
@@ -162,9 +162,9 @@
   "base": {
     "A_release_gen_only": {
       "end_ret_bp": {
-        "mean": -40.127714651700735,
-        "median": -49.17406276940499,
-        "frac_negative": 0.9375
+        "mean": -30.65679397303648,
+        "median": -39.70314209074047,
+        "frac_negative": 0.8125
       },
       "elapsed_s": {
         "mean": 62.605392729754385,
@@ -201,9 +201,9 @@
     },
     "B_context_aware": {
       "end_ret_bp": {
-        "mean": -27.922097548764498,
-        "median": -30.59762111444529,
-        "frac_negative": 0.875
+        "mean": -18.451176870100035,
+        "median": -21.126700435780997,
+        "frac_negative": 0.6875
       },
       "elapsed_s": {
         "mean": 60.49695042717212,
@@ -240,5 +240,35 @@
     }
   },
   "prompt_real_replay_end_ret_bp": -9.470920678663969,
-  "prompt_decoded_bid_frac": 0.279296875
+  "prompt_decoded_bid_frac": 0.279296875,
+  "_provenance": {
+    "git_commit": "80ebc7ef3ea54c5980ed11a305a919dcd98c183b",
+    "git_dirty": true,
+    "argv": [
+      "scripts/run_audit.py",
+      "decode_ablation"
+    ],
+    "utc": "2026-11-26T02:09:59.813494+00:00",
+    "versions": {
+      "python": "3.13.18",
+      "torch": "2.15.0+cpu",
+      "transformers": "5.24.1",
+      "numpy": "2.5.3"
+    },
+    "inputs": {
+      "tokenizer": {
+        "path": "/home/user/ext/m3-market-microstructure/tokenizer/base/best.pt",
+        "sha256": "3431f077d0fcff6c4e4c7a0ecc4cbe1f9e88685e035aa7c1a5cdb908dfcdb41a"
+      },
+      "example_prompt_ids": {
+        "path": "/home/user/ext/m3-market-microstructure/examples/prompt_ids.npy",
+        "sha256": "5a91b39b5a65cff66638cb13ee86d6606057427761fc7afe378ac255abe2de37"
+      },
+      "example_conditioning": {
+        "path": "/home/user/ext/m3-market-microstructure/examples/conditioning.npz",
+        "sha256": "d522fbf84e0997ac2305bf050a1cea70c15331bd0126a33b838b8dc04b322060"
+      }
+    },
+    "data_scope": "ONLY the released held-out example window (split=test, 2025-12-01) is real market data; everything else is model-generated."
+  }
 }

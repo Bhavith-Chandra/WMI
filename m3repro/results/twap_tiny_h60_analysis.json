@@ -1,0 +1,273 @@
+{
+  "source": "results/twap_tiny_h60.json",
+  "meta": {
+    "model": "tiny",
+    "horizon": 60.0,
+    "children": 10,
+    "reps": 6,
+    "qgrid": [
+      10000,
+      40000,
+      160000
+    ],
+    "steps": 3952,
+    "B": 42,
+    "block": 16,
+    "seed": 7,
+    "max_steps": 4000,
+    "mid_start": 58.045,
+    "n_rolls": 8,
+    "roll_at": 448,
+    "wall_s": 1163.8192641735077,
+    "simulator": "closedloop v2 (independent rows, IOC)"
+  },
+  "stall": {
+    "counts": {
+      "base": {
+        "stalled": 0,
+        "n": 6
+      },
+      "buy": {
+        "stalled": 0,
+        "n": 18
+      },
+      "sell": {
+        "stalled": 0,
+        "n": 18
+      }
+    },
+    "fisher_p_buy_vs_sell": 1.0,
+    "fisher_p_base_vs_treated": 1.0,
+    "dt_le_1ms_frac_median_stalled": null,
+    "dt_le_1ms_frac_median_reached": 0.18639455114357906
+  },
+  "stale_terminal_mid": 0,
+  "children": {
+    "skipped": 0,
+    "exec_frac_of_requested": 0.8347726550079492,
+    "roundtrip_tick_err_median": 3.0
+  },
+  "main_excluding_stalled": {
+    "n_base": 6,
+    "baseline_mean_bp": -23.49355398086069,
+    "baseline_sd_bp": 70.791942436559,
+    "baseline_se_bp": 28.90068947834141,
+    "buy": {
+      "cells": [
+        {
+          "Q": 10000,
+          "n": 6,
+          "impact_bp_mean": 26.9235344501391,
+          "impact_bp_median": 25.646369443168428,
+          "impact_bp_se_incl_baseline": 29.9222551440221,
+          "exec_qty_median": 10000.0
+        },
+        {
+          "Q": 40000,
+          "n": 6,
+          "impact_bp_mean": 90.55542671060834,
+          "impact_bp_median": 86.1780006448626,
+          "impact_bp_se_incl_baseline": 57.45517642000347,
+          "exec_qty_median": 40000.0
+        },
+        {
+          "Q": 160000,
+          "n": 6,
+          "impact_bp_mean": 112.69776916395813,
+          "impact_bp_median": 141.623962180472,
+          "impact_bp_se_incl_baseline": 43.64622831518098,
+          "exec_qty_median": 133033.5
+        }
+      ],
+      "A": 43.45300660311189,
+      "beta": 0.38907849725210025,
+      "beta_ci90": [
+        0.15744900661527333,
+        1.4438995686493654
+      ],
+      "beta_ci95": [
+        0.12355348400825249,
+        2.1212198718297417
+      ],
+      "n_boot_ok": 4000,
+      "ci90_contains_0_5": true,
+      "ci90_contains_1_0": true,
+      "monotone_mean_impact": true
+    },
+    "sell": {
+      "cells": [
+        {
+          "Q": 10000,
+          "n": 6,
+          "impact_bp_mean": -18.895930745609252,
+          "impact_bp_median": 9.293397980757753,
+          "impact_bp_se_incl_baseline": 44.60279007126942,
+          "exec_qty_median": 10000.0
+        },
+        {
+          "Q": 40000,
+          "n": 6,
+          "impact_bp_mean": 34.734523049640806,
+          "impact_bp_median": 37.85503333949908,
+          "impact_bp_se_incl_baseline": 32.68221069513634,
+          "exec_qty_median": 39698.5
+        },
+        {
+          "Q": 160000,
+          "n": 6,
+          "impact_bp_mean": 51.64082827767785,
+          "impact_bp_median": 47.39194338937156,
+          "impact_bp_se_incl_baseline": 40.42404402029726,
+          "exec_qty_median": 124945.5
+        }
+      ],
+      "A": 5.565003103589651,
+      "beta": 0.9023622867595996,
+      "beta_ci90": [
+        -1.8897091148602276,
+        2.9999999999476477
+      ],
+      "beta_ci95": [
+        -2.999999999999925,
+        2.9999999999994076
+      ],
+      "n_boot_ok": 4000,
+      "ci90_contains_0_5": true,
+      "ci90_contains_1_0": true,
+      "monotone_mean_impact": true
+    }
+  },
+  "sensitivity_including_stalled": {
+    "n_base": 6,
+    "baseline_mean_bp": -23.49355398086069,
+    "baseline_sd_bp": 70.791942436559,
+    "baseline_se_bp": 28.90068947834141,
+    "buy": {
+      "cells": [
+        {
+          "Q": 10000,
+          "n": 6,
+          "impact_bp_mean": 26.9235344501391,
+          "impact_bp_median": 25.646369443168428,
+          "impact_bp_se_incl_baseline": 29.9222551440221,
+          "exec_qty_median": 10000.0
+        },
+        {
+          "Q": 40000,
+          "n": 6,
+          "impact_bp_mean": 90.55542671060834,
+          "impact_bp_median": 86.1780006448626,
+          "impact_bp_se_incl_baseline": 57.45517642000347,
+          "exec_qty_median": 40000.0
+        },
+        {
+          "Q": 160000,
+          "n": 6,
+          "impact_bp_mean": 112.69776916395813,
+          "impact_bp_median": 141.623962180472,
+          "impact_bp_se_incl_baseline": 43.64622831518098,
+          "exec_qty_median": 133033.5
+        }
+      ],
+      "A": 43.45300660311189,
+      "beta": 0.38907849725210025,
+      "beta_ci90": [
+        0.15171999742049433,
+        1.4742004763546066
+      ],
+      "beta_ci95": [
+        0.12050670962047118,
+        2.130879323050524
+      ],
+      "n_boot_ok": 4000,
+      "ci90_contains_0_5": true,
+      "ci90_contains_1_0": true,
+      "monotone_mean_impact": true
+    },
+    "sell": {
+      "cells": [
+        {
+          "Q": 10000,
+          "n": 6,
+          "impact_bp_mean": -18.895930745609252,
+          "impact_bp_median": 9.293397980757753,
+          "impact_bp_se_incl_baseline": 44.60279007126942,
+          "exec_qty_median": 10000.0
+        },
+        {
+          "Q": 40000,
+          "n": 6,
+          "impact_bp_mean": 34.734523049640806,
+          "impact_bp_median": 37.85503333949908,
+          "impact_bp_se_incl_baseline": 32.68221069513634,
+          "exec_qty_median": 39698.5
+        },
+        {
+          "Q": 160000,
+          "n": 6,
+          "impact_bp_mean": 51.64082827767785,
+          "impact_bp_median": 47.39194338937156,
+          "impact_bp_se_incl_baseline": 40.42404402029726,
+          "exec_qty_median": 124945.5
+        }
+      ],
+      "A": 5.565003103589651,
+      "beta": 0.9023622867595996,
+      "beta_ci90": [
+        -1.8175499153903418,
+        2.999999999929819
+      ],
+      "beta_ci95": [
+        -2.9999999999998552,
+        2.99999999999941
+      ],
+      "n_boot_ok": 4000,
+      "ci90_contains_0_5": true,
+      "ci90_contains_1_0": true,
+      "monotone_mean_impact": true
+    }
+  },
+  "_provenance": {
+    "git_commit": "20a65398b0749b6a0174deaa511dbac8e6988e7d",
+    "git_dirty": true,
+    "argv": [
+      "scripts/run_twap.py",
+      "--model",
+      "tiny",
+      "--horizon",
+      "60",
+      "--children",
+      "10",
+      "--reps",
+      "6",
+      "--qgrid",
+      "10000,40000,160000"
+    ],
+    "utc": "2026-11-26T02:29:31.280946+00:00",
+    "versions": {
+      "python": "3.13.18",
+      "torch": "2.15.0+cpu",
+      "transformers": "5.24.1",
+      "numpy": "2.5.3"
+    },
+    "inputs": {
+      "tokenizer": {
+        "path": "/home/user/ext/m3-market-microstructure/tokenizer/base/best.pt",
+        "sha256": "3431f077d0fcff6c4e4c7a0ecc4cbe1f9e88685e035aa7c1a5cdb908dfcdb41a"
+      },
+      "tiny": {
+        "path": "/home/user/ext/m3-market-microstructure/tiny/best.pt",
+        "sha256": "ba0b7c361f88a9c0248b7966d6e10ebcd6785341738fe133e1cd2a1c552d8934"
+      },
+      "example_prompt_ids": {
+        "path": "/home/user/ext/m3-market-microstructure/examples/prompt_ids.npy",
+        "sha256": "5a91b39b5a65cff66638cb13ee86d6606057427761fc7afe378ac255abe2de37"
+      },
+      "example_conditioning": {
+        "path": "/home/user/ext/m3-market-microstructure/examples/conditioning.npz",
+        "sha256": "d522fbf84e0997ac2305bf050a1cea70c15331bd0126a33b838b8dc04b322060"
+      }
+    },
+    "data_scope": "ONLY the released held-out example window (split=test, 2025-12-01) is real market data; everything else is model-generated."
+  }
+}

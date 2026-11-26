@@ -1,0 +1,34 @@
+{
+ "check": "regenerated vs committed (HEAD 80ebc7e) results",
+ "identical": [
+  "scaling.json",
+  "nll.json",
+  "tokenizer.json",
+  "rollout.json:prompt_replay+all non-return fields",
+  "decode_ablation.json: all non-return fields"
+ ],
+ "changed_intended": [
+  "rollout.json end_ret_bp.{mean,median,p10,p90} (reference = post-prompt mid, review #5)",
+  "decode_ablation.json end_ret_bp.{mean,median,frac_negative} (same fix)"
+ ],
+ "added": [
+  "rollout.json entropy_by_64, entropy_bins_abs_start_pos"
+ ],
+ "removed": [],
+ "_provenance": {
+  "git_commit": "20a65398b0749b6a0174deaa511dbac8e6988e7d",
+  "git_dirty": true,
+  "argv": [
+   "-c"
+  ],
+  "utc": "2026-11-26T03:13:18.084495+00:00",
+  "versions": {
+   "python": "3.13.18",
+   "torch": "2.15.0+cpu",
+   "transformers": "5.24.1",
+   "numpy": "2.5.3"
+  },
+  "inputs": {},
+  "data_scope": "ONLY the released held-out example window (split=test, 2025-12-01) is real market data; everything else is model-generated."
+ }
+}

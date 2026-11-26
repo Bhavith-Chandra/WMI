@@ -100,6 +100,13 @@ Effect of a counterfactual book on prompt NLL, mean Δ in nats over 512 tokens (
   positions restart at 0. On identical generated tokens (first 512 generated events, 32 rollouts per model, *generated*):
 
 <!-- AUTO:decode -->
+| | release decode (gen only) | in-context decode |
+|---|---|---|
+| mean decoded rel-open price, base | −0.00152 | −0.00026 |
+| cancels hitting an empty level, base | 61.7% | 26.0% |
+| median return over 512 generated events, from the post-prompt mid, tiny / small / base (bp) | −15.1 / −15.9 / −39.7 | −4.7 / −6.9 / −21.1 |
+
+Share of the release-decode median drift that disappears with in-context decoding: 69% / 57% / 47% (tiny / small / base).
 <!-- /AUTO:decode -->
 
 ### 7–9. Rollouts: past the trained context, horizons, snapshot replay (*generated*)
@@ -109,6 +116,16 @@ Effect of a counterfactual book on prompt NLL, mean Δ in nats over 512 tokens (
 * Snapshot replay cannot honour cancels of orders resting beyond level 10, so phantom liquidity is built into the paper's own replay protocol.
 
 <!-- AUTO:rollout -->
+| | tiny | small | base |
+|---|---|---|---|
+| simulated time covered by 1024 generated events, median (s) | 37 | 91 | 149 |
+| next-token entropy, positions ≤ 1033 (trained range), nats | 4.47 | 5.95 | 6.11 |
+| next-token entropy, positions > 1033, nats | 6.70 | 6.84 | 7.49 |
+| median return over 1024 events from the post-prompt mid (bp) | −21.6 | −27.2 | −25.9 |
+
+Base, entropy per 64-token bin (bin start position: nats): 513: 5.87, 577: 5.73, 641: 5.69, 705: 6.18, 769: 6.22, 833: 6.35, 897: 6.28, 961: 6.53, 1025: 6.87, 1089: 6.69, 1153: 7.07, 1217: 7.34, 1281: 7.79, 1345: 8.14, 1409: 8.08, 1473: 7.92.
+
+Real prompt replayed from its 10-level snapshot: 68.3% of cancel quantity finds no resting depth; 42.5% of cancels target prices never seen in the book; prompt drift −9.5 bp over 33.9 s.
 <!-- /AUTO:rollout -->
 
 ### 10. Closed-loop TWAP impact (single prompt, v2 simulator, *generated*)
@@ -126,7 +143,35 @@ Stalled paths are paths whose simulated clock is still short of 60 s after 4000 
 them is selection on a post-treatment outcome. The table reports the counts and a Fisher test of stalling
 versus side, and a sensitivity analysis refits with stalled paths included.
 
+* **v1 → v2**: v1 showed a −105 bp/min baseline drift and stalled paths. Both disappear once paths are made
+  independent, so both were **simulator artefacts** (coupled KV-cache prefills), not model behaviour.
+* The 5-size × 12-rep run was stopped for CPU (MMFM work has priority) and is marked "not run"; rerun it
+  with `scripts/regenerate_all.sh`.
+* **Small, v2**: both sides are concave, and both 90% CIs contain 0.5 with upper bounds just below 1.0.
+  Mean impact is **not monotone** in size (10k > 40k), so this is weak support for square-root scaling on
+  one prompt, not a reproduction of the paper's 64-prompt result.
+
 <!-- AUTO:twap -->
+| run | baseline drift, mean ± SE (bp), n | stalled (base / buy / sell) | Fisher p buy vs sell | buy β [90% CI] | sell β [90% CI] |
+|---|---|---|---|---|---|
+| tiny, 3 sizes × 6 reps | −23.5 ± 28.9, n=6 | 0/6 / 0/18 / 0/18 | 1.00 | 0.39 [0.16, 1.44] | 0.90 [−1.89, 3.00] |
+| small, 3 sizes × 6 reps | −6.5 ± 6.1, n=6 | 0/6 / 0/18 / 0/18 | 1.00 | 0.45 [0.13, 0.98] | 0.35 [0.07, 0.95] |
+| small, 5 sizes × 12 reps | not run | | | | |
+
+Mean impact per size (bp, ± SE incl. baseline uncertainty), stalled paths excluded:
+
+* tiny, 3 sizes × 6 reps, buy: 10k → +27 ± 30; 40k → +91 ± 57; 160k → +113 ± 44
+* tiny, 3 sizes × 6 reps, sell: 10k → −19 ± 45; 40k → +35 ± 33; 160k → +52 ± 40
+* small, 3 sizes × 6 reps, buy: 10k → +69 ± 27; 40k → +42 ± 22; 160k → +154 ± 26
+* small, 3 sizes × 6 reps, sell: 10k → +71 ± 25; 40k → +39 ± 22; 160k → +129 ± 13
+
+Sensitivity (stalled paths included at their last reached mid), β buy / sell: 
+
+* tiny, 3 sizes × 6 reps: 0.39 [0.15, 1.47] / 0.90 [−1.82, 3.00]
+* small, 3 sizes × 6 reps: 0.45 [0.13, 0.99] / 0.35 [0.07, 0.96]
+
+* tiny, 3 sizes × 6 reps: 19% of events ≤ 1 ms in reached paths; children skipped (empty opposite side) 0; executed/requested 83%; injected-order round-trip price error median 3 ticks; stale terminal mids 0.
+* small, 3 sizes × 6 reps: 15% of events ≤ 1 ms in reached paths; children skipped (empty opposite side) 0; executed/requested 86%; injected-order round-trip price error median 2 ticks; stale terminal mids 0.
 <!-- /AUTO:twap -->
 
 ## Not reproducible from the release

@@ -1,0 +1,46 @@
+{
+ "literals": [
+  "| | release decode (gen only) | in-context decode |",
+  "| mean decoded rel-open price, base | \u22120.00152 | \u22120.00026 |",
+  "| cancels hitting an empty level, base | 61.7% | 26.0% |",
+  "| median return over 512 generated events, from the post-prompt mid, tiny / small / base (bp) | \u221215.1 / \u221215.9 / \u221239.7 | \u22124.7 / \u22126.9 / \u221221.1 |",
+  "Share of the release-decode median drift that disappears with in-context decoding: 69% / 57% / 47% (tiny / small / base).",
+  "| | tiny | small | base |",
+  "| simulated time covered by 1024 generated events, median (s) | 37 | 91 | 149 |",
+  "| next-token entropy, positions \u2264 1033 (trained range), nats | 4.47 | 5.95 | 6.11 |",
+  "| next-token entropy, positions > 1033, nats | 6.70 | 6.84 | 7.49 |",
+  "| median return over 1024 events from the post-prompt mid (bp) | \u221221.6 | \u221227.2 | \u221225.9 |",
+  "Base, entropy per 64-token bin (bin start position: nats): 513: 5.87, 577: 5.73, 641: 5.69, 705: 6.18, 769: 6.22, 833: 6.35, 897: 6.28, 961: 6.53, 1025: 6.87, 1089: 6.69, 1153: 7.07, 1217: 7.34, 1281: 7.79, 1345: 8.14, 1409: 8.08, 1473: 7.92.",
+  "Real prompt replayed from its 10-level snapshot: 68.3% of cancel quantity finds no resting depth; 42.5% of cancels target prices never seen in the book; prompt drift \u22129.5 bp over 33.9 s.",
+  "| run | baseline drift, mean \u00b1 SE (bp), n | stalled (base / buy / sell) | Fisher p buy vs sell | buy \u03b2 [90% CI] | sell \u03b2 [90% CI] |",
+  "| tiny, 3 sizes \u00d7 6 reps | \u221223.5 \u00b1 28.9, n=6 | 0/6 / 0/18 / 0/18 | 1.00 | 0.39 [0.16, 1.44] | 0.90 [\u22121.89, 3.00] |",
+  "| small, 3 sizes \u00d7 6 reps | \u22126.5 \u00b1 6.1, n=6 | 0/6 / 0/18 / 0/18 | 1.00 | 0.45 [0.13, 0.98] | 0.35 [0.07, 0.95] |",
+  "| small, 5 sizes \u00d7 12 reps | not run | | | | |",
+  "Mean impact per size (bp, \u00b1 SE incl. baseline uncertainty), stalled paths excluded:",
+  "* tiny, 3 sizes \u00d7 6 reps, buy: 10k \u2192 +27 \u00b1 30; 40k \u2192 +91 \u00b1 57; 160k \u2192 +113 \u00b1 44",
+  "* tiny, 3 sizes \u00d7 6 reps, sell: 10k \u2192 \u221219 \u00b1 45; 40k \u2192 +35 \u00b1 33; 160k \u2192 +52 \u00b1 40",
+  "* small, 3 sizes \u00d7 6 reps, buy: 10k \u2192 +69 \u00b1 27; 40k \u2192 +42 \u00b1 22; 160k \u2192 +154 \u00b1 26",
+  "* small, 3 sizes \u00d7 6 reps, sell: 10k \u2192 +71 \u00b1 25; 40k \u2192 +39 \u00b1 22; 160k \u2192 +129 \u00b1 13",
+  "Sensitivity (stalled paths included at their last reached mid), \u03b2 buy / sell: ",
+  "* tiny, 3 sizes \u00d7 6 reps: 0.39 [0.15, 1.47] / 0.90 [\u22121.82, 3.00]",
+  "* small, 3 sizes \u00d7 6 reps: 0.45 [0.13, 0.99] / 0.35 [0.07, 0.96]",
+  "* tiny, 3 sizes \u00d7 6 reps: 19% of events \u2264 1 ms in reached paths; children skipped (empty opposite side) 0; executed/requested 83%; injected-order round-trip price error median 3 ticks; stale terminal mids 0.",
+  "* small, 3 sizes \u00d7 6 reps: 15% of events \u2264 1 ms in reached paths; children skipped (empty opposite side) 0; executed/requested 86%; injected-order round-trip price error median 2 ticks; stale terminal mids 0."
+ ],
+ "_provenance": {
+  "git_commit": "20a65398b0749b6a0174deaa511dbac8e6988e7d",
+  "git_dirty": true,
+  "argv": [
+   "scripts/build_readme_numbers.py"
+  ],
+  "utc": "2026-11-26T03:13:09.153984+00:00",
+  "versions": {
+   "python": "3.13.18",
+   "torch": "2.15.0+cpu",
+   "transformers": "5.24.1",
+   "numpy": "2.5.3"
+  },
+  "inputs": {},
+  "data_scope": "ONLY the released held-out example window (split=test, 2025-12-01) is real market data; everything else is model-generated."
+ }
+}
