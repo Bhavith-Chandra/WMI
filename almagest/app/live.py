@@ -63,6 +63,9 @@ class LiveModel:
         """Teacher-force the model on n events of an observed stream (synthetic World context for now; the same
         method takes a recorded real stream once the real-data tokenizer is in)."""
         s = build_stream(self.par, seed, n + 1)
+        self.tag = bool(getattr(self.model, 'tagch', False))
+        if self.tag and s['sb'].shape[-1] == 2 * len(L.SB_TAUS):   # observed context: no own orders
+            s['sb'] = np.concatenate([s['sb'], np.zeros((len(s['sb']), len(L.SB_TAUS)), np.float32)], 1)
         st = self.model.init_state(1)
         for s0 in range(0, n, 256):
             sl = slice(s0, s0 + 256)
@@ -74,7 +77,7 @@ class LiveModel:
         E.init_rows(self.par, np.array([seed], np.int64), np.array([20000 + n], np.int64), self.rows.bid,
                     self.rows.ask, self.rows.rbid, self.rows.rask, self.rows.bb, self.rows.ba, self.rows.rbb,
                     self.rows.rba)
-        self.sbank = L.SlowBank(1)
+        self.sbank = L.SlowBank(1, tag=self.tag)
         sv = np.where(s['prev'][:, 0] == 2, np.where(s['prev'][:, 1] == 0, 1, -1) * s['prev'][:, 3], 0)
         from scipy.signal import lfilter
         lam = np.exp(-1.0 / L.SB_TAUS)
@@ -83,6 +86,8 @@ class LiveModel:
         ep = np.stack([lfilter([1 - l], [1, -l], p) for l in lam], -1)
         self.sbank.fv[0] = torch.tensor(fv[n]); self.sbank.p[0] = float(p[n]); self.sbank.ep[0] = torch.tensor(ep[n])
         self.pend_ev = torch.tensor(s['tgt'][n - 1][None])
+        if self.model.src:
+            self.pend_ev = torch.cat([self.pend_ev, torch.zeros(1, 1, dtype=self.pend_ev.dtype)], 1)
         self.pend_dmid = torch.tensor([float(s['dmid'][n])])
         self._observe(self.rows)
         self.pend_feat = torch.tensor(self.rows.feat, dtype=torch.float32)
@@ -162,6 +167,8 @@ class LiveModel:
                                                       np.ones(1, bool))
             ev, nll = self._sample(z, self.rows, torch.rand(1, 4, generator=g))
             d = self._apply(self.rows, ev)
+            if self.model.src:
+                ev = torch.cat([ev, torch.zeros(1, 1, dtype=ev.dtype)], 1)
             self.sbank.update(_sv(ev), d)
             self.pend_ev, self.pend_dmid = ev, d
             self.pend_feat = torch.tensor(self.rows.feat, dtype=torch.float32)
@@ -203,8 +210,8 @@ class LiveModel:
         self.user['fills'].append(dict(t=self.t, side='buy' if side == 0 else 'sell', qty=qty,
                                        avg_px=notional / max(qty, 1)))
         d = torch.tensor(0.5 * (r.bb + r.ba) - old, dtype=torch.float32)
-        ev = torch.tensor([[2, side, 0, min(size, 4)]])
-        self.sbank.update(torch.tensor([float(sgn * size)]), d)
+        ev = torch.tensor([[2, side, 0, min(size, 4)] + ([1] if self.model.src else [])])
+        self.sbank.update(torch.tensor([float(sgn * size)]), d, torch.tensor([float(sgn * size)]) if self.tag else None)
         self.pend_ev, self.pend_dmid = ev, d
         self.pend_feat = torch.tensor(r.feat, dtype=torch.float32)
         self.mid_hist.append(float(self.mid()))
@@ -225,8 +232,10 @@ class LiveModel:
         idx = np.zeros(B, np.int64)
         rows = self.rows.clone_rows(idx)
         state = [h.repeat(B, 1) for h in self.state]
-        sb = L.SlowBank(B)
+        sb = L.SlowBank(B, tag=self.tag)
         sb.fv = self.sbank.fv.repeat(B, 1); sb.p = self.sbank.p.repeat(B, 1); sb.ep = self.sbank.ep.repeat(B, 1)
+        sb.ft = self.sbank.ft.repeat(B, 1)
+        SRC = bool(self.model.src)
         pend = dict(ev=self.pend_ev.repeat(B, 1), feat=self.pend_feat.repeat(B, 1), dmid=self.pend_dmid.repeat(B))
         since = np.repeat(self.since, B)
         arm = np.tile(np.arange(A), paths)       # 0 visible, 1 blind, 2 free
@@ -247,19 +256,22 @@ class LiveModel:
                 self._observe(rows)
                 d = torch.tensor(0.5 * (rows.bb + rows.ba) - old, dtype=torch.float32)
                 m = torch.tensor(vis)
-                cev = torch.tensor([[2, side, 0, min(child_size, 4)]]).repeat(B, 1)
+                cev = torch.tensor([[2, side, 0, min(child_size, 4)] + ([1] if SRC else [])]).repeat(B, 1)
                 pend['ev'] = torch.where(m.unsqueeze(-1), cev, pend['ev'])
                 pend['feat'] = torch.where(m.unsqueeze(-1), torch.tensor(rows.feat, dtype=torch.float32), pend['feat'])
                 pend['dmid'] = torch.where(m, d, pend['dmid'])
-                f0, p0, e0 = sb.fv.clone(), sb.p.clone(), sb.ep.clone()
-                sb.update(_sv(cev), d)
+                f0, p0, e0, t0_ = sb.fv.clone(), sb.p.clone(), sb.ep.clone(), sb.ft.clone()
+                sb.update(_sv(cev), d, _sv(cev) if self.tag else None)
                 mm = m.unsqueeze(-1)
                 sb.fv = torch.where(mm, sb.fv, f0); sb.p = torch.where(mm, sb.p, p0); sb.ep = torch.where(mm, sb.ep, e0)
+                sb.ft = torch.where(mm, sb.ft, t0_)
             for _ in range(gap):
                 z, state, since = self._consume(rows, state, sb, pend, since, np.ones(B, bool))
                 u = torch.rand(paths, 4, generator=g)[torch.tensor(path)]
                 ev, _ = self._sample(z, rows, u)
                 d = self._apply(rows, ev)
+                if SRC:
+                    ev = torch.cat([ev, torch.zeros(B, 1, dtype=ev.dtype)], 1)
                 sb.update(_sv(ev), d)
                 pend = dict(ev=ev, feat=torch.tensor(rows.feat, dtype=torch.float32), dmid=d)
             mids[:, blk + 1] = 0.5 * (rows.rbb + rows.rba)
