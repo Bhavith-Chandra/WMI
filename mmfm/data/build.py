@@ -27,7 +27,7 @@ TICK = {"btcusd": 0.01, "ethusd": 0.01, "solusd": 0.01, "xrpusd": 1e-5, "btceur"
 MIN_SEG_EVENTS = 1000
 
 
-def build(raw: Path, out: Path, until_ns: int, pairs):
+def build(raw: Path, out: Path, until_ns: int, pairs, from_ns: int = 0):
     hours = hour_dirs(raw)
     conn = [e for e in load_conn(hours) if e["t_ns"] < until_ns]
     report = dict(raw=str(raw), until_ns=until_ns, built_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), pairs={})
@@ -39,6 +39,8 @@ def build(raw: Path, out: Path, until_ns: int, pairs):
         segs = []
         for k, c_ns in enumerate(connects):
             t_hi = min([d for d in ends if d > c_ns] + [until_ns])
+            if t_hi < from_ns:  # segment ends before the window of interest
+                continue
             anch = [e for e in snaps if c_ns + 1e9 <= e["us"] * 1000 < t_hi]
             if not anch:
                 continue
@@ -99,9 +101,10 @@ if __name__ == "__main__":
     ap.add_argument("--raw", default="/home/user/data/bitstamp")
     ap.add_argument("--out", default="/home/user/data/mmfm_events")
     ap.add_argument("--until-ns", type=int, default=None)
+    ap.add_argument("--from-ns", type=int, default=0, help="skip connection segments that end before this time")
     ap.add_argument("--pairs", default=",".join(TICK))
     a = ap.parse_args()
     until = a.until_ns or time.time_ns()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    build(Path(a.raw), out, until, a.pairs.split(","))
+    build(Path(a.raw), out, until, a.pairs.split(","), from_ns=a.from_ns)
