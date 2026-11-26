@@ -693,3 +693,57 @@ def world_run_events(par, bid, ask, bb, ba, ema, ss, sr, seed, n, out_ev, out_fe
         book_feat(bid, ask, bb, ba, out_feat[t])
         out_mid[t] = 0.5 * (bb + ba)
     return bb, ba
+
+
+@njit(cache=True)
+def gen_stream_forced(par, seed, n, f_typ, f_side, f_lvl, f_ep, f_size, ev, feat, mids, cm, ep_price):
+    """World stream with FORCED (manipulative) actions at scheduled steps, which the market treats as normal flow.
+    f_typ[t] = -1: World agent acts. 0: limit add at own-best offset f_lvl (lvl code as in action space) on f_side;
+    the first add of episode f_ep records its absolute price in ep_price. 1: cancel at the episode's recorded price
+    (skipped if nothing rests there). 2: market order. Labels are kept by the caller (never model inputs)."""
+    bid = np.zeros(P, np.int64)
+    ask = np.zeros(P, np.int64)
+    ema = np.zeros(NEMA + 2)
+    ss = np.zeros(int(par[8]) + 1, np.int64)
+    sr = np.zeros(int(par[8]) + 1, np.int64)
+    bb, ba = warm_state(par, seed, 20000, bid, ask, ema, ss, sr)
+    for t in range(n):
+        book_feat(bid, ask, bb, ba, feat[t])
+        mids[t] = 0.5 * (bb + ba)
+        for k in range(D):
+            cm[t, 0, k] = 1 if (bb - k >= 0 and bid[bb - k] > 0) else 0
+            cm[t, 1, k] = 1 if (ba + k < P and ask[ba + k] > 0) else 0
+        typ = -1
+        side = 0
+        lvl = 0
+        size = 1
+        if f_typ[t] == 0:
+            typ, side, lvl, size = 0, f_side[t], f_lvl[t], f_size[t]
+            pr = abs_price(bb, ba, 0, side, lvl)
+            if ep_price[f_ep[t]] < 0:
+                ep_price[f_ep[t]] = pr
+            else:     # later adds of the episode go to the recorded price if it is still within the window
+                p0 = ep_price[f_ep[t]]
+                off = (bb - p0) if side == 0 else (p0 - ba)
+                if off >= -1 and off <= D - 2:
+                    lvl = off + 1
+        elif f_typ[t] == 1:
+            p0 = ep_price[f_ep[t]]
+            side = f_side[t]
+            off = (bb - p0) if side == 0 else (p0 - ba)
+            have = (bid[p0] if side == 0 else ask[p0]) if (p0 >= 0 and p0 < P) else 0
+            if off >= 0 and off <= D - 1 and have > 0:
+                typ, lvl, size = 1, off, min(f_size[t], have)
+        elif f_typ[t] == 2:
+            typ, side, lvl, size = 2, f_side[t], 0, f_size[t]
+        if typ < 0:
+            typ, side, lvl, size = world_policy(bid, ask, bb, ba, par, ema, ss, sr)
+        elif typ == 2:
+            ema[IM] += size if side == 0 else -size
+        ev[t, 0] = typ
+        ev[t, 1] = side
+        ev[t, 2] = lvl
+        ev[t, 3] = size
+        bb, ba, _ = apply_action(bid, ask, bb, ba, typ, side, lvl, size)
+        bb, ba = _guard(bid, ask, bb, ba)
+        _update_ema(ema, par, 0.5 * (bb + ba))

@@ -1,0 +1,54 @@
+{
+ "ckpt": "e2Dt_modebank_sb_src.pt",
+ "split": "dev",
+ "n_train_windows": 1872,
+ "n_test_windows": 1872,
+ "protocol": "leave-one-family-out probe on frozen hidden state; rule = spoof template",
+ "families": {
+  "spoof": {
+   "probe_heldout_family": {
+    "auc": 0.5318549318549318,
+    "precision_at_2pct": 0.029411764705882353
+   },
+   "rule_spoof": {
+    "auc": 0.8863940863940863,
+    "precision_at_2pct": 0.9411764705882353
+   },
+   "model_tail_surprise": {
+    "auc": 0.4652344652344652,
+    "precision_at_2pct": 0.058823529411764705
+   },
+   "n_pos": 78
+  },
+  "layering": {
+   "probe_heldout_family": {
+    "auc": 0.48281706363898147,
+    "precision_at_2pct": 0.029411764705882353
+   },
+   "rule_spoof": {
+    "auc": 0.5260109424492986,
+    "precision_at_2pct": 0.0
+   },
+   "model_tail_surprise": {
+    "auc": 0.42507713192644697,
+    "precision_at_2pct": 0.0
+   },
+   "n_pos": 73
+  },
+  "ignition": {
+   "probe_heldout_family": {
+    "auc": 0.4768983268983269,
+    "precision_at_2pct": 0.0
+   },
+   "rule_spoof": {
+    "auc": 0.5311668811668812,
+    "precision_at_2pct": 0.08823529411764706
+   },
+   "model_tail_surprise": {
+    "auc": 0.5431252681252682,
+    "precision_at_2pct": 0.058823529411764705
+   },
+   "n_pos": 56
+  }
+ }
+}
