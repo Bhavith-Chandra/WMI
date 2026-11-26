@@ -78,3 +78,23 @@ Harness self-tests: 11 [C].
 
 ## 5. Not yet achieved
 A certified truth; any test-split result; an evaluated real-data model; ≥ 50 ms latency/stability over hours (C2).
+
+
+## 6. CORRECTION (same day): model impact numbers above measure collapsed markets
+Free-generation diagnostics [C]:
+- Teacher-forced side predictions are calibrated: P(buy) 0.503 vs empirical 0.499.
+- Closed-loop generation reaches an absorbing degenerate state: one side of the book empties to the engine's
+  1-lot guard; the model, never having seen such states, stops posting on that side; the mid price freezes.
+- Rate: 18/24 free runs collapse within 2,500 events. The impact horizon is 16,400 events.
+
+Consequences:
+- Every model row in sections 3 and the E2D tables is dominated by collapse. These rows show the slow bank delays
+  collapse; they do **not** measure reaction quality.
+- The model failures on drift (C1), excess volatility (3x) and huge CIs are explained by this.
+- [L] The published panel's drift (up to -879 ticks) may share the mechanism.
+
+Fix in progress:
+- synthetic: DAgger with the World as oracle;
+- real data (no oracle): rollout-based post-training.
+- New gate: collapse rate < 2% over the evaluation horizon before any impact metric is interpreted. Every evaluation
+  now reports `collapse_rate` per arm.
