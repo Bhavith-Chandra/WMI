@@ -11,9 +11,14 @@ HI = np.array([4.0, 1.0, 14.0, 1.2, 0.97, 1.95, 0.8, 3.0, 0.8, 1.2, 6.8, 0.95, 4
 
 
 def score(theta, nd=16, nw=32):
+    """Robust score: worst loss over two DISJOINT calibration day sets (guards the winner's curse)."""
+    import os
     p = make(theta)
-    r = C.evaluate(C.world_runner(p), p, n_days=nd, win_per_day=nw, B=40, verbose=False)
-    return loss(r), r
+    bases = (1000, 1032) if os.environ.get('ROBUST') else (1000,)
+    rs = [C.evaluate(C.world_runner(p), p, n_days=nd, win_per_day=nw, base_seed=b, B=40, verbose=False) for b in bases]
+    Ls = [loss(r) for r in rs]
+    i = int(np.argmax(Ls))
+    return Ls[i], rs[i]
 
 
 if __name__ == '__main__':
