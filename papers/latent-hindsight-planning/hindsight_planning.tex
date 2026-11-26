@@ -1,0 +1,408 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,booktabs,graphicx,hyperref,xcolor,tikz}
+\usetikzlibrary{arrows.meta,positioning}
+\usepackage[numbers]{natbib}
+\usepackage{caption}
+\newtheorem{theorem}{Theorem}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+\newcommand{\E}{\mathcal{E}}
+% RULE: every empirical number below is a macro from generated/numbers.tex, or a table or figure in generated/,
+% produced from provenance-stamped results/*.json by scripts/make_paper1.py and scripts/plot_*.py.
+% Never type a result by hand. Protocol: EVALUATION.md. Pre-registrations: papers/latent-hindsight-planning/*_preregistration.md.
+\input{generated/numbers.tex}
+
+\title{Planning in Hindsight:\\Self-Correcting Hierarchical Planning with Latent-Variable World Models}
+\author{\todo{authors}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Hierarchical planners break a long task into subgoals, and a persistent surprise that the world model did not predict
+(a crosswind, a weak motor, a heavier load) makes them fail the same subgoal for the same reason again and again.
+We study \emph{hindsight planning}: after each executed segment, the agent compares what it predicted with what
+happened, infers the latent variable that explains the difference, and plans the next segment under that belief. In
+the latent-variable view of world models this is energy minimisation over the latent, followed by planning under the
+resulting posterior. We prove when it must help (the surprise persists), when it cannot (the surprise is redrawn), and why
+the popular rule of reusing the last residual is not enough. In a hierarchical navigation task with learned world
+models in MuJoCo, where touching a wall is irreversible, adding hindsight to the same hierarchical planner raises
+main-goal success from \hiFwdBoth{} to \hiHindBoth{} under a persistent unknown gain and wind (oracle: \hiOracleBoth),
+recovering \hiCapture{} of the possible improvement; the gain grows from \hkGainOne{} to \hkGainTwenty{} as the planner
+commits to longer open-loop segments, and it vanishes or reverses when the latent is redrawn, as the theory requires.
+Adding hindsight \emph{relabeling} (treating the past outcome closest to the current goal as a known example) to latent
+inference brings a repeated throwing task to within \vnHAOracleBoth--\vnHAOracleWind{} times the oracle's final error.
+\todo{v8 abstract sentence}
+Decisions take \latPostOne\,ms (95th percentile, one CPU thread), within a 500\,ms control budget. Every hypothesis
+was pre-registered; leakage, causality and simulator fidelity are checked by automated tests; failures are reported.
+\end{abstract}
+
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{generated/v7_teaser.png}
+\caption{\textbf{Hindsight keeps hierarchical plans alive under a persistent surprise.} A puck must pass three gates in
+hazard walls (red; touching one ends the episode) under a hidden motor gain and wind. Both planners use the same learned
+world model, the same subgoals (crosses) and the same MPC. (a) Forward planning executes each subgoal as predicted and
+drifts into walls. (b) Hindsight infers the latent from the first transitions and stays in the gaps. Six example
+episodes with identical latents. (c) Main-goal success over \hiEpisodes{} episodes (95\% bootstrap intervals).}
+\label{fig:teaser}
+\end{figure}
+
+% ===============================================================================================================
+\section{Introduction}
+
+A world model lets an agent plan by imagining the consequences of its actions. Hierarchical world models extend
+this to long tasks: a high level proposes subgoals, and a low level reaches them
+\citep{lecun2022path,hjepa_2610_06805}. Both levels plan with predictions. When the world contains a factor the model
+did not anticipate and that does not go away (a persistent crosswind, a motor weaker than in training, a heavier
+object), the predictions are wrong in the same direction every time. The low level misses its subgoal, the high level
+replans from wherever the agent ended up, and the next subgoal is missed for the same reason. If a miss is
+irreversible (a collision, a fall, a dropped object), the main goal is lost.
+
+Most model-based planners treat each new observation as a fresh starting point. They do not ask why the previous
+prediction was wrong. \emph{Hindsight planning} asks exactly that. In the latent-variable formulation of world models
+\citep{lecun2022path}, the predictor takes a latent $z$ for what the state and action do not determine. Standard planners
+fix $z$ at a nominal value, sample it, or plan against the worst case. When $z$ persists, each executed action is an
+experiment about it, and the outcome is evidence that a forward planner discards. Hindsight planning keeps the
+predictor frozen, infers $z$ from the agent's own recent history by minimising prediction energy, and plans under the
+inferred belief (Figure~\ref{fig:arch}). The hierarchy draws the route; hindsight corrects the model the route is
+executed with.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+\item \textbf{Formulation.} Hindsight planning as posterior inference over the latent of an energy-based world model,
+then planning under the posterior. Forward planning, reusing the last residual \citep{cwm_2611_24778} and test-time
+latent optimisation \citep{t2z_2610_22364} are the same filter at gains $0$, $1$ and the Bayes gain
+(Section~\ref{sec:method}). Hindsight relabeling of achieved outcomes is added as a second, complementary use of the
+past.
+\item \textbf{Theory} (Section~\ref{sec:theory}). Hindsight is never worse than forward planning; with a persistent latent
+its regret is $O(\sigma^2 d\log T)$ against $\Theta(T)$; it gains nothing when the latent is redrawn; residual reuse is
+inconsistent; and a hierarchical planner gains exactly when a surprise is identified before failure is irreversible.
+\item \textbf{Hierarchical planning with and without hindsight} (Section~\ref{sec:hier}). Hindsight is the difference
+between a hierarchical planner that fails half the time and one that nearly matches an oracle, and the size of the
+difference follows the theory's conditions.
+\item \textbf{Relabeling} (Section~\ref{sec:relabel}). Anchoring predictions on the past outcome closest to the current
+goal cancels the world model's local bias, and combined with latent inference it meets an oracle-gap criterion that
+latent inference alone failed.
+\item \textbf{Mechanisms, realism and real time} (Sections~\ref{sec:mech}--\ref{sec:deploy}). Persistence, commitment
+and feedback delay each control the gain; the effect is measured under unmodelled physics, sensor noise, actuation
+delay and measured compute delay; and the planner runs in real time.
+\item \textbf{Protocol} (Section~\ref{sec:protocol}). Pre-registration, oracle gates, sealed seeds, automated leakage and
+causality tests, verified simulator and browser port, and numbers generated only from results files.
+\end{enumerate}
+
+\begin{figure}[t]\centering
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners=2pt, minimum height=0.85cm, minimum width=2.1cm, align=center, font=\small},
+  lat/.style={draw, circle, minimum size=0.8cm, font=\small, fill=blue!8},
+  arr/.style={-{Stealth[length=2mm]}, thick},
+  darr/.style={-{Stealth[length=2mm]}, thick, dashed, blue!70!black}]
+  \node[box] (hl) {high level\\subgoals $g_1,g_2,\dots$};
+  \node[box, right=1.0cm of hl] (pred) {predictor\\$\hat s_{t+1}=P(s_t,a_t,z)$};
+  \node[box, right=1.0cm of pred] (actor) {low level (MPC)\\$\min_a \mathbb E_{q(z)}C(\cdot,g_k)$};
+  \node[lat, above=0.6cm of pred] (z) {$z$};
+  \node[box, below=0.9cm of pred] (energy) {energy on the past\\$\sum_{\tau<t}\lambda^{t-\tau}\E(s_\tau,a_\tau,s_{\tau+1};z)$};
+  \node[box, left=1.0cm of energy] (world) {world\\observed $s_{\tau+1}$};
+  \node[box, right=1.0cm of energy] (relabel) {relabeling\\past $(a,s')$ near $g_k$};
+  \draw[arr] (hl) -- (pred); \draw[arr] (pred) -- (actor); \draw[arr] (z) -- (pred);
+  \draw[arr] (world) -- (energy); \draw[arr] (world.south) to[bend right=20] (relabel.south);
+  \draw[darr] (energy.north west) to[bend left=35] node[left, font=\scriptsize, align=right]{hindsight\\inference $q(z)$} (z.west);
+  \draw[darr] (relabel) -- (actor);
+  \draw[arr] (actor.east) -- ++(0.35,0) |- node[pos=0.25, right, font=\scriptsize]{execute $a_{t:t+K}$} (world.west);
+\end{tikzpicture}
+\caption{Hindsight planning in a hierarchical world model. The high level supplies subgoals. The low level plans with a
+frozen predictor whose latent $z$ is inferred from the energy of past predictions (dashed). Relabeling uses past
+achieved outcomes as known examples near the current subgoal. Executing $K$ actions open-loop produces new evidence.}
+\label{fig:arch}
+\end{figure}
+
+% ===============================================================================================================
+\section{Hindsight planning}
+\label{sec:method}
+
+\paragraph{World model and energy.} A predictor maps state, action and latent to the next state,
+$\hat s_{t+1}=P(s_t,a_t,z)$, and scores an observed transition by its energy
+$\E(s_t,a_t,s_{t+1};z)=\tfrac12\|s_{t+1}-P(s_t,a_t,z)\|^2_{\Sigma^{-1}}$.
+
+\paragraph{Hindsight inference.} Given the agent's history $\mathcal H_t$, the hindsight posterior is the Gibbs
+distribution of the accumulated energy with forgetting $\lambda\le1$,
+\begin{equation}
+q_t(z)\;\propto\;p(z)\exp\Big(-\textstyle\sum_{\tau<t}\lambda^{\,t-1-\tau}\,\E(s_\tau,a_\tau,s_{\tau+1};z)\Big).
+\label{eq:post}
+\end{equation}
+We use three inference engines: a Gaussian posterior over a multiplicative and an additive correction of the
+predicted increment (exact when the correction enters linearly; recursive least squares with forgetting); a particle
+posterior with an online estimate of the residual variance; and gradient descent on~\eqref{eq:post}
+\citep{t2z_2610_22364}.
+
+\paragraph{Planning under the posterior.} The planner minimises expected cost,
+$a^\star_{t:t+H}=\arg\min_a\mathbb E_{z\sim q_t}\big[\sum_k C(\hat s_{t+k}(a,z))\big]$, by the cross-entropy method,
+executes the first $K$ actions open-loop, observes, updates $q$, and replans. Forward planning is the same with
+$q_t=p$; the oracle uses the true $z$.
+
+\paragraph{One filter, three gains.} For an additive latent following a random walk, the posterior mean is a Kalman
+filter on the residual $r_t=s_{t+1}-P(s_t,a_t,\bar z)$. Forward planning has gain $0$; reusing the last residual
+\citep{cwm_2611_24778}, equivalently closing the last observed gap between outcome and goal, has gain $1$; for a
+persistent latent the Bayes gain decays as $1/t$.
+
+\paragraph{Hindsight relabeling.} Hindsight experience replay treats an outcome the agent actually reached as a goal
+it knows how to reach \citep{andrychowicz2017her}. For planning, this gives a second use of the past: among the
+executed actions, take the one whose achieved outcome $y^\star$ is closest to the current goal, and predict any action's
+outcome as $y^\star+P(a,z)-P(a^\star,z)$. The model then predicts only a difference from a true example in this world,
+which cancels its local bias. Combined with inference, $z$ is drawn from $q_t$.
+
+\paragraph{Hindsight in a hierarchy.} All levels share one belief $q_t(z)$, so evidence from one subgoal informs
+every later one. In our experiments the high level supplies fixed subgoals and hindsight acts through the shared
+belief; redrawing the subgoals themselves is discussed in Section~\ref{sec:lim}.
+
+% ===============================================================================================================
+\section{When must hindsight help? Theory}
+\label{sec:theory}
+
+Statements and proofs are in Appendix~\ref{sec:theory-full}. Let $z=(\theta,w)$, with a multiplicative part $\theta$
+(it scales the effect of an action) and an additive part $w$, $d=2$, and observation noise $\sigma^2$.
+\begin{enumerate}
+\item \textbf{Dominance} (Thm.~\ref{thm:dominance}): the Bayes hindsight planner is never worse than any forward
+planner \citep{blackwell1953}.
+\item \textbf{Persistence is necessary} (Thm.~\ref{thm:fresh}): if $z$ is redrawn every step, the posterior predictive
+equals the prior and hindsight gains nothing; a planner that assumes persistence can lose.
+\item \textbf{Persistence suffices for a large gain} (Thm.~\ref{thm:separation}): forward regret is $\Theta(T)$,
+hindsight regret $O(\sigma^2d\log T)$, with per-step excess $\sigma^2d/t$.
+\item \textbf{Last-residual reuse is inconsistent} (Thm.~\ref{thm:residual}): it pays $\sigma^2$ per step forever under
+an additive $z$, is unstable when $\theta>2\bar\theta$, and is worse than forward planning with no disturbance.
+\item \textbf{Hierarchy} (Thm.~\ref{thm:hier}): under a persistent $z$, a hierarchical planner whose subgoal execution
+ignores outcomes fails with the same probability on every retry; hindsight's advantage is the probability that a
+subgoal is infeasible under the nominal model \emph{and} the surprise is identified before failure is irreversible.
+\end{enumerate}
+The theory names three conditions for a large gain: the latent persists; the planner commits to actions before
+feedback can correct them (open-loop execution, one-shot decisions, observation delay); and the data excite the
+latent enough to identify it. Sections~\ref{sec:hier}--\ref{sec:mech} vary each one.
+
+% ===============================================================================================================
+\section{Protocol}
+\label{sec:protocol}
+\textbf{Pre-registration.} Each experiment's hypotheses, planners, seeds, sample sizes and decision rules, and the
+script that applies them, were committed before the run; outcomes, including failures, are appended to the same file.
+\textbf{Oracle gates.} Before a new task is used, the planner given the true latent must beat forward planning by a
+declared margin; task parameters may only be chosen from a declared ladder using forward and oracle results.
+\textbf{Data separation.} World models are trained on random-action data that contains no task, goal or test
+latent; test latents, goals, planner randomness, gates and the sealed deployment test use pairwise disjoint seed
+streams. \textbf{Leakage and causality tests.} Automated tests check that no non-oracle planner's actions change when
+the true latent is replaced by garbage (and that the oracle's do), that trajectories in two worlds identical up to step
+$t^\star$ are identical up to $t^\star$ (with noise and delays on), and that every realism option takes effect.
+\textbf{Verification.} The simulator matches closed-form dynamics to $10^{-9}$ with perturbed mass and damping (this test
+caught a mass change that MuJoCo silently ignored before any affected run); the browser port matches the Python and
+MuJoCo code to between $10^{-16}$ and $10^{-7}$. \textbf{Statistics.} All planners face the same episodes; intervals are
+95\% paired bootstrap over episodes. \textbf{Provenance.} Results carry the git commit and a clean-tree flag recorded
+before the run; every number in this paper is generated from them. The full protocol is in \texttt{EVALUATION.md}.
+
+% ===============================================================================================================
+\section{Hierarchical planning with and without hindsight}
+\label{sec:hier}
+
+\paragraph{Task.} A puck driven by two motors (MuJoCo \citep{todorov2012mujoco}) must travel from $(0,0)$ to $(4,0)$
+through gaps of width 0.5\,m in three hazard walls (Figure~\ref{fig:teaser}); touching a wall or the arena boundary
+ends the episode. The hidden latent is the motor gain ($U[0.4,1.6]$) and a constant wind ($\mathcal N(0,1)$\,N per
+axis). Regimes: no latent, persistent wind, persistent gain and wind, and a \emph{fresh} control in which both are
+redrawn every second. \textbf{Planners.} A \emph{flat} planner plans directly to the goal. A \emph{hierarchical}
+planner receives subgoals (the approach and exit point of each gap, then the goal) and reaches each with CEM-MPC on a
+learned five-member ensemble world model (horizon 15 steps, hazard penalty in the rollout), executing open-loop chunks
+of $K=10$ steps (0.5\,s). We compare the hierarchical planner with forward planning, last-residual reuse, online
+fine-tuning of the model's last layer \citep{adajepa_2606_32026}, hindsight with the Gaussian posterior, hindsight with
+particles, and the oracle. \hiEpisodes{} episodes per cell (3 seeds of models $\times$ 50), same episodes for every
+planner. The oracle gate passed at the first gap width on the pre-declared ladder.
+
+\begin{table}[t]\centering\small
+\input{generated/tab_hier.tex}
+\caption{Main-goal success. $^{+}$/$^{-}$: 95\% paired interval of the difference to hierarchical forward planning
+entirely above/below zero.}
+\label{tab:hier}
+\end{table}
+
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{generated/v7_success.png}
+\caption{Main-goal success by latent regime (95\% bootstrap intervals; hatched: flat planners).}
+\label{fig:hier}
+\end{figure}
+
+\paragraph{Results (Table~\ref{tab:hier}, Figure~\ref{fig:hier}).} All seven pre-registered predictions held.
+\emph{Hierarchy is needed:} with no latent, every hierarchical planner succeeds in every episode, flat forward planning in
+\hiFlatNone{} of them. \emph{Hierarchy alone is not enough:} under a persistent gain and wind, hierarchical forward
+planning succeeds in \hiFwdBoth{} of episodes. \emph{Hindsight closes most of the gap:} the same hierarchical planner with
+hindsight succeeds in \hiHindBoth{} (difference \hiDiffBoth, interval [\hiDiffLoBoth, \hiDiffHiBoth]); the oracle reaches
+\hiOracleBoth, so hindsight recovers \hiCapture{} of the improvement available. Under wind alone the numbers are
+\hiFwdWind{}, \hiHindWind{} and \hiOracleWind. \emph{Inference beats cheaper corrections where the latent is
+multiplicative:} residual reuse reaches \hiResidBoth{} and online fine-tuning \hiSgdBoth{} under gain and wind; under
+wind alone residual reuse matches hindsight (\hiResidWind), as expected for an additive latent. \emph{Controls:} with
+no latent hindsight changes nothing; with a latent redrawn every second it is worse than forward planning (\hiHindFresh{}
+vs \hiFwdFresh), as Theorem~\ref{thm:fresh} requires.
+
+\begin{figure}[t]\centering
+\begin{minipage}{0.64\linewidth}\includegraphics[width=\linewidth]{generated/v7_failures.png}\end{minipage}\hfill
+\begin{minipage}{0.34\linewidth}\includegraphics[width=\linewidth]{generated/v7_ksweep.png}\end{minipage}
+\caption{Left: where the main goal is lost under a persistent gain and wind (a) and the fraction of episodes without a
+failure over time (b). Forward planning loses episodes at every gate; hindsight loses a few at the first gate, while it
+is still identifying the latent, and almost none afterwards. Right: success against the open-loop chunk length $K$.}
+\label{fig:fail}
+\end{figure}
+
+\paragraph{Subgoal failure.} Figure~\ref{fig:fail}a shows the mechanism of Theorem~\ref{thm:hier}. Forward planning
+fails at every gate because the same unmodelled latent defeats every subgoal. Hindsight's failures concentrate at the
+first gate, before the latent has been identified, and almost vanish afterwards.
+
+\paragraph{Commitment.} Fast replanning absorbs much of a disturbance; committing to longer open-loop segments does not
+(Figure~\ref{fig:fail}, right). Hindsight's gain in success over forward planning grows monotonically with the chunk
+length: \hkGainOne{} at $K=1$, \hkGainFive{} at $K=5$, \hkGainTen{} at $K=10$ and \hkGainTwenty{} at $K=20$.
+
+\paragraph{Hindsight does not replace hierarchy, and can hurt a flat planner.} A flat planner with hindsight
+succeeded in no episode in any regime, including the one without a latent. Diagnosis (not pre-registered): failures
+are head-on collisions with the first wall at in-distribution speeds; with no latent at all the posterior acquires a
+spurious offset (about $-0.5$\,N), absorbing the world model's own bias, and the planner then predicts that it stops
+short of the wall while it does not. Subgoals placed in the open gap row protect the hierarchical planner from this.
+Hindsight inference can absorb model bias into the latent and hurt plans that depend on exact stopping distances near
+hazards.
+
+% ===============================================================================================================
+\section{Relabeling: anchoring the plan on what actually happened}
+\label{sec:relabel}
+
+\paragraph{Task.} A puck is launched with a chosen velocity at a target and flies for 2\,s under a hidden damping
+($U[0.5,2]$) and wind ($\mathcal N(0,0.5^2)$\,N per axis). Each episode has \twAttempts{} throws at new random targets
+under the same latent; every throw is a one-shot open-loop decision. \twEpisodes{} episodes. Regimes: wind only
+(additive), damping only (multiplicative), both, and fresh (redrawn every throw).
+
+\paragraph{Planners.} \emph{Goal-gap correction} aims so that predicted outcome plus a correction equals the target, and
+adds each throw's outcome-minus-target gap to the correction (an integral controller on the gap). \emph{Mean gap} uses
+the mean of past model errors. \emph{Relabeling anchor} predicts from the past throw whose landing point is closest to
+the current target (Section~\ref{sec:method}). \emph{Latent inference} is the particle posterior with
+posterior-expected cost. \emph{Latent inference + relabeling} applies the anchor under each posterior sample.
+
+\begin{table}[t]\centering\small
+\input{generated/tab_v9.tex}
+\caption{Repeated throwing: mean miss over attempts 2--\twAttempts{} relative to forward planning (lower is better;
+all intervals in \texttt{generated/v9\_summary.txt}), and final-attempt miss relative to the oracle.}
+\label{tab:v9}
+\end{table}
+
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{generated/v9_figure.png}
+\caption{Miss distance per attempt (log scale, $\pm2$ s.e.). Forward planning never improves. Goal-gap correction
+learns an additive offset in one throw but cannot represent damping. Latent inference with relabeling approaches the
+oracle.}
+\label{fig:v9}
+\end{figure}
+
+\paragraph{Results (Table~\ref{tab:v9}, Figure~\ref{fig:v9}).} All pre-registered predictions held. Goal-gap correction
+behaves like last-residual reuse, as the theory predicts: it reduces the miss to \vnGapWind{} of forward planning under
+wind, but only to \vnGapDamp{} under damping, because the gap left by one throw does not transfer to a throw at a
+different target when the latent scales the action's effect. Relabeling beats it wherever the latent is multiplicative
+(\vnAnchorDamp{} under damping). Latent inference with relabeling is the best non-oracle planner in every persistent
+regime (\vnHAWind, \vnHADamp, \vnHABoth{} for wind, damping and both), reducing the miss left by latent inference alone
+by \vnHAvsHWind, \vnHAvsHDamp{} and \vnHAvsHBoth. Its final throw misses by \vnHAOracleWind, \vnHAOracleDamp{} and
+\vnHAOracleBoth{} times the oracle's distance, against \twOracleGapWind, \twOracleGapDamp{} and \twOracleGapBoth{} for latent
+inference alone; the pre-registered criterion of at most twice the oracle, failed by inference alone, is met in all
+three regimes. When the latent is redrawn every throw, every method that uses the past is worse than forward planning
+(for example \vnHAFresh).
+
+% ===============================================================================================================
+\section{What controls the gain}
+\label{sec:mech}
+Each condition of the theory was varied with everything else fixed, in a puck-navigation task with learned models and
+CEM-MPC (cost relative to forward planning; lower is better).
+
+\paragraph{Persistence.} With AR(1) wind of persistence $\rho$, the particle posterior's cost ratio falls monotonically
+from \rhoZero{} at $\rho=0$ (worse than forward) to \rhoOne{} at $\rho=1$ (Table~\ref{tab:rho}).
+
+\paragraph{Commitment.} With replanning every step, hindsight's gain is \ksGainOne; with open-loop chunks of 40 steps it
+is \ksGainForty{} against an oracle headroom of \ksHeadForty{} (Table~\ref{tab:k}).
+
+\paragraph{Feedback delay.} When observations arrive $d$ steps late, every planner reconstructs the present by rolling
+its own believed model forward, so hindsight improves both the plan and the state estimate. Its gain grows from
+\dlGainZero{} at $d=0$ to \dlGainTwenty{} at $d=20$, while online fine-tuning reaches \dlSgdTwenty{} of forward cost at
+$d=20$ against \dlPostTwenty{} for hindsight (Table~\ref{tab:delay}, Figure~\ref{fig:v6}c).
+
+\paragraph{One-shot decisions.} In repeated throwing (Section~\ref{sec:relabel}) the miss of latent inference alone is
+\twHindBoth{} of forward planning; when the latent is redrawn every throw it is \twHindFresh{} (Figure~\ref{fig:v6}a,b).
+
+\paragraph{Noise and calibration.} With i.i.d.\ gusts added to a persistent wind, last-residual reuse degrades from
+\nzResidZero{} to \nzResidOne{} while the Gaussian posterior stays at \nzPostZero{}--\nzPostOne{}. A particle posterior
+whose likelihood width is fixed from training residuals chases the gusts (\nzFixedZero{} $\to$ \nzFixedOne); estimating
+the residual variance online restores it (\nzAdaptZero{} $\to$ \nzAdaptOne) (Table~\ref{tab:noise}).
+
+\begin{table}[t]\centering\scriptsize
+\begin{minipage}{0.49\linewidth}\centering\input{generated/tab_ksweep.tex}\captionof{table}{Gain over forward by chunk length.}\label{tab:k}\end{minipage}\hfill
+\begin{minipage}{0.49\linewidth}\centering\input{generated/tab_rho.tex}\captionof{table}{Cost ratio by persistence $\rho$.}\label{tab:rho}\end{minipage}
+\vspace{0.5em}
+
+\begin{minipage}{0.49\linewidth}\centering\input{generated/tab_delay.tex}\captionof{table}{Cost ratio by observation delay.}\label{tab:delay}\end{minipage}\hfill
+\begin{minipage}{0.49\linewidth}\centering\input{generated/tab_noise.tex}\captionof{table}{Cost ratio under gust noise.}\label{tab:noise}\end{minipage}
+\end{table}
+
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{generated/v6_figure.png}
+\caption{(a) Repeated throwing under persistent damping and wind; (b) the same with the latent redrawn every throw;
+(c) cost relative to forward planning as observation delay grows.}
+\label{fig:v6}
+\end{figure}
+
+\paragraph{What the inferred latent represents.}\label{sec:ident}\label{sec:probe} A linear probe from the posterior to the
+true latent explains \idWindTwenty{} of the wind's variance after 20 transitions, while the motor gain is poorly
+identified and the inferred parameters dip at every chunk boundary. The data constrain $\theta a+w$, not $\theta$ and
+$w$ separately, and each new action rotates that ridge: pinning the gain removes the dip (\cfDipStd{} $\to$ \cfDipPin), and
+the identifiable quantity, the predicted effect of the next action, reaches $R^2=$\idPredEnd. Interpretability claims
+about inferred latents should be made about identifiable combinations.
+
+\paragraph{Real measured systems.} On five system-identification benchmarks with official splits
+\citep{nonlinear_benchmarks}, where inputs are logged and no planner acts, the Gaussian posterior reduces ten-step
+prediction error to \rdTenStep{} of the frozen model's while last-residual reuse increases it to \rdResidTen; online
+fine-tuning is stronger here (\rdSgdFwdTen), and adding the posterior to it gives no further gain (\rdHybridSgd).
+
+%V8SECTION
+
+% ===============================================================================================================
+\section{Limitations and negative results}
+\label{sec:lim}
+\textbf{Privileged training.} The world models are trained with the latent as an input, so the latent space is given,
+not learned; in a self-supervised world model \citep{lecun2022path,hjepa_2610_06805} it would have to be discovered, and its
+identifiability (Section~\ref{sec:ident}) becomes central. \textbf{Subgoals are not redrawn.} Hindsight acts through the
+shared belief; the high level does not change the subgoals. In an earlier river-crossing task designed to need subgoal
+redrawing (choosing between fording and a bridge), three pre-registered designs found no benefit (success \rvOneHind{} vs
+\rvOneFwd{}; \rvTwoHind{} vs \rvTwoFwd; and a design in which forward planning pushed through, \rvThreeFwd{}, while the
+oracle's bridge execution succeeded only \rvThreeOracle{} of the time). Execution and fast feedback decided those
+outcomes, not inference. \textbf{Bias absorption.} The flat-planner result of Section~\ref{sec:hier} shows that an
+inferred latent can absorb model bias and mislead a planner. \textbf{Oracle gap.} Latent inference alone does not reach
+the oracle; relabeling closes much of the gap in the throwing task but was not tested in navigation. \textbf{Scale.}
+Low-dimensional state, small MLP ensembles, one simulator and five real benchmarks with logged inputs; no pixels and no
+physical robot. \textbf{Excitation.} Multiplicative latents are identified only through variation in the actions;
+no planner here explores on purpose.
+
+\section{Related work}
+Latent-variable and energy-based world models and hierarchical planning \citep{lecun2022path,hjepa_2610_06805};
+test-time adaptation of world models by latent optimisation \citep{t2z_2610_22364} or weight updates
+\citep{adajepa_2606_32026,jepattt_2610_00722}; residual reuse in counterfactual world models \citep{cwm_2611_24778};
+hindsight experience replay \citep{andrychowicz2017her}; probabilistic ensembles for MPC \citep{chua2018pets}; adaptive
+control and regret \citep{laiwei1982,abbasi2011,simchowitz2020,cassel2020,astrom_wittenmark}; value of information
+\citep{blackwell1953}; probing world models \citep{li2023othello,probing_rl_wm_2603_21546}.
+
+\section{Discussion}
+A hierarchical world model draws the route; it does not know the world it will drive in. Our results suggest a division
+of labour: the predictor models what is the same across worlds, a low-dimensional latent carries what is constant within
+one, and the agent infers that latent from its own recent history rather than marginalising it away at every step.
+Relabeling adds a second, model-light use of the same history, and the two combine. The gains appear where the theory
+says they must (persistent surprises, committed actions, delayed feedback) and vanish or reverse where it says they
+cannot. Three steps remain before this is a robot result: a latent learned without labels, a high level that redraws
+subgoals from the posterior, and a physical system.
+
+\bibliographystyle{plainnat}
+\bibliography{../refs}
+
+\appendix
+\section{Theory: statements and proofs}
+\label{sec:theory-full}
+\input{theory_body.tex}
+
+\section{Reproducibility}
+Code, pre-registrations and results: this repository. Hardware for latency: \latCPU. Interactive real-time version of the
+hierarchical task, running the seed-0 models in the browser: \texttt{demo/}.
+
+\end{document}

@@ -1,0 +1,121 @@
+% Body of the theory appendix (generated from theory.tex without its section header).
+
+\paragraph{Setting.} At step $t$ the agent receives a commanded displacement $\delta_t$ (i.i.d., independent of
+the past) and chooses a bounded command $|a_t|\le A$. The world responds
+\begin{equation}
+\Delta s_t=\theta_t a_t+w_t+\varepsilon_t,\qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)\ \text{i.i.d.},
+\end{equation}
+with cost $c_t=(\Delta s_t-\delta_t)^2$. The hidden disturbance $\phi_t=(\theta_t,w_t)$ has a \emph{gain} part
+$\theta_t$ (it scales the command) and an \emph{additive} part $w_t$; its prior is $\mathcal N(m_0,S_0)$ with
+$m_0=(\bar\theta,0)$. Let $\mathcal F_t$ be the history $(\delta_{0:t},a_{0:t-1},\Delta s_{0:t-1})$.
+A \textbf{forward} planner chooses $a_t$ as a function of $\delta_t$ only (it never conditions on outcomes);
+a \textbf{hindsight} planner chooses $a_t$ as a function of $\mathcal F_t$. Regret is measured against the
+oracle that knows $\phi_t$ and obeys the same bound; $\varepsilon_t$ is common to all planners and cancels.
+
+\begin{theorem}[Dominance]\label{thm:dominance}
+For any prior and any disturbance process, the myopic Bayes hindsight planner
+$a^H_t=\arg\min_{|a|\le A}\mathbb E[c_t\mid\mathcal F_t]$, computed under the correct disturbance model,
+satisfies $\mathbb E c^H_t\le\mathbb E c^F_t$ for every $t$ and every forward planner $F$.
+\end{theorem}
+\begin{proof}
+$a^F_t$ is a function of $\delta_t$, hence $\mathcal F_t$-measurable, so it is feasible for the minimisation defining
+$a^H_t$: $\mathbb E[c^H_t\mid\mathcal F_t]\le\mathbb E[c(a^F_t)\mid\mathcal F_t]$. Because $\delta_t$ is
+independent of the past and actions do not move the state that later costs depend on, the law of $c(a^F_t)$
+under the hindsight planner's history equals that under $F$'s own history. Take expectations.
+This is Blackwell's comparison of experiments~\citep{blackwell1953} specialised to one-step costs.
+\end{proof}
+
+\begin{theorem}[No free lunch under fresh disturbances]\label{thm:fresh}
+If $\phi_t$ are i.i.d.\ and independent of the past, the posterior predictive of $\phi_t$ given $\mathcal F_t$ equals
+the prior, so the correctly specified hindsight planner coincides with the Bayes forward planner and
+$\mathbb E c^H_t=\mathbb E c^F_t$. A hindsight planner that \emph{assumes} persistence is misspecified and can be
+strictly worse (Table~\ref{tab:theory}, row \emph{fresh}).
+\end{theorem}
+
+\begin{theorem}[Linear vs.\ logarithmic regret under persistent disturbances]\label{thm:separation}
+Let $\phi_t\equiv\phi\sim\mathcal N(m_0,S_0)$ be persistent and assume targets are reachable
+($|\delta_t-w|\le A|\theta|$). Then
+\begin{enumerate}
+\item the Bayes forward planner pays a constant excess every step,
+  $c_F=\sigma_w^2+\sigma_\theta^2\,\mathbb E[\delta^2]/(\bar\theta^2+\sigma_\theta^2)$, so $R_F(T)=c_F\,T$;
+\item the certainty-equivalent hindsight planner, and therefore the Bayes hindsight planner, satisfies
+\begin{equation}
+R_H(T)\le 2\sigma^2\max(1,\kappa)\,d\,\log\!\Big(\tfrac{\lambda_{\max}(V_0)+TL^2/d}{\lambda_{\min}(V_0)}\Big),\quad
+V_0=\sigma^2S_0^{-1},\ L^2=A^2+1,\ \kappa=L^2/\lambda_{\min}(V_0),
+\end{equation}
+with $d=2$; i.e.\ $R_H(T)=O(\sigma^2 d\log T)$, and the per-step excess decays as $\sigma^2 d/t$.
+\end{enumerate}
+\end{theorem}
+\begin{proof}[Proof sketch]
+(1) Minimise $\mathbb E[(\theta a+w-\delta)^2]=(\bar\theta^2+\sigma_\theta^2)a^2-2a\bar\theta\delta+\delta^2+\sigma_w^2$
+over $a$. (2) With $x_t=(a_t,1)$ and Gaussian conjugacy, the posterior is $\mathcal N(\mu_t,\Sigma_t)$ with
+$\Sigma_t=\sigma^2V_t^{-1}$, $V_t=V_0+\sum_{s<t}x_sx_s^\top$. The CE action solves $x_t^\top\mu_t=\delta_t$, so its
+error is $x_t^\top(\phi-\mu_t)$ and $\mathbb E[\,\cdot^2\mid\mathcal F_t]=x_t^\top\Sigma_tx_t=\sigma^2\|x_t\|^2_{V_t^{-1}}$.
+Since $\|x_t\|^2_{V_t^{-1}}\le\kappa$, we have $u\le\max(1,\kappa)\min(1,u)$, and the elliptical-potential lemma
+\citep[Lemma 11]{abbasi2011} gives $\sum_t\min(1,\|x_t\|^2_{V_{t}^{-1}})\le2\log(\det V_T/\det V_0)$; bound
+$\det V_T$ by $(\lambda_{\max}(V_0)+TL^2/d)^d$. The Bayes planner is no worse than CE in posterior expectation at
+every step because the CE action is feasible for its minimisation.
+\end{proof}
+
+\paragraph{Remark (why $\log T$ here and $\sqrt T$ in LQR).} The elliptical-potential bound charges regret only along
+the regressors actually played, and in our one-step setting the cost depends on nothing else, so no exploration is
+needed and the rate is logarithmic. In linear-quadratic control with unknown input matrix, unexplored directions
+affect future costs and $\tilde\Theta(\sqrt T)$ is unavoidable~\citep{simchowitz2020,cassel2020}. Gain faults are
+the input-matrix case: they are identified only through variation in the commands, which our task supplies through
+random targets. Section~\ref{sec:ident} shows the practical consequence: additive faults are identified quickly,
+gain faults slowly.
+
+\begin{theorem}[Residual reuse is inconsistent for sequential replanning]\label{thm:residual}
+Apply the residual-reuse rule of \citet{cwm_2611_24778} at every step: predict
+$\Delta s_t(a)=\bar\theta a+r_{t}$ with $r_t=\Delta s_{t-1}-\bar\theta a_{t-1}$, and act on it. Under persistent $\phi$
+(unclipped), the error is $e_t=(\theta-\bar\theta)(a_t-a_{t-1})+\varepsilon_t-\varepsilon_{t-1}$. Hence
+(i) with a pure additive fault ($\theta=\bar\theta$) it pays excess $\sigma^2$ \emph{every} step, $R(T)=\sigma^2T$,
+versus $O(\log T)$ for hindsight; (ii) the commands follow an AR(1) recursion with coefficient
+$-(\theta-\bar\theta)/\bar\theta$, which is unstable for $\theta>2\bar\theta$ or $\theta<0$;
+(iii) with no disturbance at all it still pays $\sigma^2$ per step while the forward planner pays nothing.
+\end{theorem}
+\begin{proof}
+Substitute $\bar\theta a_t=\delta_t-r_t$ into $e_t=\theta a_t+w+\varepsilon_t-\delta_t$.
+\end{proof}
+This does not contradict \citet{cwm_2611_24778}: their guarantee is for the counterfactual of \emph{the same event}
+(same $\varepsilon$), which is exact under additivity. Item (iii) matches their own report that residual correction
+lowers replanning success when there is no disturbance.
+
+\paragraph{Numerical verification.} Table~\ref{tab:theory} checks each statement by Monte-Carlo
+(\texttt{wmi/theory.py}, \texttt{scripts/run\_theory.py}).
+\begin{table}[h]\centering\scriptsize
+\IfFileExists{generated/theory_table.tex}{\input{generated/theory_table.tex}}{\todo{run scripts/run\_theory.py}}
+\caption{Cumulative regret $R(T)$ and $t\cdot\text{excess}_t$ late in the run (constant $\Rightarrow$ $1/t$ decay;
+Theorem~\ref{thm:separation} predicts $\sigma^2d$). Mean $\pm$ s.d.\ over seeds.}
+\label{tab:theory}
+\end{table}
+
+\subsection{Hierarchical planning under persistent surprises}
+\label{sec:theory-hier}
+A hierarchical planner chooses a route $r\in\{1,\dots,R\}$ (a subgoal sequence) and a low-level controller executes it.
+Route $r$ succeeds iff the hidden disturbance lies in its feasible set, $\phi\in\mathcal F_r$; the bridge-like route
+$r_0$ is feasible for every $\phi$ but costs more. Executing an infeasible route produces a \emph{surprise} (an observed
+transition the nominal model does not predict) after $\tau_{\rm detect}$ steps, and an irreversible failure after
+$\tau_{\rm irr}$ steps unless the planner aborts.
+
+\begin{theorem}[Subgoal failure is permanent without hindsight]\label{thm:hier}
+Let $\phi$ be persistent. A hierarchical planner whose subgoal choice is a fixed function of the prior (nominal model)
+commits to $r^\star$ and re-selects $r^\star$ after every recoverable subgoal failure, so its main-goal failure
+probability equals $\Pr(\phi\notin\mathcal F_{r^\star})$ \emph{for any number of retries}. A hierarchical planner whose
+subgoal choice conditions on the observed surprise (posterior over $\phi$) and which aborts as soon as
+$\Pr(\phi\notin\mathcal F_{r}\mid\text{history})$ exceeds a threshold fails only on the event
+$\{\phi\notin\mathcal F_{r^\star}\}\cap\{\tau_{\rm detect}+\tau_{\rm abort}\ge\tau_{\rm irr}\}$.
+Hence its advantage is $\Pr\big(\phi\notin\mathcal F_{r^\star},\ \tau_{\rm detect}+\tau_{\rm abort}<\tau_{\rm irr}\big)$,
+which is positive iff the surprise is identifiable before the failure becomes irreversible.
+If $\phi$ is redrawn independently at every attempt (fresh surprises), retries are independent and the
+prior-based planner's failure probability after $n$ retries is $p^{\,n}$; the posterior carries no information about the
+next draw, so hindsight gives no advantage (Theorem~\ref{thm:fresh}).
+\end{theorem}
+\begin{proof}[Proof sketch]
+Under persistence the prior-based choice and the low-level outcome are deterministic functions of $\phi$ given the
+start state, so every retry reproduces the same failure. The hindsight planner's abort rule triggers on the first
+posterior update that makes $r^\star$ infeasible with high probability; it then re-plans over the remaining routes
+and $r_0$ is always feasible. Under fresh draws the posterior predictive for the next attempt equals the prior.
+\end{proof}
+The theorem turns the qualitative claim ``hindsight makes hierarchical planning robust in deployment'' into two
+testable conditions: \emph{persistence} of the surprise and \emph{detection before irreversibility}.
