@@ -78,3 +78,26 @@ def test_rng_streams_disjoint():
     for i in range(len(groups)):
         for j in range(i + 1, len(groups)):
             assert not groups[i] & groups[j]
+
+
+@pytest.mark.parametrize("planner", ["hier:forward", "hier:hindsight_posterior", "hier:hindsight_latent_pf_adapt"])
+def test_causality_with_realism(planner):
+    Mu, Mc = tiny_models(); T, E, tstar = 30, 2, 14
+    s1 = hier.schedule("both", np.random.default_rng(5), E, T)
+    s2 = s1.copy(); s2[tstar:] = hier.schedule("both", np.random.default_rng(6), E, T)[tstar:]
+    w = {"mass": np.array([0.9, 1.2]), "damp": np.array([1.3, 0.8]), "obs_sd": (0.01, 0.05), "act_delay": 1,
+         "compute_steps": 2, "seed": 4}
+    t1 = np.array(hier.run_hier(planner, Mu, Mc, s1, dict(CFG), 11, world=dict(w))["traj"])
+    t2 = np.array(hier.run_hier(planner, Mu, Mc, s2, dict(CFG), 11, world=dict(w))["traj"])
+    assert np.allclose(t1[:tstar + 1], t2[:tstar + 1], equal_nan=True)
+    assert not np.allclose(t1, t2, equal_nan=True)
+
+
+def test_realism_changes_outcome():
+    """Guards against realism options being silently ignored."""
+    Mu, Mc = tiny_models(); sch = hier.schedule("none", np.random.default_rng(5), 2, 20)
+    a = np.array(hier.run_hier("hier:forward", Mu, Mc, sch, dict(CFG), 11)["traj"])
+    for w in ({"mass": np.array([1.2, 1.2]), "damp": np.array([0.8, 0.8])}, {"obs_sd": (0.05, 0.1), "seed": 1},
+              {"act_delay": 2}, {"compute_steps": 2}):
+        b = np.array(hier.run_hier("hier:forward", Mu, Mc, sch, dict(CFG), 11, world=w)["traj"])
+        assert not np.allclose(a, b, equal_nan=True), w
