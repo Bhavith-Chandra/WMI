@@ -93,7 +93,7 @@ class LMM(nn.Module):
         self.tag_gain = float(tag_gain)   # Stage-3 post-training scalar: sensitivity to the own-order channel
         # generation-time calibration (realism post-training on FIT data): side temperature, market-logit bias,
         # type temperature. Teacher-forced likelihood is untouched (only sampling uses it).
-        self.gen_cal = {**dict(side_temp=1.0, mkt_bias=0.0, typ_temp=1.0), **(gen_cal or {})}
+        self.gen_cal = {**dict(side_temp=1.0, mkt_bias=0.0, typ_temp=1.0, lim_bias=0.0), **(gen_cal or {})}
         self.cfg['gen_cal'] = self.gen_cal
         # v2 token columns: 0 typ, 1 side, 2 lvl, 3 size bucket, 4 dt bucket, [5 src], [6 domain]
         self.ndom = ndom
@@ -157,7 +157,7 @@ class LMM(nn.Module):
 
     def gen_typ_logits(self, z):
         lt = self.h_typ(z) / self.gen_cal['typ_temp']
-        return torch.cat([lt[..., :2], lt[..., 2:] + self.gen_cal['mkt_bias']], -1)
+        return torch.cat([lt[..., :1] + self.gen_cal.get('lim_bias', 0.0), lt[..., 1:2], lt[..., 2:] + self.gen_cal['mkt_bias']], -1)
 
     def gen_side_logits(self, z, typ):
         return self.side_logits(z, typ) / self.gen_cal['side_temp']

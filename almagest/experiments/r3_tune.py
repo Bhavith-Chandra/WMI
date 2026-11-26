@@ -40,9 +40,10 @@ def main():
                                 r3.stats_from(r['tgt'][a], r['feat'][a], np.cumsum(r['dmid'][a]))))
     floor = r3.agg(floor)
     log = []
-    grid = list(itertools.product((0.8, 0.9, 1.0, 1.1), (-0.6, -0.3, 0.0, 0.3), (0.8, 1.0)))
-    for tt, mb, st in grid:
-        model.gen_cal.update(typ_temp=tt, mkt_bias=mb, side_temp=st)
+    grid = list(itertools.product((-0.15, -0.1, -0.05, 0.0), (-0.3, -0.15, 0.0), (0.8, 1.0)))
+    for lb, mb, st in grid:
+        tt = 1.0
+        model.gen_cal.update(typ_temp=tt, mkt_bias=mb, side_temp=st, lim_bias=lb)
         ge, gf, gm = r3.b2_run(model, rows, picks, batch, gen)
         comps = []
         for w, (i, s) in enumerate(picks):
@@ -52,11 +53,11 @@ def main():
         res = dict(model_vs_real=r3.agg(comps), floor_real_vs_real=floor)
         sc = score(res)
         npass = sum(g[-1] for g in gate(res))
-        log.append(dict(typ_temp=tt, mkt_bias=mb, side_temp=st, score=sc, n_pass=int(npass)))
+        log.append(dict(lim_bias=lb, typ_temp=tt, mkt_bias=mb, side_temp=st, score=sc, n_pass=int(npass)))
         print(json.dumps(log[-1]), flush=True)
     best = min(log, key=lambda x: x['score'])
     cfg = dict(ck['cfg']); cfg['gen_cal'] = dict(typ_temp=best['typ_temp'], mkt_bias=best['mkt_bias'],
-                                                 side_temp=best['side_temp'])
+                                                 side_temp=best['side_temp'], lim_bias=best['lim_bias'])
     c = dict(ck); c['cfg'] = cfg
     c['post_real'] = dict(method='FIT-hour gate-scored grid over generation scalars', log=log, chosen=cfg['gen_cal'])
     torch.save(c, out)
