@@ -39,6 +39,8 @@ def draw_map(ax):
     ax.scatter(*hier.START, s=30, color="#2ca02c", zorder=4); ax.scatter(*hier.GOAL, s=60, marker="*", color="#2ca02c", zorder=4)
     ax.set_xlim(-0.3, 4.4); ax.set_ylim(-1.35, 1.35); ax.set_aspect("equal"); ax.grid(False)
     ax.set_xticks([]); ax.set_yticks([])
+    for sp in ax.spines.values():
+        sp.set_visible(False)
 
 
 # ---------- Figure 1 (teaser): trajectories + success bars
@@ -57,9 +59,9 @@ ax = fig.add_subplot(gs[2]); show = ["flat:forward", "hier:forward", "hier:hinds
 for i, p in enumerate(show):
     m, lo, hi = ci(cat("K10/both", p, "success"))
     ax.bar(i, m, color=PCOL[p], width=.7, yerr=[[m - lo], [hi - m]], capsize=2, ecolor="#333333", lw=0)
-    ax.text(i, m + .04, f"{m:.2f}", ha="center", fontsize=7.5)
-ax.set_xticks(range(len(show))); ax.set_xticklabels(["flat\nforward", "hier.\nforward", "hier.\n+ hindsight", "hier.\noracle $z$"], fontsize=7.5)
-ax.set_ylim(0, 1.1); ax.set_ylabel("main-goal success"); ax.set_title("persistent gain + wind", fontsize=8.5); panel(ax, "c")
+    ax.text(i, hi + .03, f"{m:.2f}", ha="center", fontsize=7.5)
+ax.set_xticks(range(len(show))); ax.set_xticklabels(["flat,\nforward", "hierarch.,\nforward", "hierarch.\n+hindsight", "hierarch.,\noracle $z$"], fontsize=6.8)
+ax.set_ylim(0, 1.12); ax.set_ylabel("main-goal success"); ax.set_title("persistent gain + wind", fontsize=8.5); panel(ax, "c")
 fig.savefig(G / "v7_teaser.png"); plt.close(fig)
 
 # ---------- Figure 2: success by regime for every planner

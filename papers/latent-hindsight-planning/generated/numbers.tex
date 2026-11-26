@@ -12,6 +12,8 @@
 % provenance river_v2: commits ['e2950d0'], dirty=False, seeds/runs=3
 % provenance throw: commits ['55e206d', '72a91db'], dirty=False, seeds/runs=3
 % provenance mujoco_v3_delay: commits ['12fca02', '1db147f', 'c1ae4eb'], dirty=False, seeds/runs=12
+% provenance hier_main: commits ['484bf30', '5e36910', '789a0d5'], dirty=False, seeds/runs=3
+% provenance latency: commits ['5e36910'], dirty=False, seeds/runs=2
 \newcommand{\cfDipPin}{0.000}
 \newcommand{\cfDipStd}{-0.286}
 \newcommand{\cfRPin}{0.996}
@@ -26,6 +28,52 @@
 \newcommand{\dlPostZero}{0.977}
 \newcommand{\dlSgdTwenty}{0.876}
 \newcommand{\dlSgdZero}{0.986}
+\newcommand{\hiCapture}{90.4\%}
+\newcommand{\hiDiffBoth}{+0.31}
+\newcommand{\hiDiffFresh}{-0.11}
+\newcommand{\hiDiffHiBoth}{+0.39}
+\newcommand{\hiDiffHiFresh}{-0.01}
+\newcommand{\hiDiffHiNone}{+0.00}
+\newcommand{\hiDiffHiWind}{+0.28}
+\newcommand{\hiDiffLoBoth}{+0.24}
+\newcommand{\hiDiffLoFresh}{-0.20}
+\newcommand{\hiDiffLoNone}{+0.00}
+\newcommand{\hiDiffLoWind}{+0.15}
+\newcommand{\hiDiffNone}{+0.00}
+\newcommand{\hiDiffWind}{+0.21}
+\newcommand{\hiEpisodes}{150}
+\newcommand{\hiFlatBoth}{0.04}
+\newcommand{\hiFlatFresh}{0.01}
+\newcommand{\hiFlatHindBoth}{0.00}
+\newcommand{\hiFlatHindFresh}{0.00}
+\newcommand{\hiFlatHindNone}{0.00}
+\newcommand{\hiFlatHindWind}{0.00}
+\newcommand{\hiFlatNone}{0.41}
+\newcommand{\hiFlatWind}{0.09}
+\newcommand{\hiFwdBoth}{0.55}
+\newcommand{\hiFwdFresh}{0.36}
+\newcommand{\hiFwdNone}{1.00}
+\newcommand{\hiFwdWind}{0.73}
+\newcommand{\hiHindBoth}{0.86}
+\newcommand{\hiHindFresh}{0.25}
+\newcommand{\hiHindNone}{1.00}
+\newcommand{\hiHindWind}{0.94}
+\newcommand{\hiOracleBoth}{0.89}
+\newcommand{\hiOracleFresh}{0.94}
+\newcommand{\hiOracleNone}{1.00}
+\newcommand{\hiOracleWind}{0.98}
+\newcommand{\hiPfBoth}{0.83}
+\newcommand{\hiPfFresh}{0.37}
+\newcommand{\hiPfNone}{1.00}
+\newcommand{\hiPfWind}{0.95}
+\newcommand{\hiResidBoth}{0.77}
+\newcommand{\hiResidFresh}{0.39}
+\newcommand{\hiResidNone}{1.00}
+\newcommand{\hiResidWind}{0.95}
+\newcommand{\hiSgdBoth}{0.64}
+\newcommand{\hiSgdFresh}{0.37}
+\newcommand{\hiSgdNone}{1.00}
+\newcommand{\hiSgdWind}{0.84}
 \newcommand{\idPredDip}{0.138}
 \newcommand{\idPredEnd}{0.888}
 \newcommand{\idPredTwenty}{0.773}
@@ -33,6 +81,14 @@
 \newcommand{\ksGainForty}{34.1\%}
 \newcommand{\ksGainOne}{0.4\%}
 \newcommand{\ksHeadForty}{49.1\%}
+\newcommand{\latCPU}{Intel Xeon Processor @ 2.30GHz}
+\newcommand{\latFwdFour}{57}
+\newcommand{\latFwdOne}{51}
+\newcommand{\latObsPost}{0.68}
+\newcommand{\latPfFour}{51}
+\newcommand{\latPfOne}{57}
+\newcommand{\latPostFour}{82}
+\newcommand{\latPostOne}{79}
 \newcommand{\mjCaptureBoth}{60.7\%}
 \newcommand{\mjCaptureWind}{60.5\%}
 \newcommand{\mjFreshPost}{1.019}
