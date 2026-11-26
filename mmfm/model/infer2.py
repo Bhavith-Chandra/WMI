@@ -21,6 +21,7 @@ class IncFeatures2:
         self.win10 = collections.deque()
         self.prev_mid_after = None
         self.last_chg_us = None
+        self.us_mono = None
 
     def seed(self, pre_state):
         self.lm = [math.log(0.5 * (pre_state[0] + pre_state[1]))]
@@ -73,6 +74,8 @@ class IncFeatures2:
             f.append(math.tanh((lm - ref) * 1e4 / s))
         self.dts.append(float(dt))
         f.append(math.log1p(sum(self.dts) / 32))
+        us = us if self.us_mono is None else max(us, self.us_mono)  # monotone clock, as in batch
+        self.us_mono = us
         for w, span in ((self.win1, 1_000_000), (self.win10, 10_000_000)):
             w.append(us)
             while w and w[0] <= us - span:

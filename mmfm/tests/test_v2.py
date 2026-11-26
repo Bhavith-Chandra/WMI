@@ -80,6 +80,7 @@ def test_v2_incremental_equals_batch():
     from model.infer2 import IncFeatures2
     ev, st, lvq = synth2(1500, seed=5)
     ev["us"] = np.sort(ev["us"])
+    ev["us"][100::37] -= 3000  # non-monotonic exchange stamps, as in real data
     tok = Tokenizer2.fit([(ev, st, lvq)], dict(split="train", files_hash="x", range=[0, 1]))
     tb, fb, _ = tok.encode(ev, st, lvq)
     inc = IncFeatures2(tok)

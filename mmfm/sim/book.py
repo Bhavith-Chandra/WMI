@@ -6,34 +6,61 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from itertools import islice
+
 import numpy as np
+from sortedcontainers import SortedDict
 
 from data.l3 import ADD, BUY, CANCEL, SELL, TAKE
 
 
+def _hi(d):
+    return d.peekitem(-1)[0]
+
+
+def _lo(d):
+    return d.peekitem(0)[0]
+
+
 @dataclass
 class LevelBook:
+    """Price levels in SortedDicts: best/levels/nearest are O(log n) (real books have thousands of levels)."""
     tick: float
-    bids: dict = field(default_factory=dict)  # tick -> qty
-    asks: dict = field(default_factory=dict)
+    bids: SortedDict = field(default_factory=SortedDict)  # tick -> qty
+    asks: SortedDict = field(default_factory=SortedDict)
+
+    def __post_init__(self):
+        if not isinstance(self.bids, SortedDict):
+            self.bids = SortedDict(self.bids)
+        if not isinstance(self.asks, SortedDict):
+            self.asks = SortedDict(self.asks)
 
     @classmethod
     def from_idbook(cls, idbook, tick):
-        b = cls(tick)
+        bids, asks = {}, {}
         for s, p, a in idbook.orders.values():
             k = int(round(p / tick))
-            side = b.bids if s == BUY else b.asks
+            side = bids if s == BUY else asks
             side[k] = side.get(k, 0.0) + a
-        return b
+        return cls(tick, SortedDict(bids), SortedDict(asks))
 
     def copy(self):
-        return LevelBook(self.tick, dict(self.bids), dict(self.asks))
+        return LevelBook(self.tick, self.bids.copy(), self.asks.copy())
 
     def best(self, side):
         d = self.bids if side == BUY else self.asks
         if not d:
             return None
-        return max(d) if side == BUY else min(d)
+        return _hi(d) if side == BUY else _lo(d)
+
+    def nearest(self, side, k):
+        """Existing level on `side` nearest to tick k (ties -> the lower tick), None if the side is empty."""
+        d = self.bids if side == BUY else self.asks
+        if not d:
+            return None
+        i = d.bisect_left(k)
+        cands = [d.keys()[j] for j in (i - 1, i) if 0 <= j < len(d)]
+        return min(cands, key=lambda x: (abs(x - k), x))
 
     def mid_ticks(self):
         bb, ba = self.best(BUY), self.best(SELL)
@@ -45,7 +72,7 @@ class LevelBook:
             return 0.0, 0.0, False
         if typ == ADD:
             opp = self.asks if side == BUY else self.bids
-            crossed = bool(opp) and ((min(opp) <= k) if side == BUY else (max(opp) >= k))
+            crossed = bool(opp) and ((_lo(opp) <= k) if side == BUY else (_hi(opp) >= k))
             own = self.bids if side == BUY else self.asks
             own[k] = own.get(k, 0.0) + qty
             return 0.0, 0.0, crossed
@@ -62,7 +89,7 @@ class LevelBook:
         opp = self.asks if side == BUY else self.bids
         res, tr = qty, 0.0
         while res > 1e-9 * qty and opp:
-            best = min(opp) if side == BUY else max(opp)
+            best = _lo(opp) if side == BUY else _hi(opp)
             if (side == BUY and best > k) or (side == SELL and best < k):
                 break
             f = min(res, opp[best])
@@ -76,7 +103,7 @@ class LevelBook:
 
     def levels(self, side, n):
         d = self.bids if side == BUY else self.asks
-        ks = sorted(d, reverse=(side == BUY))[:n]
+        ks = islice(reversed(d.keys()), n) if side == BUY else islice(d.keys(), n)
         return [(k, d[k]) for k in ks]
 
 

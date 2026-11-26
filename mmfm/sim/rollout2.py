@@ -104,10 +104,9 @@ class Rollout2:
             qty = 10 ** nz / mid if np.isfinite(nz) else 0.0
             return act, side, k, qty, dt_us
         lv = b.bids if side == BUY else b.asks
-        if not lv:
+        kk = b.nearest(side, k)
+        if kk is None:
             return None
-        keys = np.fromiter(lv.keys(), dtype=np.int64)
-        kk = int(keys[np.argmin(np.abs(keys - k))])
         fr = 1.0 if szb == WHOLE_CANCEL else tk.sample_q("size_cancel", szb, self.rng)
         fr = min(max(fr if np.isfinite(fr) else 1.0, 0.0), 1.0)
         return act, side, kk, fr * lv[kk], dt_us
@@ -122,7 +121,7 @@ class Rollout2:
             opp = b.asks if side == BUY else b.bids
             lvq = pre[3] if side == BUY else pre[2]
             worst, res = None, qty
-            for lk in (sorted(opp) if side == BUY else sorted(opp, reverse=True)):
+            for lk in (opp.keys() if side == BUY else reversed(opp.keys())):
                 if (side == BUY and lk > k) or (side == SELL and lk < k) or res <= 1e-12:
                     break
                 worst = lk

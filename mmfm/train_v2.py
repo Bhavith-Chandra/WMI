@@ -76,9 +76,10 @@ def calibrate(model, chunks, T, max_tiles=600):
             lg = head(H[m]).float()
             y = tgt[m, k]
             nll = [float(-torch.log_softmax(lg / t, -1).gather(-1, y[:, None]).mean()) for t in grid]
+            raw = float(-torch.log_softmax(lg, -1).gather(-1, y[:, None]).mean())
             j = int(np.argmin(nll))
             buf[k] = grid[j]
-            res[f"{name}_{HORIZONS[k]}"] = dict(T=float(grid[j]), nll_raw=nll[20 if abs(float(grid[20]) - 1) < 0.05 else 0], nll_cal=nll[j])
+            res[f"{name}_{HORIZONS[k]}"] = dict(T=float(grid[j]), nll_raw_nats=raw, nll_cal_nats=nll[j])
     return res
 
 
@@ -123,9 +124,8 @@ def main():
     else:
         model = MMFM2(tok.vocab, train[0]["feats"].shape[1], nret, ncnt, d=a.d, n_layers=a.layers, ctx=a.ctx)
     opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=0.01)
-    total_steps_guess = int(a.minutes * 60 / 0.25)
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=a.lr, total_steps=max(total_steps_guess, 1000), pct_start=0.05,
-                                                anneal_strategy="cos")
+    def lr_at(frac):  # wall-clock schedule: 3% linear warmup, cosine decay to 5% of max over the time budget
+        return a.lr * (frac / 0.03 if frac < 0.03 else 0.05 + 0.95 * 0.5 * (1 + math.cos(math.pi * min((frac - 0.03) / 0.97, 1.0))))
     log = dict(config=vars(a), n_params=sum(p.numel() for p in model.parameters()), selection_split="val", evals=[])
     best, t0, step = math.inf, time.time(), 0
     while time.time() - t0 < a.minutes * 60:
@@ -135,9 +135,9 @@ def main():
         opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        for g_ in opt.param_groups:
+            g_["lr"] = lr_at((time.time() - t0) / (a.minutes * 60))
         opt.step()
-        if step < total_steps_guess - 1:
-            sched.step()
         step += 1
         if step % a.eval_every == 0:
             e = evaluate(model, val, a.ctx)

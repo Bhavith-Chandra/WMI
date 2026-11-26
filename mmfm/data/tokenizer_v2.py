@@ -69,12 +69,13 @@ def state_features(ev, state):
                     + [np.tanh((lm - _lag(lm, k)) * 1e4 / s) for k, s in ((10, 2), (100, 5), (1000, 10))], 1)
     after = np.concatenate([book[1:], book[-1:]], 0)
     # time since last mid change, measured at the time of event i, using the mid AFTER event i
-    us = ev["us"].astype(np.int64)
+    us = np.maximum.accumulate(ev["us"].astype(np.int64))  # exchange stamps are not monotonic across channels
     mid_after = np.concatenate([mid[1:], mid[-1:]])
     chg = np.r_[True, mid_after[1:] != mid_after[:-1]]
     last_chg_us = np.maximum.accumulate(np.where(chg, us, us[0]))
     since = np.log1p((us - last_chg_us) / 1000.0)
-    dt = np.maximum(np.diff(us, prepend=us[0]), 0).astype(np.float64)
+    raw_us = ev["us"].astype(np.int64)
+    dt = np.maximum(np.diff(raw_us, prepend=raw_us[0]), 0).astype(np.float64)  # raw dt, as the tokens use
     act = np.log1p(np.convolve(dt, np.ones(32) / 32, "full")[: len(dt)])
     c1 = np.log1p(np.arange(len(us)) - np.searchsorted(us, us - 1_000_000, side="right") + 1)
     c10 = np.log1p(np.arange(len(us)) - np.searchsorted(us, us - 10_000_000, side="right") + 1)
