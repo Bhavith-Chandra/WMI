@@ -1,0 +1,302 @@
+<title>Hindsight Planning Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Layout: control column on the left, two live arenas (forward | hindsight) sharing one hidden world on the right. */
+:root {
+  --bg: #f5f6f8; --panel: #ffffff; --fg: #1b2230; --muted: #5d6677; --line: #dde1e8;
+  --fwd: #7d8592; --hind: #1f5fbf; --hazard: #d9534f; --hazard-fill: rgba(217, 83, 79, .22); --goal: #2e9a4b;
+  --arena: #fbfcfd; --grid: #eef0f4; --chip: #eef2f9;
+  --display: "Space Grotesk", "IBM Plex Sans", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11151c; --panel: #171c25; --fg: #e4e8ef; --muted: #98a1b2; --line: #2a3140;
+    --fwd: #9aa3b1; --hind: #6ea0f2; --hazard: #f0716c; --hazard-fill: rgba(240, 113, 108, .25); --goal: #4cc46d;
+    --arena: #141922; --grid: #1d2330; --chip: #1e2635; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11151c; --panel: #171c25; --fg: #e4e8ef; --muted: #98a1b2; --line: #2a3140;
+  --fwd: #9aa3b1; --hind: #6ea0f2; --hazard: #f0716c; --hazard-fill: rgba(240, 113, 108, .25); --goal: #4cc46d;
+  --arena: #141922; --grid: #1d2330; --chip: #1e2635; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 14px; line-height: 1.45; }
+.wrap { max-width: 1320px; margin: 0 auto; padding-block: 20px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin-bottom: 14px; }
+h1 { font-family: var(--display); font-weight: 600; font-size: 1.45rem; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); max-width: 70ch; }
+.grid { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.controls { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+legend { font-family: var(--display); font-weight: 600; font-size: .78rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; }
+.row label { font-size: .86rem; }
+.row output { font-family: var(--mono); font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.row input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--hind); }
+.check { display: flex; gap: 8px; align-items: center; font-size: .86rem; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; }
+button, select { font: inherit; font-size: .86rem; border-radius: 7px; border: 1px solid var(--line); background: var(--chip); color: var(--fg); padding: 6px 11px; cursor: pointer; }
+button.primary { background: var(--hind); border-color: var(--hind); color: #fff; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--hind); outline-offset: 2px; }
+.note { font-size: .78rem; color: var(--muted); margin: 0; }
+.arenas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 700px) { .arenas { grid-template-columns: minmax(0, 1fr); } }
+.arena { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.arena h2 { font-family: var(--display); font-size: 1rem; margin: 0; display: flex; align-items: center; gap: 8px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+canvas { width: 100%; aspect-ratio: 4.7 / 2.7; max-width: 100%; display: block; border-radius: 6px; background: var(--arena); }
+.status { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill { font-family: var(--mono); font-size: .76rem; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--fg); font-variant-numeric: tabular-nums; }
+.pill.ok { background: color-mix(in srgb, var(--goal) 22%, transparent); }
+.pill.bad { background: color-mix(in srgb, var(--hazard) 25%, transparent); }
+.pill.warn { background: color-mix(in srgb, #e0a100 25%, transparent); }
+table { width: 100%; border-collapse: collapse; font-size: .8rem; font-variant-numeric: tabular-nums; }
+td, th { padding: 3px 6px; text-align: right; border-bottom: 1px solid var(--line); }
+td:first-child, th:first-child { text-align: left; color: var(--muted); font-weight: 400; }
+th { font-weight: 500; color: var(--muted); font-size: .74rem; }
+.foot { margin-top: 14px; color: var(--muted); font-size: .8rem; max-width: 110ch; }
+.foot code { font-family: var(--mono); font-size: .76rem; }
+#loading { font-family: var(--mono); color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Hindsight Planning Lab</h1>
+    <p>Two planners run the same learned world model, in real time, through three gates in a wind they cannot see.
+      Hierarchical forward planning executes its subgoals as predicted. Hierarchical hindsight planning infers the
+      hidden wind and motor gain from what each action actually did, and replans with that belief.</p>
+  </header>
+
+  <div class="grid">
+    <form class="controls" id="controls" onsubmit="return false">
+      <div class="btns">
+        <button type="button" class="primary" id="run">Pause</button>
+        <button type="button" id="reset">Restart episode</button>
+        <button type="button" id="rand">New hidden world</button>
+      </div>
+      <label class="check"><input type="checkbox" id="auto" checked> Next episode starts automatically, in a new world</label>
+
+      <fieldset>
+        <legend>Hidden world (the planners never see these)</legend>
+        <div class="row"><label for="gain">Motor gain</label><output id="gain_o"></output><input type="range" id="gain" min="0.4" max="1.6" step="0.01" value="1.3"></div>
+        <div class="row"><label for="wx">Wind x (N)</label><output id="wx_o"></output><input type="range" id="wx" min="-2" max="2" step="0.05" value="0.6"></div>
+        <div class="row"><label for="wy">Wind y (N)</label><output id="wy_o"></output><input type="range" id="wy" min="-2" max="2" step="0.05" value="-0.9"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Deployment realism</legend>
+        <div class="row"><label for="mass">Mass (model assumes 1 kg)</label><output id="mass_o"></output><input type="range" id="mass" min="0.8" max="1.25" step="0.01" value="1"></div>
+        <div class="row"><label for="damp">Damping (model assumes 1)</label><output id="damp_o"></output><input type="range" id="damp" min="0.7" max="1.4" step="0.01" value="1"></div>
+        <label class="check"><input type="checkbox" id="noise"> Sensor noise (1 cm, 5 cm/s)</label>
+        <label class="check"><input type="checkbox" id="adelay"> Actuation delay (50 ms)</label>
+        <label class="check"><input type="checkbox" id="randphys"> New worlds also change mass and damping</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Planner</legend>
+        <div class="row"><label for="pop">Candidate plans per iteration</label><output id="pop_o"></output><input type="range" id="pop" min="40" max="300" step="20" value="120"></div>
+        <div class="row"><label for="K">Open-loop chunk</label>
+          <select id="K"><option value="5">5 steps (0.25 s)</option><option value="10" selected>10 steps (0.5 s)</option></select></div>
+        <p class="note">The paper uses 300 candidates. Planning runs in background threads in real time: while a
+          plan is being computed, the puck keeps executing the old one, so slow planning costs accuracy.</p>
+      </fieldset>
+    </form>
+
+    <div>
+      <div class="arenas">
+        <section class="arena" aria-label="Hierarchical forward planner">
+          <h2><span class="dot" style="background:var(--fwd)"></span>Hierarchical, forward</h2>
+          <canvas id="cv0" width="940" height="540"></canvas>
+          <div class="status" id="st0"></div>
+        </section>
+        <section class="arena" aria-label="Hierarchical hindsight planner">
+          <h2><span class="dot" style="background:var(--hind)"></span>Hierarchical + hindsight</h2>
+          <canvas id="cv1" width="940" height="540"></canvas>
+          <div class="status" id="st1"></div>
+        </section>
+      </div>
+      <section class="arena" style="margin-top:16px">
+        <h2>What the hindsight planner has inferred</h2>
+        <div style="overflow-x:auto"><table id="belief">
+          <thead><tr><th>Quantity</th><th>True (hidden)</th><th>Inferred</th></tr></thead><tbody></tbody></table></div>
+        <p class="note">Inferred values come from the planner's belief about how its predictions are wrong: a gain
+          multiplier on the predicted effect of an action, and an offset per step, shown here converted to an approximate
+          constant force. Mass and damping changes have no slot of their own and are absorbed into these two.</p>
+        <p id="loading">Loading world models…</p>
+      </section>
+    </div>
+  </div>
+  <p class="foot">Models: 5-member MLP ensembles trained in MuJoCo (seed 0 of the paper's experiments), exported as is.
+    Physics, network outputs, belief updates and plan costs in this page were checked against the Python and MuJoCo
+    code (errors of 1e-16 to 1e-7; <code>demo/verify.mjs</code>). Planner: CEM-MPC, horizon 15 steps (0.75 s), hazard
+    penalty in rollouts; subgoals are the approach and exit points of each gate. Touching a red wall ends the episode.
+    Dashed lines show what each planner predicted its current plan would do.</p>
+</div>
+
+<script src="hlp_core.js"></script>
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const DT = 0.05, T_MAX = 300;
+  let M = null, running = true, epId = 0;
+  const KINDS = ["forward", "hindsight_posterior"];
+  const W = { z: [1, 0, 0], mass: 1, damp: 1 };
+  const rnd = HLP.rng((Date.now() & 0xffffffff) >>> 0);
+
+  // ---------- controls
+  const sliders = ["gain", "wx", "wy", "mass", "damp", "pop"];
+  const fmt = { gain: v => (+v).toFixed(2), wx: v => (+v).toFixed(2), wy: v => (+v).toFixed(2), mass: v => (+v).toFixed(2) + " kg", damp: v => (+v).toFixed(2), pop: v => v };
+  function readWorld() {
+    W.z = [+$("gain").value, +$("wx").value, +$("wy").value]; W.mass = +$("mass").value; W.damp = +$("damp").value;
+    sliders.forEach(s => $(s + "_o").textContent = fmt[s]($(s).value));
+  }
+  sliders.forEach(s => $(s).addEventListener("input", readWorld));
+  function randomWorld() {
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    $("gain").value = (0.4 + 1.2 * rnd.u()).toFixed(2);
+    $("wx").value = clamp(rnd.n(), -2, 2).toFixed(2); $("wy").value = clamp(rnd.n(), -2, 2).toFixed(2);
+    if ($("randphys").checked) { $("mass").value = (0.8 + 0.45 * rnd.u()).toFixed(2); $("damp").value = (0.7 + 0.7 * rnd.u()).toFixed(2); }
+    readWorld();
+  }
+  $("run").onclick = () => { running = !running; $("run").textContent = running ? "Pause" : "Run"; };
+  $("reset").onclick = () => newEpisode(false);
+  $("rand").onclick = () => newEpisode(true);
+  $("K").onchange = () => newEpisode(false);
+
+  // ---------- panels
+  const P = KINDS.map((kind, i) => ({ kind, i, cv: $("cv" + i), st: $("st" + i), tally: { ok: 0, fail: 0, timeout: 0 }, lat: [] }));
+  function sensorFor(p) { return s => $("noise").checked ? [s[0] + 0.01 * p.nr.n(), s[1] + 0.01 * p.nr.n(), s[2] + 0.05 * p.nr.n(), s[3] + 0.05 * p.nr.n()] : s.slice(); }
+
+  function newEpisode(newWorld) {
+    if (newWorld) randomWorld();
+    epId++;
+    const K = +$("K").value, H = Math.max(10, K + 5), seed = (rnd.u() * 1e9) | 0;
+    for (const p of P) {
+      p.K = K; p.H = H; p.t = 0; p.idx = 0; p.done = null; p.s = [...M.task.start, 0, 0];
+      p.nr = HLP.rng(seed); p.o = sensorFor(p)(p.s);
+      p.mu = new Array(H * 2).fill(0); p.plan = null; p.k0 = 0; p.busy = false; p.path = null; p.trail = [[p.s[0], p.s[1]]];
+      p.queue = []; p.post = new HLP.Posterior(0.5, M.cfg.resid_sd.map(x => 2 * x), M.cfg.resid_sd, M.cfg.forget);
+    }
+  }
+
+  function requestPlan(p) {
+    p.busy = true; p.reqT = p.t;
+    p.worker.postMessage({ type: "plan", kind: p.kind, obs: p.o, goal: M.task.subgoals[p.idx], mu: p.mu, K: p.K, H: p.H,
+      pop: +$("pop").value, seed: (rnd.u() * 1e9) | 0, postMean: p.post.mean(), z: W.z, ep: epId });
+  }
+
+  function hazardSwept(a, b) {
+    for (let f = 0.2; f <= 1.0001; f += 0.2) if (HLP.hazard(a[0] + f * (b[0] - a[0]), a[1] + f * (b[1] - a[1]), M.task)) return true;
+    return false;
+  }
+
+  function step(p) {
+    if (p.done) return;
+    if (p.t % p.K === 0 && !p.busy) requestPlan(p);
+    let cmd = [0, 0];
+    if (p.plan) { const j = Math.min(p.t - p.k0, p.H - 1); cmd = [Math.max(-1, Math.min(1, p.plan[j * 2])), Math.max(-1, Math.min(1, p.plan[j * 2 + 1]))]; }
+    p.queue.push(cmd); const a = $("adelay").checked ? (p.queue.length > 1 ? p.queue.shift() : [0, 0]) : (p.queue.length = 0, cmd);
+    const s2 = HLP.physicsStep(p.s, a, W.z, W.mass, W.damp), o2 = sensorFor(p)(s2);
+    if (p.kind === "hindsight_posterior") HLP.observePosterior(M, p.post, p.o, cmd, o2);
+    if (hazardSwept(p.s, s2)) p.done = "fail";
+    const sg = M.task.subgoals, last = sg.length - 1;
+    if (!p.done && p.idx === last && Math.hypot(s2[0] - M.task.goal[0], s2[1] - M.task.goal[1]) < M.task.goal_r) p.done = "ok";
+    if (!p.done && p.idx < last && Math.hypot(s2[0] - sg[p.idx][0], s2[1] - sg[p.idx][1]) < M.task.reach) p.idx++;
+    p.s = s2; p.o = o2; p.t++; p.trail.push([s2[0], s2[1]]);
+    if (!p.done && p.t >= T_MAX) p.done = "timeout";
+    if (p.done) p.tally[p.done]++;
+  }
+
+  // ---------- drawing
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function draw(p) {
+    const cv = p.cv, ctx = cv.getContext("2d"), dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+    const x0 = -0.3, x1 = 4.4, y0 = -1.35, y1 = 1.35, sx = w / (x1 - x0), sy = h / (y1 - y0);
+    const X = x => (x - x0) * sx, Y = y => h - (y - y0) * sy, task = M.task;
+    ctx.strokeStyle = css("--grid"); ctx.lineWidth = 1;
+    for (let gx = 0; gx <= 4; gx++) { ctx.beginPath(); ctx.moveTo(X(gx), 0); ctx.lineTo(X(gx), h); ctx.stroke(); }
+    for (let gy = -1; gy <= 1; gy++) { ctx.beginPath(); ctx.moveTo(0, Y(gy)); ctx.lineTo(w, Y(gy)); ctx.stroke(); }
+    ctx.fillStyle = css("--hazard-fill");
+    ctx.fillRect(0, 0, w, Y(task.ylim)); ctx.fillRect(0, Y(-task.ylim), w, h - Y(-task.ylim));
+    for (const [xw, yc] of task.walls) {
+      const g = task.gap / 2, l = X(xw - task.wall_half), r = X(xw + task.wall_half);
+      ctx.fillRect(l, Y(task.ylim), r - l, Y(yc + g) - Y(task.ylim)); ctx.fillRect(l, Y(yc - g), r - l, Y(-task.ylim) - Y(yc - g));
+    }
+    task.subgoals.slice(0, -1).forEach(([gx, gy], k) => {
+      ctx.strokeStyle = k === p.idx && !p.done ? css("--fg") : css("--muted"); ctx.lineWidth = k === p.idx ? 2 : 1;
+      ctx.beginPath(); ctx.moveTo(X(gx) - 4, Y(gy) - 4); ctx.lineTo(X(gx) + 4, Y(gy) + 4); ctx.moveTo(X(gx) + 4, Y(gy) - 4); ctx.lineTo(X(gx) - 4, Y(gy) + 4); ctx.stroke();
+    });
+    ctx.fillStyle = css("--goal"); ctx.beginPath(); ctx.arc(X(task.goal[0]), Y(task.goal[1]), task.goal_r * sx, 0, 7); ctx.globalAlpha = .25; ctx.fill(); ctx.globalAlpha = 1;
+    const col = p.i === 0 ? css("--fwd") : css("--hind");
+    if (p.path && !p.done) {
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(X(p.pathFrom[0]), Y(p.pathFrom[1]));
+      for (const [px, py] of p.path) ctx.lineTo(X(px), Y(py)); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath();
+    p.trail.forEach(([px, py], k) => k ? ctx.lineTo(X(px), Y(py)) : ctx.moveTo(X(px), Y(py))); ctx.stroke();
+    ctx.fillStyle = p.done === "fail" ? css("--hazard") : col; ctx.beginPath(); ctx.arc(X(p.s[0]), Y(p.s[1]), 6, 0, 7); ctx.fill();
+    // wind arrow (true wind)
+    const ax = 30, ay = 26, L = 14;
+    ctx.strokeStyle = css("--muted"); ctx.fillStyle = css("--muted"); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ax, ay);
+    ctx.lineTo(ax + L * W.z[1], ay - L * W.z[2]); ctx.stroke(); ctx.font = "11px " + css("--mono"); ctx.fillText("wind", ax - 14, ay + 22);
+  }
+
+  function pill(text, cls) { return `<span class="pill ${cls || ""}">${text}</span>`; }
+  function status(p) {
+    const lat = p.lat.slice(-20).sort((a, b) => a - b), p95 = lat.length ? lat[Math.floor(.95 * (lat.length - 1))] : 0;
+    const steps = Math.ceil(p95 / 1000 / DT);
+    const state = p.done === "ok" ? pill("reached the goal", "ok") : p.done === "fail" ? pill(`hit a wall at gate ${Math.min(3, (p.idx >> 1) + 1)}`, "bad")
+      : p.done === "timeout" ? pill("ran out of time", "warn") : pill(`t = ${(p.t * DT).toFixed(1)} s, gate ${Math.min(3, (p.idx >> 1) + 1)}`);
+    p.st.innerHTML = state + pill(`plan ${Math.round(p95)} ms (p95)`, steps > p.K ? "warn" : "") +
+      pill(`compute delay ${steps} step${steps === 1 ? "" : "s"}`) + pill(`goal ${p.tally.ok} / ${p.tally.ok + p.tally.fail + p.tally.timeout}`);
+  }
+  function belief() {
+    const pm = P[1].post.mean(), g = 1 + 0.5 * (pm[2][0] + pm[3][0]);
+    const rows = [["Motor gain", W.z[0].toFixed(2), g.toFixed(2)], ["Wind x (N, approx.)", W.z[1].toFixed(2), (pm[2][1] / DT).toFixed(2)],
+      ["Wind y (N, approx.)", W.z[2].toFixed(2), (pm[3][1] / DT).toFixed(2)], ["Mass / damping", `${W.mass.toFixed(2)} / ${W.damp.toFixed(2)}`, "absorbed"]];
+    $("belief").tBodies[0].innerHTML = rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join("");
+  }
+
+  // ---------- main loop (fixed 20 Hz control clock, real time)
+  let doneAt = null;
+  function tick() {
+    if (running && M) {
+      P.forEach(step);
+      if (P.every(p => p.done)) {
+        if (doneAt === null) doneAt = performance.now();
+        else if ($("auto").checked && performance.now() - doneAt > 900) { doneAt = null; newEpisode(true); }
+      }
+    }
+  }
+  function frame() { if (M) { P.forEach(draw); P.forEach(status); belief(); } requestAnimationFrame(frame); }
+
+  readWorld();
+  fetch("models.json").then(r => { if (!r.ok) throw new Error("models.json " + r.status); return r.json(); }).then(json => {
+    M = HLP.loadModels(json); let ready = 0;
+    for (const p of P) {
+      p.worker = new Worker("worker.js");
+      p.worker.onmessage = e => {
+        const d = e.data;
+        if (d.type === "ready") { if (++ready === P.length) { $("loading").hidden = true; newEpisode(false); setInterval(tick, DT * 1000); } return; }
+        if (d.ep !== epId) return;              // stale plan from a previous episode
+        p.plan = d.plan; p.mu = d.mu; p.k0 = p.reqT; p.busy = false; p.path = d.path; p.pathFrom = p.trail[p.reqT] || p.s;
+        p.lat.push(d.ms); if (p.lat.length > 200) p.lat.shift();
+      };
+      p.worker.postMessage({ type: "init", models: json });
+    }
+    requestAnimationFrame(frame);
+  }).catch(err => { $("loading").textContent = "Could not load the world models (" + err.message + "). Reload the page to try again."; });
+})();
+</script>
