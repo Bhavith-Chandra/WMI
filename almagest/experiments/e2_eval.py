@@ -71,6 +71,9 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
     want = {int(x) for x in np.unique(sidx)}
     tp = lambda k: torch.tensor(np.stack([st[d][k] for d in udays]))
     prev, feat_s, dmid, sb = tp('prev'), tp('feat'), tp('dmid'), tp('sb')
+    SRC = bool(getattr(model, 'src', False))
+    pad = (lambda t, v: torch.cat([t, torch.full(t.shape[:-1] + (1,), v, dtype=t.dtype)], -1)) if SRC else (lambda t, v: t)
+    prev = pad(prev, 0)                      # real context events are market events (src=0)
     half = reset // 2 if reset else None
     for s0 in range(0, n_need, CH):
         if reset and s0 % reset == half:      # reset boundaries at sidx - reset/2 -> rollout starts mid-segment
@@ -113,7 +116,7 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
              for li in range(len(model.blocks))]
     # tokens consumed since last reset (reset arm only): reset/2 at window start, by construction above
     since = np.full(R, half if reset else 0, np.int64)
-    pend_ev = torch.tensor(np.stack([st[days[w]]['tgt'][sidx[w] - 1] for w in win_of]))
+    pend_ev = pad(torch.tensor(np.stack([st[days[w]]['tgt'][sidx[w] - 1] for w in win_of])), 0)
     sbank = L.SlowBank(R)
     for i, w in enumerate(win_of):
         fv, p, ep = sbst[days[w]]
@@ -176,8 +179,8 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
             old = 0.5 * (vbb + vba).astype(float)
             E.inject(vb, va, rb, ra, vbb, vba, rbb, rba, side_of, child, vmask.astype(np.int64),
                      do_inj.astype(np.int64))
-            cev = torch.stack([torch.full((R,), 2), torch.tensor(side_of), torch.zeros(R, dtype=torch.long),
-                               torch.full((R,), child)], 1)
+            cev = pad(torch.stack([torch.full((R,), 2), torch.tensor(side_of), torch.zeros(R, dtype=torch.long),
+                                   torch.full((R,), child)], 1), 1)   # our own (exogenous) order: src=1
             set_pending(vmask, cev, old)
         for g in range(gap):
             z = consume(np.ones(R, bool))
@@ -189,7 +192,7 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
             size = L.inv_cdf(model.h_size(zl), u[:, 3]) + 1
             lvl = torch.where(typ == 2, torch.zeros_like(lvl), lvl)
             size = torch.where(typ == 2, size, torch.ones_like(size))
-            ev = torch.stack([typ, side, lvl, size], 1)
+            ev = pad(torch.stack([typ, side, lvl, size], 1), 0)
             old = 0.5 * (vbb + vba).astype(float)
             evn = ev.numpy().astype(np.int64)
             E.step_events(vb, va, rb, ra, vbb, vba, rbb, rba, evn[:, 0].copy(), evn[:, 1].copy(),

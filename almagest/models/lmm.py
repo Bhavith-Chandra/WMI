@@ -77,16 +77,20 @@ class DiagRec(nn.Module):
 
 
 class LMM(nn.Module):
-    def __init__(self, d=64, h=128, layers=2, mode='learned', slowbank=False, nsize=NSIZE, ndt=0, size_all=False):
+    def __init__(self, d=64, h=128, layers=2, mode='learned', slowbank=False, nsize=NSIZE, ndt=0, size_all=False,
+                 src=False):
         """v1 (synthetic): nsize=4, ndt=0, size only for markets. v2 (real): nsize=12 for all types, ndt=11 (Dt head)."""
         super().__init__()
-        self.cfg = dict(d=d, h=h, layers=layers, mode=mode, slowbank=slowbank, nsize=nsize, ndt=ndt, size_all=size_all)
+        self.cfg = dict(d=d, h=h, layers=layers, mode=mode, slowbank=slowbank, nsize=nsize, ndt=ndt, size_all=size_all,
+                        src=src)
+        self.src = src   # v1 only: token column 4 = source tag (0 market, 1 own/exogenous order); never a target
         self.nsize, self.ndt, self.size_all = nsize, ndt, size_all
         self.e_typ = nn.Embedding(3, d)
         self.e_side = nn.Embedding(2, d)
         self.e_lvl = nn.Embedding(NLVL, d)
         self.e_size = nn.Embedding(nsize, d)
         self.e_dt = nn.Embedding(ndt, d) if ndt else None
+        self.e_src = nn.Embedding(2, d) if src else None
         nsb = 2 * len(SB_TAUS) if slowbank else 0
         self.slowbank = slowbank
         self.inproj = nn.Linear(d + 21 + 1 + nsb, d)
@@ -111,6 +115,8 @@ class LMM(nn.Module):
                  + self.e_dt(ev[..., 4]))
         else:
             e = self.e_typ(ev[..., 0]) + self.e_side(ev[..., 1]) + self.e_lvl(ev[..., 2]) + self.e_size(ev[..., 3] - 1)
+            if self.src and ev.shape[-1] > 4:
+                e = e + self.e_src(ev[..., 4])
         z = [e, book_transform(feat), torch.clamp(dmid, -5, 5).unsqueeze(-1)]
         if self.slowbank:
             z.append(sb)
@@ -159,6 +165,9 @@ class LMM(nn.Module):
             return nll.mean()
         m_z = (typ == 2).reshape(-1).float()
         nll = nll + m_z * F.cross_entropy(lz.reshape(-1, NSIZE), (size - 1).reshape(-1), reduction='none')
+        if self.src and tgt.shape[-1] > 4:      # own/exogenous orders are inputs, never prediction targets
+            w = (tgt[..., 4] == 0).reshape(-1).float()
+            return (nll * w).sum() / w.sum().clamp(min=1)
         return nll.mean()
 
     def loss_parts(self, z, tgt, cmask):

@@ -611,3 +611,36 @@ class Snapshots:
         rd, rw = self.index(day_seeds, warms)
         return run_batch_snap(self.par, self.sb, self.sa, self.sbb, self.sba, self.sema, self.sss, self.ssr, rd, rw,
                               roll_seeds, n_child, gap, n_silent, side, child, mode)
+
+
+@njit(cache=True)
+def gen_stream_inj(par, seed, n, inj, inj_side, inj_size, ev, feat, mids, cm, src):
+    """Interventional training stream: at steps with inj[t]=1 an EXOGENOUS child market order (no information,
+    seen by the market exactly as in the visible evaluation arm) is executed instead of an agent event and recorded
+    with src[t]=1. Otherwise identical to gen_stream (src=0)."""
+    bid = np.zeros(P, np.int64)
+    ask = np.zeros(P, np.int64)
+    ema = np.zeros(NEMA + 2)
+    ss = np.zeros(int(par[8]) + 1, np.int64)
+    sr = np.zeros(int(par[8]) + 1, np.int64)
+    bb, ba = warm_state(par, seed, 20000, bid, ask, ema, ss, sr)
+    for t in range(n):
+        book_feat(bid, ask, bb, ba, feat[t])
+        mids[t] = 0.5 * (bb + ba)
+        for k in range(D):
+            cm[t, 0, k] = 1 if (bb - k >= 0 and bid[bb - k] > 0) else 0
+            cm[t, 1, k] = 1 if (ba + k < P and ask[ba + k] > 0) else 0
+        if inj[t] == 1:
+            typ, side, lvl, size = 2, inj_side[t], 0, inj_size[t]
+            ema[IM] += size if side == 0 else -size
+            src[t] = 1
+        else:
+            typ, side, lvl, size = world_policy(bid, ask, bb, ba, par, ema, ss, sr)
+            src[t] = 0
+        ev[t, 0] = typ
+        ev[t, 1] = side
+        ev[t, 2] = lvl
+        ev[t, 3] = size
+        bb, ba, _ = apply_action(bid, ask, bb, ba, typ, side, lvl, size)
+        bb, ba = _guard(bid, ask, bb, ba)
+        _update_ema(ema, par, 0.5 * (bb + ba))

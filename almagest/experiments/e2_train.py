@@ -39,6 +39,45 @@ def build_stream(par, seed, n):
                 tgt=ev, cm=cm)
 
 
+def inj_schedule(n, phi, rng, busy=0.7):
+    """Random exogenous metaorders over a stream of n events: participation log-U[0.02, 0.30], children log-U[10, 150],
+    child size in 1..4, random side, idle gaps so ~`busy` of the time a metaorder is active. Deliberately covers
+    a wide range around (not just at) the evaluation operating point."""
+    inj = np.zeros(n, np.int64); side = np.zeros(n, np.int64); size = np.ones(n, np.int64)
+    t = int(rng.integers(500, 5000))
+    while t < n:
+        eta = float(np.exp(rng.uniform(np.log(0.02), np.log(0.30))))
+        N = int(np.exp(rng.uniform(np.log(10), np.log(150))))
+        gap = max(1, int(round((1 / eta - 1) / phi)))
+        sd, sz = int(rng.integers(2)), int(rng.integers(1, 5))
+        for k in range(N):
+            tk = t + k * (gap + 1)
+            if tk >= n:
+                break
+            inj[tk], side[tk], size[tk] = 1, sd, sz
+        dur = N * (gap + 1)
+        t += dur + int(dur * (1 - busy) / busy * rng.uniform(0.5, 1.5)) + 1
+    return inj, side, size
+
+
+def build_stream_inj(par, seed, n, phi=0.11):
+    rng = np.random.default_rng(seed + 7)
+    inj, iside, isize = inj_schedule(n, phi, rng)
+    ev = np.zeros((n, 4), np.int64)
+    feat = np.zeros((n, 21), np.float64)
+    mids = np.zeros(n)
+    cm = np.zeros((n, 2, W.D), np.int8)
+    src = np.zeros(n, np.int64)
+    W.gen_stream_inj(par, seed, n, inj, iside, isize, ev, feat, mids, cm, src)
+    ev5 = np.concatenate([ev, src[:, None]], 1)
+    prev = np.vstack([[0, 0, 1, 1, 0], ev5[:-1]])
+    dmid = np.concatenate([[0.0], np.diff(mids)])
+    sv = np.where(prev[:, 0] == 2, np.where(prev[:, 1] == 0, 1, -1) * prev[:, 3], 0).astype(float)
+    fv, dev = L.slowbank_offline(sv, dmid)
+    sb = L.sb_scale(torch.tensor(fv, dtype=torch.float32), torch.tensor(dev, dtype=torch.float32)).numpy()
+    return dict(prev=prev, feat=feat.astype(np.float32), dmid=dmid.astype(np.float32), sb=sb, tgt=ev5, cm=cm)
+
+
 def stack(streams, chunks):
     out = {}
     for k in streams[0]:
@@ -60,6 +99,10 @@ def make_model(arm):
         return L.LMM(mode='modebank'), None
     if arm == 'modebank_sb':
         return L.LMM(mode='modebank', slowbank=True), None
+    if arm == 'short_src':
+        return L.LMM(mode='learned', src=True), 512
+    if arm == 'modebank_sb_src':
+        return L.LMM(mode='modebank', slowbank=True, src=True), None
     raise ValueError(arm)
 
 
@@ -92,8 +135,9 @@ if __name__ == '__main__':
     par = make(theta)
     torch.manual_seed(0)
     t0 = time.time()
-    tr = stack([build_stream(par, S.TRAIN_BASE + i, NTOK) for i in range(NTR)], 1)   # B=16 contiguous streams
-    va = stack([build_stream(par, S.VAL_BASE + i, 100_000) for i in range(4)], 1)
+    bs = build_stream_inj if arm.endswith('_src') else build_stream
+    tr = stack([bs(par, S.TRAIN_BASE + i, NTOK) for i in range(NTR)], 1)   # B=16 contiguous streams
+    va = stack([bs(par, S.VAL_BASE + i, 100_000) for i in range(4)], 1)
     print('data', time.time() - t0, 'train tokens', tr['tgt'].shape[0] * tr['tgt'].shape[1], flush=True)
     model, reset = make_model(arm)
     print(arm, 'params', model.n_params(), flush=True)
