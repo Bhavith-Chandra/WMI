@@ -271,9 +271,9 @@ if __name__ == '__main__':
     n_days = int(sys.argv[4]) if len(sys.argv) > 4 else 32
     wpd = int(sys.argv[5]) if len(sys.argv) > 5 else 30   # 30 windows: last window + 200-block horizon stays inside T_DAY
     ETA = float(sys.argv[6]) if len(sys.argv) > 6 else 0.10   # participation; A8 uses held-out 0.05 and 0.20
-    assert split in ('dev', 'test')
+    assert split in ('dev', 'test', 'tune')
     assert not os.path.exists(out_path), f'refusing to overwrite {out_path}'
-    base = S.DEV_BASE if split == 'dev' else S.TEST_BASE
+    base = {'dev': S.DEV_BASE, 'test': S.TEST_BASE, 'tune': S.TUNE_BASE}[split]
     rev = git_rev()
     if split == 'test':
         assert not rev.endswith('+dirty') and rev != 'unknown', 'test runs require a clean committed tree'
