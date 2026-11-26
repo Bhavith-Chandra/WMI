@@ -67,7 +67,7 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
     n_need = int(sidx.max())
     B = len(udays)
     state = model.init_state(B)
-    snaps = {}
+    tf_snaps = {}
     want = {int(x) for x in np.unique(sidx)}
     tp = lambda k: torch.tensor(np.stack([st[d][k] for d in udays]))
     prev, feat_s, dmid, sb = tp('prev'), tp('feat'), tp('dmid'), tp('sb')
@@ -79,8 +79,8 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
         x = model.embed(prev[:, sl], feat_s[:, sl], dmid[:, sl], sb[:, sl])
         _, state = model.trunk_seq(x, state)
         if s0 + CH in want:
-            snaps[s0 + CH] = [h.clone() for h in state]
-    assert want <= set(snaps)
+            tf_snaps[s0 + CH] = [h.clone() for h in state]
+    assert want <= set(tf_snaps)
     dpos = {int(d): i for i, d in enumerate(udays)}
     from scipy.signal import lfilter
     lam = np.exp(-1.0 / L.SB_TAUS)
@@ -109,7 +109,7 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
     rd, rw = snaps.index(rows_seed, rows_warm)
     vb[:] = snaps.sb[rd, rw]; va[:] = snaps.sa[rd, rw]; rb[:] = vb; ra[:] = va
     vbb[:] = snaps.sbb[rd, rw]; vba[:] = snaps.sba[rd, rw]; rbb[:] = vbb; rba[:] = vba
-    state = [torch.cat([snaps[int(sidx[w])][li][dpos[int(days[w])]:dpos[int(days[w])] + 1] for w in win_of])
+    state = [torch.cat([tf_snaps[int(sidx[w])][li][dpos[int(days[w])]:dpos[int(days[w])] + 1] for w in win_of])
              for li in range(len(model.blocks))]
     # tokens consumed since last reset (reset arm only): reset/2 at window start, by construction above
     since = np.full(R, half if reset else 0, np.int64)
