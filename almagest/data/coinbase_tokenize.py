@@ -107,108 +107,128 @@ class CoarseBook:
         return f, cm, 0.5 * (bb + ba)
 
 
-def tokenize_segment(paths, product):
-    """paths: ordered files of ONE connection segment (snapshot at start). Returns dict of arrays."""
-    q0 = Q0[product]
-    book = None
-    ev, feat, mids, cms, times = [], [], [], [], []
-    pend_trade = {}                           # (book side, bucket) -> consumed size awaiting the L2 decrease
-    cur = None                                # merging market order: [taker_order_id, side, size, time]
-    last_t = None
-    stats = dict(l2_changes=0, deep_skipped=0, cancels=0, adds=0, markets=0, attributed=0.0)
+class StreamTokenizer:
+    """Incremental tokenizer: feed raw feed messages in arrival order, get tokens back. The SAME object is used
+    offline (cache building) and online (live feed) -> no training/serving skew. Each token is emitted with the book
+    features observed immediately BEFORE the event (as in training)."""
 
-    def emit(typ, side, lvl, lots, t):
-        nonlocal last_t
-        f, cm, mid = book.features()
+    def __init__(self, product):
+        self.product = product
+        self.q0 = Q0[product]
+        self.book = None
+        self.pend_trade = {}
+        self.cur = None
+        self.last_t = None
+        self.stats = dict(l2_changes=0, deep_skipped=0, cancels=0, adds=0, markets=0, attributed=0.0)
+
+    def _emit(self, out, typ, side, lvl, lots, t):
+        f, cm, mid = self.book.features()
         if mid is None:
             return
-        dt = 0.0 if last_t is None else max(0.0, t - last_t)
-        last_t = t
-        ev.append((typ, side, lvl, size_bucket(lots), dt_bucket(dt)))
-        feat.append(f)
-        cms.append(cm)
-        mids.append(mid)
-        times.append(t)
+        dt = 0.0 if self.last_t is None else max(0.0, t - self.last_t)
+        self.last_t = t
+        out.append(((typ, side, lvl, size_bucket(lots), dt_bucket(dt)), f, cm, mid, t))
 
-    def flush_market():
-        nonlocal cur
-        if cur is not None:
-            emit(2, cur[1], 0, max(1.0, cur[2] / q0), cur[3])
-            stats['markets'] += 1
-            cur = None
+    def _flush_market(self, out):
+        if self.cur is not None:
+            self._emit(out, 2, self.cur[1], 0, max(1.0, self.cur[2] / self.q0), self.cur[3])
+            self.stats['markets'] += 1
+            self.cur = None
 
+    def flush(self):
+        out = []
+        if self.book is not None:
+            self._flush_market(out)
+        return out
+
+    def feed(self, m):
+        out = []
+        t = m.get('type')
+        q0 = self.q0
+        if t == 'snapshot':
+            mid = 0.5 * (float(m['bids'][0][0]) + float(m['asks'][0][0]))
+            self.book = CoarseBook(KAPPA_BP * mid, q0)
+            for p, s in m['bids']:
+                self.book.set_level(0, float(p), float(s))
+            for p, s in m['asks']:
+                self.book.set_level(1, float(p), float(s))
+            self.pend_trade, self.cur, self.last_t = {}, None, None
+            return out
+        book = self.book
+        if book is None:
+            return out
+        if t == 'match':
+            tm = ts(m['time'])
+            taker_side = 0 if m['side'] == 'sell' else 1     # Coinbase 'side' = maker side
+            if self.cur is not None and self.cur[0] != m['taker_order_id']:
+                self._flush_market(out)
+            if self.cur is None:
+                self.cur = [m['taker_order_id'], taker_side, 0.0, tm]
+            self.cur[2] += float(m['size'])
+            bside = 1 - taker_side
+            b = book.bucket(bside, float(m['price']))
+            self.pend_trade[(bside, b)] = self.pend_trade.get((bside, b), 0.0) + float(m['size'])
+        elif t == 'l2update':
+            self._flush_market(out)
+            tm = ts(m['time'])
+            for side_s, p, s in m['changes']:
+                self.stats['l2_changes'] += 1
+                side = 0 if side_s == 'buy' else 1
+                p, s = float(p), float(s)
+                own = book.best(side)
+                b = book.bucket(side, p)
+                _, delta = book.set_level(side, p, s)
+                if own is None or abs(delta) < 1e-12:
+                    continue
+                off = (own - b) if side == 0 else (b - own)
+                if delta > 0:
+                    if off > D - 1:
+                        self.stats['deep_skipped'] += 1
+                        continue
+                    u = max(-1, off)
+                    book.set_level(side, p, s - delta)       # features must be pre-event
+                    self._emit(out, 0, side, u + 1, delta / q0, tm)
+                    book.set_level(side, p, s)
+                    self.stats['adds'] += 1
+                else:
+                    dec = -delta
+                    key = (side, b)
+                    att = min(dec, self.pend_trade.get(key, 0.0))
+                    if att > 0:
+                        self.pend_trade[key] -= att
+                        self.stats['attributed'] += att
+                    rem = dec - att
+                    if rem / q0 < 0.5:
+                        continue
+                    if off < 0 or off > D - 1:
+                        self.stats['deep_skipped'] += 1
+                        continue
+                    book.set_level(side, p, s + rem)
+                    self._emit(out, 1, side, off, rem / q0, tm)
+                    book.set_level(side, p, s)
+                    self.stats['cancels'] += 1
+            self.pend_trade = {k: v for k, v in self.pend_trade.items() if v > 1e-12}
+        return out
+
+
+def _pack(toks, stats):
+    if not toks:
+        return dict(ev=np.zeros((0, 5), np.int64), feat=np.zeros((0, 21), np.float32), mids=np.zeros(0),
+                    cm=np.zeros((0, 2, D), np.int8), times=np.zeros(0), stats=stats)
+    ev, f, cm, mid, t = zip(*toks)
+    return dict(ev=np.array(ev, np.int64), feat=np.array(f, np.float32), mids=np.array(mid),
+                cm=np.array(cm, np.int8), times=np.array(t), stats=stats)
+
+
+def tokenize_segment(paths, product):
+    """paths: ordered files of ONE connection segment (snapshot at start)."""
+    st = StreamTokenizer(product)
+    toks = []
     for path in paths:
         for m in read_lines(path):
-            t = m.get('type')
-            if t == 'snapshot':
-                mid = 0.5 * (float(m['bids'][0][0]) + float(m['asks'][0][0]))
-                book = CoarseBook(KAPPA_BP * mid, q0)
-                for p, s in m['bids']:
-                    book.set_level(0, float(p), float(s))
-                for p, s in m['asks']:
-                    book.set_level(1, float(p), float(s))
-                continue
-            if book is None:
-                continue
-            if t == 'match':
-                tm = ts(m['time'])
-                taker_side = 0 if m['side'] == 'sell' else 1     # Coinbase 'side' = maker side
-                if cur is not None and cur[0] != m['taker_order_id']:
-                    flush_market()
-                if cur is None:
-                    # feature snapshot must be BEFORE the trade: emit at first fill of this taker
-                    cur = [m['taker_order_id'], taker_side, 0.0, tm]
-                cur[2] += float(m['size'])
-                bside = 1 - taker_side
-                b = book.bucket(bside, float(m['price']))
-                pend_trade[(bside, b)] = pend_trade.get((bside, b), 0.0) + float(m['size'])
-            elif t == 'l2update':
-                flush_market()
-                tm = ts(m['time'])
-                for side_s, p, s in m['changes']:
-                    stats['l2_changes'] += 1
-                    side = 0 if side_s == 'buy' else 1
-                    p, s = float(p), float(s)
-                    own = book.best(side)
-                    b = book.bucket(side, p)
-                    old_best_opp = book.best(1 - side)
-                    _, delta = book.set_level(side, p, s)
-                    if own is None or abs(delta) < 1e-12:
-                        continue
-                    off = (own - b) if side == 0 else (b - own)
-                    if delta > 0:
-                        if off > D - 1:
-                            stats['deep_skipped'] += 1
-                            continue
-                        u = max(-1, off)
-                        # undo-apply ordering: features should be pre-event -> re-apply after emit
-                        book.set_level(side, p, s - delta)
-                        emit(0, side, u + 1, delta / q0, tm)
-                        book.set_level(side, p, s)
-                        stats['adds'] += 1
-                    else:
-                        dec = -delta
-                        key = (side, b)
-                        att = min(dec, pend_trade.get(key, 0.0))
-                        if att > 0:
-                            pend_trade[key] -= att
-                            stats['attributed'] += att
-                        rem = dec - att
-                        if rem / q0 < 0.5:
-                            continue
-                        if off < 0 or off > D - 1:
-                            stats['deep_skipped'] += 1
-                            continue
-                        book.set_level(side, p, s + rem)
-                        emit(1, side, off, rem / q0, tm)
-                        book.set_level(side, p, s)
-                        stats['cancels'] += 1
-                pend_trade = {k: v for k, v in pend_trade.items() if v > 1e-12}
-        flush_market()
-    out = dict(ev=np.array(ev, np.int64).reshape(-1, 5), feat=np.array(feat, np.float32).reshape(-1, 21),
-               mids=np.array(mids), cm=np.array(cms, np.int8).reshape(-1, 2, D), times=np.array(times))
-    out['stats'] = stats
-    return out
+            toks.extend(st.feed(m))
+    toks.extend(st.flush())
+    return _pack(toks, st.stats)
 
 
 def segments(root, product):

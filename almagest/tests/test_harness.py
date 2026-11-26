@@ -121,6 +121,37 @@ def test_snapshots_bit_identical():
         assert np.array_equal(a[0], b[0]) and np.array_equal(a[2], b[2])
 
 
+def test_real_tokenizer_offline_equals_streaming():
+    """Training/serving parity: cache builder and live feed use the same StreamTokenizer."""
+    from almagest.data import coinbase_tokenize as T
+    import json as _j, os as _o, tempfile, gzip
+    msgs = [
+        {"type": "snapshot", "product_id": "SOL-USD", "bids": [["100.00", "5"], ["99.99", "3"]],
+         "asks": [["100.01", "4"], ["100.02", "2"]], "time": "2026-11-26T00:00:00Z"},
+        {"type": "l2update", "changes": [["buy", "100.00", "6"]], "time": "2026-11-26T00:00:00.010Z"},
+        {"type": "match", "side": "sell", "size": "2", "price": "100.01", "taker_order_id": "a",
+         "time": "2026-11-26T00:00:00.020Z"},
+        {"type": "l2update", "changes": [["sell", "100.01", "2"], ["sell", "100.03", "1"]],
+         "time": "2026-11-26T00:00:00.030Z"},
+        {"type": "l2update", "changes": [["buy", "99.99", "0"]], "time": "2026-11-26T00:00:01Z"},
+    ]
+    d = tempfile.mkdtemp()
+    f = _o.path.join(d, 'x.jsonl.gz')
+    with gzip.open(f, 'wt') as g:
+        for m in msgs:
+            g.write(_j.dumps(m) + "\n")
+    a = T.tokenize_segment([f], 'SOL-USD')
+    st = T.StreamTokenizer('SOL-USD')
+    toks = []
+    for m in msgs:
+        toks += st.feed(m)
+    toks += st.flush()
+    b = T._pack(toks, st.stats)
+    for k in ('ev', 'feat', 'mids', 'cm', 'times'):
+        assert np.array_equal(a[k], b[k]), k
+    assert len(a['ev']) >= 3 and 2 in a['ev'][:, 0]
+
+
 if __name__ == '__main__':
     for name, f in list(globals().items()):
         if name.startswith('test_'):
