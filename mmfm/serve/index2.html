@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MMFM v2 Live</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1d1d1f;--mute:#6e6e73;--line:#e3e3e0;--bid:#1f8a4c;--ask:#c4382d;--accent:#2f5bd3;--fan:47,91,211;--alt:204,120,20}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#111214;--panel:#1a1b1e;--ink:#ececec;--mute:#9a9aa0;--line:#2b2c30;--bid:#3fbf73;--ask:#ef6a5e;--accent:#7a9bff;--fan:122,155,255;--alt:240,170,70}}
+:root[data-theme=dark]{--bg:#111214;--panel:#1a1b1e;--ink:#ececec;--mute:#9a9aa0;--line:#2b2c30;--bid:#3fbf73;--ask:#ef6a5e;--accent:#7a9bff;--fan:122,155,255;--alt:240,170,70}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:16px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
+header b{font-size:16px}.dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--mute);margin-right:6px}
+.dot.live{background:var(--bid)}.kv{color:var(--mute)}.kv span{color:var(--ink);font-variant-numeric:tabular-nums}
+main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:12px;padding:12px 16px}
+@media (max-width:860px){main{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+.card h3{margin:0 0 8px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--mute);font-weight:600}
+canvas{width:100%;height:340px;display:block}
+.ladder{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:13px}
+.ladder td{padding:1px 4px;position:relative}.ladder .p{text-align:right;width:50%}.ladder .q{text-align:right;color:var(--mute)}
+.bar{position:absolute;top:1px;bottom:1px;right:0;opacity:.15}
+.row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:0 16px 16px}
+@media (max-width:860px){.row{grid-template-columns:1fr}}
+label{display:flex;justify-content:space-between;gap:8px;margin:6px 0;color:var(--mute)}
+select,input{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 6px;width:130px;font:inherit}
+button{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:7px 12px;font:inherit;cursor:pointer;margin-top:6px}
+button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:wait}
+.small{font-size:12px;color:var(--mute)}.mono{font-variant-numeric:tabular-nums}
+table.t{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}table.t td,table.t th{padding:2px 4px;text-align:right;border-bottom:1px solid var(--line)}table.t th{color:var(--mute);font-weight:500}
+.warn{color:var(--ask)}
+</style>
+</head>
+<body>
+<header>
+  <b>MMFM v2</b><span id="pair" class="kv"></span>
+  <span><span id="dot" class="dot"></span><span id="state" class="kv"></span></span>
+  <span class="kv">mid <span id="mid">–</span></span>
+  <span class="kv">spread <span id="spr">–</span> bp</span>
+  <span class="kv">events/s <span id="eps">–</span></span>
+  <span class="kv">feed lag <span id="lag">–</span> ms</span>
+  <span class="kv" style="margin-left:auto">model <span id="mh">–</span></span>
+  <button class="ghost" id="theme" title="toggle theme">◐</button>
+</header>
+<main>
+  <div class="card"><h3>Mid (last 120 s) · model futures</h3><canvas id="chart"></canvas>
+    <div class="small" id="legend">Blue: calibrated forecast heads (25–75% band, light 5–95%, median). Dashed: event-level simulated median. Orange: what-if.</div></div>
+  <div class="card"><h3>Order book (live, full-depth L3)</h3><table class="ladder" id="ladder"></table></div>
+</main>
+<div class="row">
+  <div class="card"><h3>Forecast</h3>
+    <label>paths (simulator) <select id="fp"><option>8</option><option selected>16</option><option>32</option></select></label>
+    <button id="fbtn">Simulate futures</button>
+    <div id="fout" class="small"></div></div>
+  <div class="card"><h3>What-if (market order now)</h3>
+    <label>side <select id="ws"><option>buy</option><option>sell</option></select></label>
+    <label>notional (quote) <input id="wn" type="number" value="25000"></label>
+    <button id="wbtn">Simulate impact</button>
+    <div id="wout" class="small"></div></div>
+  <div class="card"><h3>Paper trading (against the live book)</h3>
+    <label>side <select id="ps"><option>buy</option><option>sell</option></select></label>
+    <label>type <select id="pt"><option>market</option><option>limit</option></select></label>
+    <label>qty (base) <input id="pq" type="number" value="0.5" step="any"></label>
+    <label>limit price <input id="pp" type="number" step="any" placeholder="limit only"></label>
+    <button id="pbtn">Send paper order</button> <button class="ghost" id="preset">Reset</button>
+    <div id="pout" class="small mono"></div></div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+let S={},FAN=null,WIF=null;
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+$('theme').onclick=()=>{const r=document.documentElement;r.dataset.theme=(r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches))?'light':'dark';draw()};
+function fmt(x,d=2){return x==null||!isFinite(x)?'–':Number(x).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d})}
+function connect(){const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+ ws.onmessage=e=>{S=JSON.parse(e.data);render()};ws.onclose=()=>setTimeout(connect,1000)}
+connect();
+function render(){
+ $('pair').textContent=S.pair||'';const st=S.status||{};$('state').textContent=st.state+(S.ready?'':' (warming up)');
+ $('dot').className='dot'+(st.state==='live'?' live':'');$('mid').textContent=fmt(S.mid,4);$('spr').textContent=fmt(S.spread_bp,2);
+ $('eps').textContent=fmt(S.events_per_s,0);$('lag').textContent=fmt(st.lag_ms,0);
+ if(S.model)$('mh').textContent=S.model.kind+' '+S.model.hash.slice(0,10)+' · val '+fmt(S.model.val_bits,2)+' bits/ev';
+ if(S.ladder){const L=S.ladder,mx=Math.max(...L.bids.map(x=>x[1]),...L.asks.map(x=>x[1]),1e-9);
+  let h='';[...L.asks].reverse().forEach(([p,q])=>h+=`<tr><td class="p" style="color:var(--ask)">${fmt(p,5)}<div class="bar" style="background:var(--ask);width:${100*q/mx}%"></div></td><td class="q">${fmt(q,4)}</td></tr>`);
+  L.bids.forEach(([p,q])=>h+=`<tr><td class="p" style="color:var(--bid)">${fmt(p,5)}<div class="bar" style="background:var(--bid);width:${100*q/mx}%"></div></td><td class="q">${fmt(q,4)}</td></tr>`);
+  $('ladder').innerHTML=h}
+ if(S.paper)paper(S.paper);draw()}
+function fanOf(arr){return {t:arr.map(x=>x.t),q:[0,1,2,3,4].map(k=>arr.map(x=>x.q[k]))}}
+function draw(){const c=$('chart'),dpr=devicePixelRatio||1,W=c.clientWidth,H=c.clientHeight;c.width=W*dpr;c.height=H*dpr;const g=c.getContext('2d');g.scale(dpr,dpr);g.clearRect(0,0,W,H);
+ const mids=S.mids||[];if(!mids.length)return;const hor=10;const t0=-120,t1=hor;
+ const age=FAN&&FAN.t_req?(performance.now()-FAN.t_req)/1000:0;const m0=FAN?FAN.mid0:mids[mids.length-1][1];
+ const fans=[];if(FAN){fans.push(['d',fanOf(FAN.direct)]);if(FAN.sim)fans.push(['s',fanOf(FAN.sim)])}if(WIF){fans.push(['w',fanOf(WIF.with_order)])}
+ let lo=Infinity,hi=-Infinity;mids.forEach(([t,m])=>{lo=Math.min(lo,m);hi=Math.max(hi,m)});
+ fans.forEach(([k,f])=>f.q.forEach(row=>row.forEach(v=>{if(v!=null){const m=m0*(1+v/1e4);lo=Math.min(lo,m);hi=Math.max(hi,m)}})));
+ const pad=(hi-lo)*0.1||m0*1e-5;lo-=pad;hi+=pad;const X=t=>48+(W-56)*(t-t0)/(t1-t0),Y=m=>8+(H-28)*(1-(m-lo)/(hi-lo));
+ g.strokeStyle=css('--line');g.fillStyle=css('--mute');g.font='11px system-ui';g.lineWidth=1;
+ for(let i=0;i<5;i++){const m=lo+(hi-lo)*i/4;g.beginPath();g.moveTo(48,Y(m));g.lineTo(W-8,Y(m));g.stroke();g.fillText(fmt(m,m>100?2:5),2,Y(m)+3)}
+ g.beginPath();g.moveTo(X(0),8);g.lineTo(X(0),H-20);g.stroke();g.fillText('now',X(0)-10,H-6);g.fillText('-120 s',X(-120),H-6);g.fillText('+'+hor+' s',X(hor)-24,H-6);
+ if(FAN&&age>0){g.setLineDash([3,3]);g.beginPath();g.moveTo(X(-age),8);g.lineTo(X(-age),H-20);g.stroke();g.setLineDash([]);g.fillText('forecast made',X(-age)+3,18)}
+ const P=(f,k,i)=>{const v=[0,...f.q[k]][i];return Y(m0*(1+(v??0)/1e4))};
+ const band=(f,rgb,ql,qh,a)=>{g.fillStyle=`rgba(${rgb},${a})`;g.beginPath();const ts=[0,...f.t].map(t=>t-age);
+  ts.forEach((t,i)=>i?g.lineTo(X(t),P(f,qh,i)):g.moveTo(X(t),P(f,qh,i)));for(let i=ts.length-1;i>=0;i--)g.lineTo(X(ts[i]),P(f,ql,i));g.closePath();g.fill()};
+ const med=(f,col,dash)=>{g.strokeStyle=col;g.lineWidth=2;g.setLineDash(dash?[5,4]:[]);g.beginPath();[0,...f.t].map(t=>t-age).forEach((t,i)=>i?g.lineTo(X(t),P(f,2,i)):g.moveTo(X(t),P(f,2,i)));g.stroke();g.setLineDash([])};
+ fans.forEach(([k,f])=>{if(k==='d'){band(f,css('--fan'),0,4,.12);band(f,css('--fan'),1,3,.25);med(f,css('--accent'),false)}
+  if(k==='s')med(f,css('--mute'),true);if(k==='w'){band(f,css('--alt'),1,3,.25);med(f,`rgb(${css('--alt')})`,false)}});
+ g.strokeStyle=css('--ink');g.lineWidth=1.5;g.beginPath();mids.forEach(([t,m],i)=>i?g.lineTo(X(t),Y(m)):g.moveTo(X(t),Y(m)));g.stroke()}
+async function post(u,b){const r=await fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});return r.json()}
+$('fbtn').onclick=async()=>{const b=$('fbtn');b.disabled=true;$('fout').textContent='forecasting…';const tq=performance.now();
+ const r=await post('/api/forecast',{paths:+$('fp').value,budget:20});b.disabled=false;
+ if(r.error){$('fout').textContent=r.error;return}FAN=r;FAN.t_req=tq;WIF=null;
+ let h=`<table class="t"><tr><th>t (s)</th><th>P(up) heads</th><th>P(up) sim</th><th>median bp heads / sim</th><th>5–95% bp (heads)</th><th>events heads / sim</th></tr>`;
+ r.direct.forEach((d,i)=>{const s=r.sim[i];h+=`<tr><td>${d.t}</td><td>${fmt(d.p_up,2)}</td><td>${fmt(s.p_up,2)}</td><td>${fmt(d.q[2],2)} / ${fmt(s.q[2],2)}</td><td>${fmt(d.q[0],1)} … ${fmt(d.q[4],1)}</td><td>${fmt(d.events_median,0)} / ${fmt(s.events_median,0)}</td></tr>`});
+ const rt=r.realtime_factor;h+=`</table><div>heads: ${fmt(r.direct_ms,1)} ms · simulator: ${r.n_paths} paths, ${fmt(r.wall_s,1)} s wall, <span class="${rt<1?'warn':''}">${fmt(rt,2)}× real time</span></div>`;
+ $('fout').innerHTML=h;draw()};
+$('wbtn').onclick=async()=>{const b=$('wbtn');b.disabled=true;$('wout').textContent='simulating paired futures…';const tq=performance.now();
+ const r=await post('/api/whatif',{side:$('ws').value,notional:+$('wn').value,paths:16,budget:20});b.disabled=false;
+ if(r.error){$('wout').textContent=r.error;return}WIF=r;FAN={mid0:r.mid0,direct:r.baseline,t_req:tq};
+ let h=`<div>${r.side} ≈${fmt(r.notional,0)} quote now · paired seeds</div><table class="t"><tr><th>t (s)</th><th>impact bp (median diff)</th><th>P(up) base → with</th></tr>`;
+ r.baseline.forEach((x,i)=>h+=`<tr><td>${x.t}</td><td>${fmt(r.impact_bp[i],2)}</td><td>${fmt(x.p_up,2)} → ${fmt(r.with_order[i].p_up,2)}</td></tr>`);
+ $('wout').innerHTML=h+'</table><div>Model-generated counterfactual, not a guarantee.</div>';draw()};
+$('pbtn').onclick=async()=>{const t=$('pt').value;const r=await post('/api/paper/order',{side:$('ps').value,type:t,qty:+$('pq').value,price:t==='limit'?+$('pp').value:null});
+ $('pout').dataset.last=JSON.stringify(r)};
+$('preset').onclick=()=>post('/api/paper/reset',{});
+function paper(P){const last=$('pout').dataset.last?JSON.parse($('pout').dataset.last):null;
+ let h=`<div>position ${fmt(P.position,5)} · cash ${fmt(P.cash,2)} · equity ${fmt(P.equity,2)}</div>`;
+ if(last)h+=`<div>last: ${last.ok?(last.resting?`resting #${last.resting}, queue ahead ${fmt(last.queue_ahead,4)}`:`filled ${fmt(last.filled,5)} @ ${fmt(last.vwap,5)}`):last.reason||last.error}</div>`;
+ if(P.open_orders.length)h+='<div>open: '+P.open_orders.map(o=>`#${o.id} ${o.side?'buy':'sell'} ${fmt(o.qty,4)}@${fmt(o.price,5)} (ahead ${fmt(o.ahead,3)}) <a href="#" onclick="post('/api/paper/cancel',{id:${o.id}});return false">cancel</a>`).join('<br>')+'</div>';
+ if(P.fills.length)h+='<table class="t"><tr><th>side</th><th>qty</th><th>price</th><th>kind</th></tr>'+P.fills.slice(-6).reverse().map(f=>`<tr><td>${f.side}</td><td>${fmt(f.qty,5)}</td><td>${fmt(f.price,5)}</td><td>${f.kind}</td></tr>`).join('')+'</table>';
+ $('pout').innerHTML=h;$('pout').dataset.last=last?JSON.stringify(last):''}
+addEventListener('resize',draw);
+</script>
+</body>
+</html>

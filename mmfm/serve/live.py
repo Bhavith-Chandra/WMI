@@ -56,6 +56,13 @@ class LiveFeed:
         ev = np.array(list(self.events), dtype=[(k, t) for k, t in EV_DTYPE if k != "oid"])
         return ev, np.array(list(self.states), dtype=np.float64)
 
+    def reset_stream_state(self):
+        self.inc = IncFeatures(self.tok)
+        self._prev_us = None
+        self._pending_dt = None
+        for q in (self.events, self.states, self.tokens, self.feats, self.mids):
+            q.clear()
+
     # ----------------------------------------------------------------------------------- internals
     def _snapshot(self, not_before_us):
         for _ in range(15):
@@ -133,11 +140,7 @@ class LiveFeed:
                             pass
                     snap = snap_task.result()
                     self.proc = L3Processor(snap, int(snap["microtimestamp"]))
-                    self.inc = IncFeatures(self.tok)
-                    self._prev_us = None
-                    self._pending_dt = None
-                    for q in (self.events, self.states, self.tokens, self.feats, self.mids):
-                        q.clear()
+                    self.reset_stream_state()
                     self._queue = collections.deque(buf)
                     self.status["state"] = "live"
                     while True:
