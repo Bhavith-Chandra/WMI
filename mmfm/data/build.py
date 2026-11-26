@@ -68,7 +68,7 @@ def build(raw: Path, out: Path, until_ns: int, pairs):
                     if c[3]:
                         ck_a[j, :len(c[3])] = c[3]
                 np.savez_compressed(f, us=ev["us"], type=ev["type"], side=ev["side"], price=ev["price"], qty=ev["qty"],
-                                    state=stt.astype(np.float64), tick=np.float64(TICK[pair]),
+                                    state=stt.astype(np.float64), lvq=r["lvq"], tick=np.float64(TICK[pair]),
                                     ck_idx=ck_idx, ck_bids=ck_b, ck_asks=ck_a)
                 info["file"] = str(f.relative_to(out))
                 info["sha256"] = hashlib.sha256(f.read_bytes()).hexdigest()

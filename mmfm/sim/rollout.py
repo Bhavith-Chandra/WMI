@@ -38,8 +38,9 @@ class Context:
 
 
 class Rollout:
-    def __init__(self, model, tok: Tokenizer, ctx: Context, n_paths=32, seed=0, temperature=1.0):
+    def __init__(self, model, tok: Tokenizer, ctx: Context, n_paths=32, seed=0, temperature=1.0, dt_scale=1.0):
         self.tok, self.temp = tok, temperature
+        self.dt_scale = dt_scale  # clock calibration: multiplies sampled inter-arrival times (1 = raw model)
         self.rng = np.random.default_rng(seed)
         self.g = torch.Generator().manual_seed(seed)
         self.fm = FastMMFM(model)
@@ -64,7 +65,7 @@ class Rollout:
             return None
         bb, ba = st[0], st[1]
         mid = 0.5 * (bb + ba)
-        dt_us = 0 if dtb == 0 else int(round(10 ** tk.sample_value("dt", dtb, self.rng)))
+        dt_us = 0 if dtb == 0 else int(round(self.dt_scale * 10 ** tk.sample_value("dt", dtb, self.rng)))
         qty = 10 ** tk.sample_value("size", szb, self.rng) / mid
         tick = b.tick
         if act == TAKE:

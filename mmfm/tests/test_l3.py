@@ -97,3 +97,13 @@ def test_state_is_pre_event_and_aligned():
     take, add = r["state"][0], r["state"][1]
     assert take[1] == 100.02  # best ask before the TAKE consumed it
     assert add[1] == 100.03 and add[0] == 100.00  # state before the ADD, after the sweep
+
+
+def test_pre_event_level_quantity():
+    """lvq = quantity of the event's own level BEFORE it (ADD/CANCEL) or of the opposite touch (TAKE)."""
+    msgs = [o("order_created", 2000, 9, 0, 99.98, 0.5), o("order_deleted", 3000, 9, 0, 99.98, 0.5),
+            o("order_deleted", 4000, 1, 0, 100.00, 1.0), t(5000, 0, 100.02, 1.5, 19, 3),
+            o("order_deleted", 5000, 3, 1, 100.02, 0, "1.5")]
+    r = rebuild("x", SNAP, 1000, msgs, [], [], 0, tick=0.01, want_state=True)
+    assert [int(e["type"]) for e in r["events"]] == [ADD, CANCEL, CANCEL, TAKE]
+    assert r["lvq"].tolist() == [0.0, 0.5, 1.0, 1.5]

@@ -62,15 +62,76 @@ def _gunzip_salvage(raw: bytes) -> bytes:
     return b"".join(out)
 
 
-def read_stream(path: Path):
-    for ln in _gunzip_salvage(path.read_bytes()).split(b"\n"):
-        if not ln:
+def iter_lines(path: Path, chunk=1 << 20):
+    """Stream decompressed lines of concatenated (possibly truncated) gzip members, bounded memory."""
+    with open(path, "rb") as f:
+        raw_pos = 0
+        d = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        tail = b""
+        data = f.read(chunk)
+        while data:
+            snap = d.copy()
+            try:
+                out = d.decompress(data)
+            except zlib.error:  # truncated member followed by a new one: salvage, then resync on the next header
+                d = snap
+                got = []
+                for k in range(0, len(data), 1024):  # recover everything decodable before the corruption
+                    try:
+                        got.append(d.decompress(data[k:k + 1024]))
+                    except zlib.error:
+                        break
+                buf = tail + b"".join(got)
+                lines = buf.split(b"\n")
+                lines.pop()  # partial last line of the truncated member is unusable
+                yield from lines
+                rest = data
+                nxt = rest.find(b"\x1f\x8b\x08", 1)
+                while nxt < 0:
+                    more = f.read(chunk)
+                    if not more:
+                        return
+                    rest = more
+                    nxt = rest.find(b"\x1f\x8b\x08")
+                tail = b""  # drop the partial line of the truncated member
+                d = zlib.decompressobj(16 + zlib.MAX_WBITS)
+                data = rest[nxt:]
+                continue
+            buf = tail + out
+            lines = buf.split(b"\n")
+            tail = lines.pop()
+            yield from lines
+            if d.eof:
+                data = d.unused_data
+                d = zlib.decompressobj(16 + zlib.MAX_WBITS)
+                tail_done = tail
+                if tail_done:
+                    yield tail_done
+                tail = b""
+                if not data:
+                    data = f.read(chunk)
+                continue
+            data = f.read(chunk)
+
+
+KEEP = ("microtimestamp", "id", "order_type", "price", "amount", "type", "buy_order_id", "sell_order_id", "amount_traded")
+
+
+def read_stream(path: Path, pair: str | None = None):
+    """Yield (recv_ns, compact msg). With `pair`, lines of other pairs are skipped before JSON parsing."""
+    needle = f'_{pair}"'.encode() if pair else None
+    for ln in iter_lines(path):
+        if not ln or (needle is not None and needle not in ln):
             continue
         try:
             t, m = ln.split(b"\t", 1)
-            yield int(t), json.loads(m)
+            m = json.loads(m)
         except (ValueError, json.JSONDecodeError):
             continue
+        d = m.get("data")
+        if isinstance(d, dict):
+            m["data"] = {k: d[k] for k in KEEP if k in d}
+        yield int(t), m
 
 
 def hour_dirs(root: Path):
@@ -102,7 +163,7 @@ def pair_messages(hours, pair):
     out = []
     for h in hours:
         for f in stream_files(h):
-            for t, m in read_stream(f):
+            for t, m in read_stream(f, pair):
                 if m.get("channel", "").endswith("_" + pair) and m.get("event") in (
                         "order_created", "order_changed", "order_deleted", "trade"):
                     out.append((t, m))
@@ -317,6 +378,7 @@ def rebuild(pair, snap, snap_us, msgs, verify_snaps, hours, seg_id, tick=None, l
     from sim.book import LevelBook  # local import: sim.book imports this module's constants
 
     P = L3Processor(snap, snap_us)
+    levels = []  # per row: pre-event quantity of its level (ADD/CANCEL) / opposite touch (TAKE)
     ckpts, next_ck = [], (snap_us + ckpt_every_us) if ckpt_every_us else None
     book = P.book
     for _, m in msgs:
@@ -354,10 +416,28 @@ def rebuild(pair, snap, snap_us, msgs, verify_snaps, hours, seg_id, tick=None, l
                 p = pend.pop(0)
                 verify.append(dict(us=p["us"], **compare(book, load_snapshot(hours, pair, p["us"]))))
         last_us = us
+        lv_before = {}
+        if want_state and m["event"] != "trade":  # level qty BEFORE the message, at the message's own price
+            d_ = m["data"]
+            try:
+                sd_ = BUY if int(d_["order_type"]) == 0 else SELL
+                lv = book.agg[sd_].get(float(d_["price"]))
+                prev_o = book.orders.get(int(d_["id"]))
+                lv_before[(sd_, float(d_["price"]))] = lv[0] if lv else 0.0
+                if prev_o is not None:  # a cancel/amend acts on the order's resting price
+                    lv2 = book.agg[prev_o[0]].get(prev_o[1])
+                    lv_before[(prev_o[0], prev_o[1])] = lv2[0] if lv2 else 0.0
+            except (KeyError, ValueError, TypeError):
+                pass
         new = P.handle(m)
         rows.extend(new)
         if want_state:
             states.extend([pre] * len(new))
+            for r in new:
+                if r[1] == TAKE:  # opposite touch quantity before the sweep
+                    levels.append(pre[3] if r[2] == BUY else pre[2])
+                else:
+                    levels.append(lv_before.get((r[2], r[3]), np.nan))
     for p in pend:
         verify.append(dict(us=p["us"], **compare(book, load_snapshot(hours, pair, p["us"]))))
     final = None
@@ -367,6 +447,7 @@ def rebuild(pair, snap, snap_us, msgs, verify_snaps, hours, seg_id, tick=None, l
         final = dict(bid=compare_levels(_lv_ticks(book.levels(BUY, 50), tick), lvl.levels(BUY, 50), 1e-7),
                      ask=compare_levels(_lv_ticks(book.levels(SELL, 50), tick), lvl.levels(SELL, 50), 1e-7))
     st = np.array(states, dtype=np.float64).reshape(-1, 6) if want_state else None
-    return dict(pair=pair, seg=seg_id, snap_us=snap_us, events=np.array(rows, dtype=EV_DTYPE), verify=verify, state=st,
+    lvq = np.array(levels, dtype=np.float64) if want_state else None
+    return dict(pair=pair, seg=seg_id, snap_us=snap_us, events=np.array(rows, dtype=EV_DTYPE), verify=verify, state=st, lvq=lvq,
                 final_book=book, snapshot=snap, events_book=lvl, t_lo_ns=t_lo_ns, t_hi_ns=t_hi_ns,
                 lockstep=dict(ms=n_ms, checked=n_checked, diverged=n_div, final_top50_match=final), ckpts=ckpts)
