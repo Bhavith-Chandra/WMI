@@ -8,8 +8,9 @@ import numpy as np
 from . import world as W
 from . import metrics as M
 
-T_DAY = 100_000      # events per synthetic "day"
-WARM0 = 20_000
+T_DAY = 100_000      # events per synthetic "day" (V, sigma measured over [0, T_DAY) after warm-up)
+WARM0 = 40_480       # = 20000 (stream offset) + 20480: SAME window placement as E2
+STRIDE = 2048
 
 
 def day_stats(par, day_seeds, n=T_DAY):
@@ -25,18 +26,20 @@ def day_stats(par, day_seeds, n=T_DAY):
     return out
 
 
-def schedule(n_days, win_per_day, base_seed, stride=4000):
+def schedule(n_days, win_per_day, base_seed, stride=STRIDE, replicas=1):
+    from almagest.splits import roll_seed
     ds, nw, rs, did = [], [], [], []
     for d in range(n_days):
         for w in range(win_per_day):
-            ds.append(base_seed + d)
-            nw.append(WARM0 + w * stride)
-            rs.append(10_000_000 + base_seed * 1000 + d * 1000 + w)
-            did.append(d)
+            for r in range(replicas):
+                ds.append(base_seed + d)
+                nw.append(WARM0 + w * stride)
+                rs.append(roll_seed(base_seed + d, w, r))
+                did.append(d)
     return (np.array(ds, np.int64), np.array(nw, np.int64), np.array(rs, np.int64), np.array(did))
 
 
-def run_arms(runner, sched, n_child, gap, n_silent, child, modes=(1, 2, 0)):
+def run_arms(runner, sched, n_child, gap, n_silent, child, modes=(1, 2, 0), vis_tail=0):
     """runner(day_seeds, n_warms, roll_seeds, n_child, gap, n_silent, side, child, mode) -> (out, mid0, hash, mvol).
     Returns antisymmetrised impact (ticks) per mode, plus free drift and blind-invariance check."""
     ds, nw, rs, _ = sched
@@ -44,8 +47,9 @@ def run_arms(runner, sched, n_child, gap, n_silent, child, modes=(1, 2, 0)):
     hashes = {}
     raw = {}
     for mode in modes:
-        ob, m0b, hb, _ = runner(ds, nw, rs, n_child, gap, n_silent, 0, child, mode)
-        os_, m0s, hs, _ = runner(ds, nw, rs, n_child, gap, n_silent, 1, child, mode)
+        ns = n_silent + (vis_tail if mode == 1 else 0)
+        ob, m0b, hb, _ = runner(ds, nw, rs, n_child, gap, ns, 0, child, mode)
+        os_, m0s, hs, _ = runner(ds, nw, rs, n_child, gap, ns, 1, child, mode)
         res[mode] = 0.5 * ((ob - m0b[:, None]) - (os_ - m0s[:, None]))
         hashes[mode] = (hb, hs)
         raw[mode] = (ob - m0b[:, None], os_ - m0s[:, None])
@@ -53,25 +57,37 @@ def run_arms(runner, sched, n_child, gap, n_silent, child, modes=(1, 2, 0)):
 
 
 def world_runner(par):
+    """Snapshot-backed World runner (bit-identical to W.run_batch, tested)."""
+    cache = {}
+
     def f(ds, nw, rs, n_child, gap, n_silent, side, child, mode):
-        return W.run_batch(par, ds, nw, rs, n_child, gap, n_silent, side, child, mode)
+        key = (tuple(np.unique(ds)), tuple(np.unique(nw)))
+        if key not in cache:
+            cache.clear()
+            cache[key] = W.Snapshots(par, np.unique(ds), np.unique(nw))
+        return cache[key].run(ds, nw, rs, n_child, gap, n_silent, side, child, mode)
     return f
 
 
 def evaluate(runner, par_world, n_days=20, win_per_day=16, base_seed=1000, ref=None, B=300, verbose=True,
-             relax=True, stats=None, relax_mult=1):
+             relax=True, stats=None, relax_mult=1, replicas=4):
     """Full campaign. `par_world` defines the target market (day statistics). Returns dict of results."""
     days = np.arange(base_seed, base_seed + n_days)
     stats = stats or day_stats(par_world, days)
     phi = np.mean([s['phi'] for s in stats])
     child = int(round(np.median([s['med'] for s in stats])))
     gap = int(round((1 / 0.10 - 1) / phi))
-    sched = schedule(n_days, win_per_day, base_seed)
+    sched = schedule(n_days, win_per_day, base_seed, replicas=replicas)
     did = sched[3]
     V = np.array([stats[d]['V'] for d in did], float)
     sig = np.array([stats[d]['sigma'] for d in did], float)
     N = 100
-    res, hashes, raw = run_arms(runner, sched, N, gap, 0, child, modes=(1, 2, 0))
+    res, hashes, raw = run_arms(runner, sched, N, gap, 0, child, modes=(1, 2, 0), vis_tail=100)
+    # R100: relaxation after the FULL build-up (visible arm continues 100 silent blocks); higher SNR than R10
+    I100 = res[1] / sig[:, None]
+    ep100, slope100 = M.relaxation(I100.mean(0), N)
+    ep100_ci = M.relax_bootstrap(I100, did, N, B=200)
+    res[1] = res[1][:, :N]
     q = (np.arange(1, N + 1)[None, :] * child) / V[:, None]
     Iv = res[1] / sig[:, None]
     Ib = res[2] / sig[:, None]
@@ -88,11 +104,11 @@ def evaluate(runner, par_world, n_days=20, win_per_day=16, base_seed=1000, ref=N
     blind_equals_free = bool(np.all(hashes[2][0] == hashes[0][0]) and np.all(hashes[2][1] == hashes[0][1]))
     out = dict(phi=phi, child=child, gap=gap, delta=d, Y=Y, delta_ci95=ci95, delta_ci90=ci90, tost=tost,
                Y_ci95=np.nanquantile(bY, [0.025, 0.975]), identified=ok, delta_l2=d_l2, vb=vb,
-               drift=drift, blind_equals_free=blind_equals_free,
+               drift=drift, blind_equals_free=blind_equals_free, ep100=ep100, ep100_ci95=ep100_ci, slope100=slope100,
                gamma=np.nanmean([s['gamma'] for s in stats]), H=np.mean([s['H'] for s in stats]),
                curve=Iv.mean(0), q=q.mean(0))
     if relax:
-        sched_r = schedule(n_days, win_per_day * relax_mult, base_seed, stride=4000 // relax_mult)
+        sched_r = schedule(n_days, win_per_day * relax_mult, base_seed, stride=STRIDE // relax_mult, replicas=replicas)
         V_r = np.array([stats[d]['V'] for d in sched_r[3]], float)
         sig_r = np.array([stats[d]['sigma'] for d in sched_r[3]], float)
         rr, _, _ = run_arms(runner, sched_r, 10, gap, 100, child, modes=(1,))

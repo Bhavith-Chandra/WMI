@@ -23,12 +23,12 @@ def make(theta):
 
 
 def loss(r):
-    if not np.isfinite(r['delta']) or not np.isfinite(r.get('ep', np.nan)):
+    if not np.isfinite(r['delta']) or not np.isfinite(r.get('ep100', np.nan)):
         return 1e9
     L = ((r['delta'] - 0.5) / 0.05) ** 2 + (np.log(max(r['Y'], 1e-3) / 0.7) / 0.3) ** 2
-    L += ((r['ep'] - 0.55) / 0.1) ** 2 + ((r['H'] - 0.5) / 0.03) ** 2
+    L += ((r['ep100'] - 0.67) / 0.08) ** 2 + ((r['ep'] - 0.5) / 0.25) ** 2 + ((r['H'] - 0.5) / 0.03) ** 2
     L += (max(0, 0.3 - r['gamma']) / 0.05) ** 2 + (max(0, r['gamma'] - 0.8) / 0.05) ** 2
-    L += (max(0, r['slope']) / 1.0) ** 2
+    L += (max(0, r['slope100']) / 1.0) ** 2
     return float(L)
 
 
@@ -41,16 +41,16 @@ def main():
         theta = [rng.uniform(0.1, 3.0), rng.uniform(0.0, 1.0), rng.uniform(1.0, 12.0),
                  rng.uniform(-0.6, 1.0), rng.uniform(0.4, 0.95), rng.uniform(1.2, 1.9),
                  rng.uniform(0.0, 0.6), rng.uniform(0.1, 2.0), rng.uniform(0.0, 0.6),
-                 rng.uniform(0.0, 0.3), rng.uniform(3.0, 5.5),
+                 rng.uniform(0.0, 1.0), rng.uniform(3.5, 6.5),
                  rng.uniform(0.0, 0.9), rng.uniform(2.0, 30.0)]
         p = make(theta)
         t0 = time.time()
-        r = C.evaluate(C.world_runner(p), p, n_days=12, win_per_day=12, B=60, verbose=False)
-        rec = dict(theta=theta, delta=r['delta'], Y=r['Y'], ep=r['ep'], slope=r['slope'], H=r['H'],
+        r = C.evaluate(C.world_runner(p), p, n_days=16, win_per_day=32, B=60, verbose=False)
+        rec = dict(theta=theta, delta=r['delta'], Y=r['Y'], ep=r['ep'], ep100=r['ep100'], slope=r['slope'], H=r['H'],
                    gamma=r['gamma'], vb=r['vb'], loss=loss(r), sec=time.time() - t0)
         f.write(json.dumps({k: (float(v) if not isinstance(v, list) else v) for k, v in rec.items()}) + '\n')
         f.flush()
-        print(t, np.round(theta, 2), {k: round(float(rec[k]), 3) for k in ('delta', 'Y', 'ep', 'H', 'gamma', 'loss')})
+        print(t, np.round(theta, 2), {k: round(float(rec[k]), 3) for k in ('delta', 'Y', 'ep100', 'ep', 'H', 'gamma', 'loss')})
 
 
 if __name__ == '__main__':

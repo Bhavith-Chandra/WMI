@@ -101,9 +101,11 @@ def hurst(mid, kmin=4, kmax=13):
 
 
 def relaxation(Irel, n_exec):
-    """Irel: (n_blocks,) mean antisymmetrised impact; returns end/peak and slope (% peak per exec duration)."""
+    """Irel: (n_blocks,) mean antisymmetrised impact; returns end/peak and slope (% peak per exec duration).
+    end = mean of the last 10% of the silent window (>= 10 blocks)."""
     peak = Irel[n_exec - 1]
-    end = Irel[-10:].mean()
+    k = max(10, (len(Irel) - n_exec) // 10)
+    end = Irel[-k:].mean()
     sil = Irel[n_exec:]
     x = np.arange(len(sil)) / n_exec
     half = len(sil) // 2

@@ -476,3 +476,138 @@ def gen_stream(par, seed, n, ev, feat, mids, cm):
         bb, ba, _ = apply_action(bid, ask, bb, ba, typ, side, lvl, size)
         bb, ba = _guard(bid, ask, bb, ba)
         _update_ema(ema, par, 0.5 * (bb + ba))
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Window snapshots: run each day ONCE, store full state at each window start. Rollouts start from the snapshot and
+# reseed with their rollout seed -> bit-identical to run_branch (which warms from the day seed then reseeds), ~50x faster.
+NSS = 16  # max splitters supported in snapshots
+
+
+@njit(cache=True, parallel=True)
+def day_snapshots(par, day_seeds, warms, sb, sa, sbb, sba, sema, sss, ssr):
+    """warms: sorted 1-D array of warm counts (same for every day). Outputs indexed [day, window, ...]."""
+    nd = day_seeds.shape[0]
+    nwin = warms.shape[0]
+    ns = int(par[8]) + 1
+    for d in prange(nd):
+        bid = np.zeros(P, np.int64)
+        ask = np.zeros(P, np.int64)
+        ema = np.zeros(NEMA + 2)
+        ss = np.zeros(ns, np.int64)
+        sr = np.zeros(ns, np.int64)
+        bb, ba = warm_state(par, day_seeds[d], warms[0], bid, ask, ema, ss, sr)
+        done = warms[0]
+        for w in range(nwin):
+            for t in range(warms[w] - done):
+                typ, side, lvl, size = world_policy(bid, ask, bb, ba, par, ema, ss, sr)
+                bb, ba, _ = apply_action(bid, ask, bb, ba, typ, side, lvl, size)
+                bb, ba = _guard(bid, ask, bb, ba)
+                _update_ema(ema, par, 0.5 * (bb + ba))
+            done = warms[w]
+            sb[d, w, :] = bid
+            sa[d, w, :] = ask
+            sbb[d, w] = bb
+            sba[d, w] = ba
+            sema[d, w, :] = ema
+            sss[d, w, :ns] = ss
+            ssr[d, w, :ns] = sr
+
+
+@njit(cache=True)
+def run_from(par, bid, ask, bb, ba, ema, ss, sr, roll_seed, n_child, gap, n_silent_blocks, child_side, child_size,
+             mode, out_mid):
+    """Same dynamics as run_branch after its warm-up; state arrays are consumed (pass copies)."""
+    np.random.seed(roll_seed)
+    vb = bid.copy()
+    va = ask.copy()
+    vbb = bb
+    vba = ba
+    mid0 = 0.5 * (bb + ba)
+    h = np.uint64(1469598103934665603)
+    mvol = 0
+    nb = n_child + n_silent_blocks
+    for blk in range(nb):
+        if blk < n_child and mode != 0:
+            bb, ba, _ = apply_action(bid, ask, bb, ba, 2, child_side, 0, child_size)
+            bb, ba = _guard(bid, ask, bb, ba)
+            if mode == 1:
+                ema[IM] += child_size if child_side == 0 else -child_size
+        for g in range(gap):
+            if mode == 2:
+                typ, side, lvl, size = world_policy(vb, va, vbb, vba, par, ema, ss, sr)
+                pr = abs_price(vbb, vba, typ, side, lvl)
+                vbb, vba, _ = apply_action(vb, va, vbb, vba, typ, side, lvl, size)
+                vbb, vba = _guard(vb, va, vbb, vba)
+                if typ == 2:
+                    bb, ba, _ = apply_action(bid, ask, bb, ba, 2, side, 0, size)
+                else:
+                    if pr >= 0 and pr < P:
+                        bb, ba, _ = apply_abs(bid, ask, bb, ba, typ, side, pr, size)
+                bb, ba = _guard(bid, ask, bb, ba)
+                _update_ema(ema, par, 0.5 * (vbb + vba))
+            else:
+                typ, side, lvl, size = world_policy(bid, ask, bb, ba, par, ema, ss, sr)
+                pr = abs_price(bb, ba, typ, side, lvl)
+                bb, ba, _ = apply_action(bid, ask, bb, ba, typ, side, lvl, size)
+                bb, ba = _guard(bid, ask, bb, ba)
+                _update_ema(ema, par, 0.5 * (bb + ba))
+            if typ == 2:
+                mvol += size
+            code = np.uint64(typ * 1000003 + side * 10007 + (pr + 7) * 31 + size)
+            h = (h ^ code) * np.uint64(1099511628211)
+        out_mid[blk] = 0.5 * (bb + ba)
+    return mid0, h, mvol
+
+
+@njit(cache=True, parallel=True)
+def run_batch_snap(par, sb, sa, sbb, sba, sema, sss, ssr, row_d, row_w, roll_seeds, n_child, gap, n_silent, side,
+                   child_size, mode):
+    n = row_d.shape[0]
+    out = np.zeros((n, n_child + n_silent))
+    mid0 = np.zeros(n)
+    hs = np.zeros(n, np.uint64)
+    mv = np.zeros(n, np.int64)
+    ns = int(par[8]) + 1
+    for i in prange(n):
+        d = row_d[i]
+        w = row_w[i]
+        m0, hh, v = run_from(par, sb[d, w].copy(), sa[d, w].copy(), sbb[d, w], sba[d, w], sema[d, w].copy(),
+                             sss[d, w, :ns].copy(), ssr[d, w, :ns].copy(), roll_seeds[i], n_child, gap, n_silent,
+                             side, child_size, mode, out[i])
+        mid0[i] = m0
+        hs[i] = hh
+        mv[i] = v
+    return out, mid0, hs, mv
+
+
+class Snapshots:
+    """Holds per-(day, window) World states for a set of days and sorted warm counts."""
+    def __init__(self, par, day_seeds, warms):
+        import numpy as _np
+        self.day_seeds = _np.asarray(day_seeds, _np.int64)
+        self.warms = _np.asarray(sorted(set(int(x) for x in warms)), _np.int64)
+        nd, nw = len(self.day_seeds), len(self.warms)
+        self.sb = _np.zeros((nd, nw, P), _np.int64)
+        self.sa = _np.zeros((nd, nw, P), _np.int64)
+        self.sbb = _np.zeros((nd, nw), _np.int64)
+        self.sba = _np.zeros((nd, nw), _np.int64)
+        self.sema = _np.zeros((nd, nw, NEMA + 2))
+        self.sss = _np.zeros((nd, nw, NSS), _np.int64)
+        self.ssr = _np.zeros((nd, nw, NSS), _np.int64)
+        assert int(par[8]) + 1 <= NSS
+        day_snapshots(par, self.day_seeds, self.warms, self.sb, self.sa, self.sbb, self.sba, self.sema, self.sss,
+                      self.ssr)
+        self.par = par
+        self._di = {int(s): i for i, s in enumerate(self.day_seeds)}
+        self._wi = {int(w): i for i, w in enumerate(self.warms)}
+
+    def index(self, day_seeds, warms):
+        import numpy as _np
+        return (_np.array([self._di[int(s)] for s in day_seeds], _np.int64),
+                _np.array([self._wi[int(w)] for w in warms], _np.int64))
+
+    def run(self, day_seeds, warms, roll_seeds, n_child, gap, n_silent, side, child, mode):
+        rd, rw = self.index(day_seeds, warms)
+        return run_batch_snap(self.par, self.sb, self.sa, self.sbb, self.sba, self.sema, self.sss, self.ssr, rd, rw,
+                              roll_seeds, n_child, gap, n_silent, side, child, mode)

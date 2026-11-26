@@ -107,6 +107,20 @@ def test_vb_fails_closed():
     assert abs(M.vb_ratio(np.array([3.0]), np.array([1.0])) - 3) < 1e-12
 
 
+def test_snapshots_bit_identical():
+    par = W.default_params()
+    par[25], par[23], par[26], par[28] = 0.3, 0.2, 0.05, 0.2
+    days = np.array([4100, 4101], np.int64)
+    warms = np.array([30000, 32048], np.int64)
+    S = W.Snapshots(par, days, warms)
+    ds, ws = np.repeat(days, 2), np.tile(warms, 2)
+    rs = np.arange(4, dtype=np.int64) + 777
+    for mode in (0, 1, 2):
+        a = W.run_batch(par, ds, ws, rs, 10, 40, 3, 1, 2, mode)
+        b = S.run(ds, ws, rs, 10, 40, 3, 1, 2, mode)
+        assert np.array_equal(a[0], b[0]) and np.array_equal(a[2], b[2])
+
+
 if __name__ == '__main__':
     for name, f in list(globals().items()):
         if name.startswith('test_'):

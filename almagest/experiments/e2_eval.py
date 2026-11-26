@@ -41,26 +41,25 @@ def roll_seeds(days, sidx):
     return S.ROLL_OFFSET + days * 1000 + (sidx - WIN0) // STRIDE
 
 
-def truth_campaign(par, days, sidx, gap, child):
+def truth_campaign(par, days, sidx, gap, child, snaps):
     nw = 20000 + sidx
     rs = roll_seeds(days, sidx)
     out = {}
     for mode in (1, 2, 0):
         for side in (0, 1):
-            o, m0, h, _ = W.run_batch(par, days, nw, rs, N_EXEC, gap, 0, side, child, mode)
+            o, m0, h, _ = snaps.run(days, nw, rs, N_EXEC, gap, 0, side, child, mode)
             out[(mode, side)] = (o - m0[:, None], h)
     for side in (0, 1):
-        o, m0, _, _ = W.run_batch(par, days, nw, rs, N_REL_EXEC, gap, N_SIL, side, child, 1)
+        o, m0, _, _ = snaps.run(days, nw, rs, N_REL_EXEC, gap, N_SIL, side, child, 1)
         out[('R', side)] = (o - m0[:, None], None)
     return out
 
 
 @torch.no_grad()
-def model_campaign(model, reset, par, days, sidx, gap, child, seed=0):
+def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0):
     nwin = len(days)
     udays = np.unique(days)
     n_need = int(sidx.max())
-    st = {d: build_stream(par, int(d), n_need + 1) for d in udays}
     B = len(udays)
     state = model.init_state(B)
     snaps = {}
@@ -102,7 +101,9 @@ def model_campaign(model, reset, par, days, sidx, gap, child, seed=0):
     rows_warm = 20000 + sidx[win_of]
     vb = np.zeros((R, W.P), np.int64); va = np.zeros_like(vb); rb = np.zeros_like(vb); ra = np.zeros_like(vb)
     vbb = np.zeros(R, np.int64); vba = np.zeros_like(vbb); rbb = np.zeros_like(vbb); rba = np.zeros_like(vbb)
-    E.init_rows(par, rows_seed, rows_warm, vb, va, rb, ra, vbb, vba, rbb, rba)
+    rd, rw = snaps.index(rows_seed, rows_warm)
+    vb[:] = snaps.sb[rd, rw]; va[:] = snaps.sa[rd, rw]; rb[:] = vb; ra[:] = va
+    vbb[:] = snaps.sbb[rd, rw]; vba[:] = snaps.sba[rd, rw]; rbb[:] = vbb; rba[:] = vba
     state = [torch.cat([snaps[int(sidx[w])][li][dpos[int(days[w])]:dpos[int(days[w])] + 1] for w in win_of])
              for li in range(len(model.blocks))]
     # tokens consumed since last reset (reset arm only): reset/2 at window start, by construction above
@@ -268,7 +269,9 @@ if __name__ == '__main__':
     V = np.array([stats[d]['V'] for d in did], float)
     sig = np.array([stats[d]['sigma'] for d in did], float)
     t0 = time.time()
-    tr = truth_campaign(par, days, sidx, gap, child)
+    snaps = W.Snapshots(par, np.unique(days), np.unique(20000 + sidx))
+    st = {d: build_stream(par, int(d), int(sidx.max()) + gap * NBLK + 1) for d in np.unique(days)}
+    tr = truth_campaign(par, days, sidx, gap, child, snaps)
     truth_blind_ok = bool(np.all(tr[(2, 0)][1] == tr[(0, 0)][1]) and np.all(tr[(2, 1)][1] == tr[(0, 1)][1]))
     assert truth_blind_ok, 'truth blind arm differs from no-injection arm'
     Tv = 0.5 * (tr[(1, 0)][0] - tr[(1, 1)][0])
@@ -278,7 +281,7 @@ if __name__ == '__main__':
     hor = gap * NBLK
     tm, ts = [], []
     for d, s0 in zip(days, sidx):
-        s = build_stream(par, int(d), int(s0) + hor)
+        s = st[d]
         mids = np.cumsum(s['dmid'])[s0:s0 + hor]
         tm.append(mids)
         ts.append(np.where(s['tgt'][s0:s0 + hor, 0] == 2, np.where(s['tgt'][s0:s0 + hor, 1] == 0, 1, -1), 0))
@@ -294,7 +297,7 @@ if __name__ == '__main__':
         model, reset = make_model(ck['arm'])
         model.load_state_dict(ck['state'])
         model.eval()
-        res, fmid, fsign = model_campaign(model, reset, par, days, sidx, gap, child)
+        res, fmid, fsign = model_campaign(model, reset, par, days, sidx, gap, child, snaps, st)
         blind_inv = bool(np.all(res['hB+'] == res['hF']) and np.all(res['hB-'] == res['hF']))
         vis_differs = bool(np.mean(res['hV+'] != res['hF']) > 0.5)
         assert blind_inv and vis_differs, (blind_inv, vis_differs)
