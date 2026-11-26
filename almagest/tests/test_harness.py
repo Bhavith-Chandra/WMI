@@ -165,6 +165,93 @@ def test_mirror_involution():
     assert np.allclose(m['dmid'], -d['dmid'])
 
 
+def _fake_feed(seed=0, n=4000):
+    """Self-contained Coinbase-like feed: snapshot, random L2 batches (adds/cancels at many depths, inside-spread
+    improvements, crossing-in-batch orderings) and match groups. Prices on a 0.01 grid around 100."""
+    rng = np.random.default_rng(seed)
+    bids = {round(100 - 0.01 * (k + 1), 2): float(rng.integers(1, 50)) for k in range(400)}
+    asks = {round(100 + 0.01 * k, 2): float(rng.integers(1, 50)) for k in range(400)}
+    yield dict(type='snapshot', bids=[[str(p), str(s)] for p, s in sorted(bids.items(), reverse=True)],
+               asks=[[str(p), str(s)] for p, s in sorted(asks.items())])
+    t0 = 1.79e9
+    for e in range(n):
+        tm = '2026-11-26T00:00:%09.6fZ' % ((e * 0.013) % 59)
+        if rng.random() < 0.1 and asks and bids:
+            side = 'buy' if rng.random() < 0.5 else 'sell'      # maker side
+            book = bids if side == 'buy' else asks
+            best = max(book) if side == 'buy' else min(book)
+            sz = min(book[best], float(rng.integers(1, 30)))
+            yield dict(type='match', side=side, price=str(best), size=str(sz), taker_order_id='t%d' % (e // 2), time=tm)
+            book[best] -= sz
+            ch = [[side, str(best), str(book[best])]]
+            if book[best] <= 0:
+                book.pop(best)
+            yield dict(type='l2update', changes=ch, time=tm)
+            continue
+        ch = []
+        for _ in range(int(rng.integers(1, 4))):
+            side = 'buy' if rng.random() < 0.5 else 'sell'
+            book = bids if side == 'buy' else asks
+            bb, ba = max(bids), min(asks)
+            d = int(min(rng.geometric(0.08), 150))
+            if rng.random() < 0.15:
+                p = round(bb + 0.01 * int(rng.integers(1, 9)), 2) if side == 'buy' else round(ba - 0.01 * int(rng.integers(1, 9)), 2)
+                if not (p < ba if side == 'buy' else p > bb):
+                    continue
+            else:
+                p = round(bb - 0.01 * d, 2) if side == 'buy' else round(ba + 0.01 * d, 2)
+            new = 0.0 if (p in book and rng.random() < 0.4) else float(rng.integers(1, 60))
+            if new > 0:
+                book[p] = new
+            else:
+                book.pop(p, None)
+            ch.append([side, str(p), str(new)])
+        if ch:
+            yield dict(type='l2update', changes=ch, time=tm)
+
+
+def test_exact_tokenizer_replay():
+    """GATE (EVAL_PROTOCOL B0): replaying v3 tokens (+ hidden updates) through the ENGINE reproduces every recorded
+    feature bit-for-bit, random access via checkpoints is exact, and token-only replay (what a perfect model could
+    generate) from an exact seed matches when no hidden update falls inside the horizon."""
+    from almagest.data import coinbase_exact as X
+    from almagest.sim import engine as E
+    X.Q0['TEST'] = 1.0
+    st = X.ExactTokenizer('TEST')
+    for m in _fake_feed():
+        st.feed(m)
+    st.flush()
+    o = st.pack(); z = dict(o); z.update(X.ck_arrays(o['ck']))
+    n = len(o['ev'])
+    assert n > 2000 and (o['ev'][:, 2] > X.DR).any() and (o['ev'][:, 0] == 2).any()
+    bad = [0]
+
+    def obs(bid, ask, bb, ba):
+        f = np.zeros(X.NF); cb = np.zeros(X.DR, np.int64); ca = np.zeros(X.DR, np.int64)
+        E.observe_row3(bid, ask, bb, ba, f, cb, ca)
+        return f, np.stack([cb, ca])
+
+    def on(k, bid, ask, bb, ba):
+        f, cm = obs(bid, ask, bb, ba)
+        bad[0] += int(not (np.array_equal(f, o['feat'][k]) and np.array_equal(cm, o['cm'][k])))
+    bid, ask, bb, ba = X._load_ck(z, 0)
+    X.replay(z, int(z['ck_pos'][0]), n, bid, ask, bb, ba, on)
+    assert bad[0] == 0, bad[0]
+    for k in (n // 3, n - 1):
+        f, _ = obs(*X.book_at(z, k))
+        assert np.array_equal(f, o['feat'][k])
+    hp = o['hid'][:, 0]
+    for s in range(100, n - 200, 97):
+        e = s + 100
+        if ((hp > s) & (hp <= e)).any():
+            continue
+        bid, ask, bb, ba = X.book_at(z, s)
+        for k in range(s, e):
+            bb, ba, _ = W.apply_action(bid, ask, bb, ba, int(o['ev'][k, 0]), int(o['ev'][k, 1]),
+                                       int(X.eng_lvl(o['ev'][k, 0], o['ev'][k, 2])), int(o['lots'][k]))
+        assert np.array_equal(obs(bid, ask, bb, ba)[0], o['feat'][e])
+
+
 if __name__ == '__main__':
     for name, f in list(globals().items()):
         if name.startswith('test_'):

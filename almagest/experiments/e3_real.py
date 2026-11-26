@@ -134,13 +134,13 @@ class TableModel:
             t = r['tgt']
             keys = [k, k * 3 + t[:, 0], (k * 3 + t[:, 0]) * 2 + t[:, 1], (k * 3 + t[:, 0]) * 2 + t[:, 1],
                     k * 3 + t[:, 0]]
-            for f, (kk, nv) in enumerate(zip(keys, [3, 2, L.NLVL, T.NSB, T.NDT])):
+            for f, (kk, nv) in enumerate(zip(keys, [3, 2, getattr(self, 'nlvl', L.NLVL), T.NSB, T.NDT])):
                 for a, b in zip(kk, t[:, f]):
                     arr = self.cnt[f].get(a)
                     if arr is None:
                         arr = self.cnt[f][a] = np.zeros(nv)
                     arr[b] += 1
-        self.nv = [3, 2, L.NLVL, T.NSB, T.NDT]
+        self.nv = [3, 2, getattr(self, 'nlvl', L.NLVL), T.NSB, T.NDT]
         return self
 
     def nll(self, r):

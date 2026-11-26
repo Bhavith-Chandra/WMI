@@ -21,9 +21,11 @@ SB_TAUS = np.array([8 * 4 ** k for k in range(8)], dtype=np.float64)  # 8 .. 131
 
 
 def book_transform(feat):
-    """feat (..., 21) raw -> (..., 21) scaled."""
+    """feat (..., 21[+bands]) raw -> scaled: log1p volumes, log1p(spread-1), log1p depth bands (v3)."""
     v = torch.log1p(feat[..., :20].clamp(min=0))
     s = torch.log1p((feat[..., 20:21] - 1).clamp(min=0))
+    if feat.shape[-1] > 21:
+        return torch.cat([v, s, torch.log1p(feat[..., 21:].clamp(min=0))], -1)
     return torch.cat([v, s], -1)
 
 
@@ -78,11 +80,16 @@ class DiagRec(nn.Module):
 
 class LMM(nn.Module):
     def __init__(self, d=64, h=128, layers=2, mode='learned', slowbank=False, nsize=NSIZE, ndt=0, size_all=False,
-                 src=False, cond_heads=False, tagch=False, ndom=0, tag_gain=1.0, gen_cal=None):
+                 src=False, cond_heads=False, tagch=False, ndom=0, tag_gain=1.0, gen_cal=None, nlvl=NLVL, nimp=0,
+                 nfeat=21):
         """v1 (synthetic): nsize=4, ndt=0, size only for markets. v2 (real): nsize=12 for all types, ndt=11 (Dt head)."""
         super().__init__()
         self.cfg = dict(d=d, h=h, layers=layers, mode=mode, slowbank=slowbank, nsize=nsize, ndt=ndt, size_all=size_all,
-                        src=src, cond_heads=cond_heads, tagch=tagch, ndom=ndom, tag_gain=tag_gain)
+                        src=src, cond_heads=cond_heads, tagch=tagch, ndom=ndom, tag_gain=tag_gain,
+                        nlvl=nlvl, nimp=nimp, nfeat=nfeat)
+        # v3 (replay-exact real data): nlvl = DR + 1 + nimp level classes; the last nimp limit classes mean 'improve
+        # own best by k = 2..nimp+1 buckets' (valid only if spread > k); cancels use the first DR classes (book mask)
+        self.nlvl, self.nimp, self.nfeat = nlvl, nimp, nfeat
         self.tag_gain = float(tag_gain)   # Stage-3 post-training scalar: sensitivity to the own-order channel
         # generation-time calibration (realism post-training on FIT data): side temperature, market-logit bias,
         # type temperature. Teacher-forced likelihood is untouched (only sampling uses it).
@@ -99,7 +106,7 @@ class LMM(nn.Module):
         self.nsize, self.ndt, self.size_all = nsize, ndt, size_all
         self.e_typ = nn.Embedding(3, d)
         self.e_side = nn.Embedding(2, d)
-        self.e_lvl = nn.Embedding(NLVL, d)
+        self.e_lvl = nn.Embedding(nlvl, d)
         self.e_size = nn.Embedding(nsize, d)
         self.e_dt = nn.Embedding(ndt, d) if ndt else None
         self.e_src = nn.Embedding(2, d) if src else None
@@ -108,18 +115,18 @@ class LMM(nn.Module):
         # src models get a SEPARATE slow-bank channel of OWN/exogenous (tagged) signed volume: the market reacts to
         # how much of recent flow was exogenous; mixing it into the total-flow channel hides that (2026-11-26).
         self.slowbank = slowbank
-        self.inproj = nn.Linear(d + 21 + 1 + nsb, d)
+        self.inproj = nn.Linear(d + nfeat + 1 + nsb, d)
         self.blocks = nn.ModuleList([DiagRec(d, h, mode) for _ in range(layers)])
         self.mlp = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, 2 * d), nn.GELU(), nn.Linear(2 * d, d))
         self.h_typ = nn.Linear(d, 3)
         self.c_side = nn.Embedding(3, d)
         self.h_side = nn.Linear(d, 2)
         self.c_lvl = nn.Embedding(6, d)
-        self.h_lvl = nn.Linear(d, NLVL)
+        self.h_lvl = nn.Linear(d, nlvl)
         self.h_size = nn.Linear(d, nsize)
         if cond_heads:
             self.hc_side = nn.Linear(d, 3 * 2)
-            self.hc_lvl = nn.Linear(d, 6 * NLVL)
+            self.hc_lvl = nn.Linear(d, 6 * nlvl)
             self.hc_size = nn.Linear(d, 6 * nsize)
         self.c_size = nn.Embedding(nsize, d) if ndt else None
         self.h_dt = nn.Linear(d, ndt) if ndt else None
@@ -178,7 +185,7 @@ class LMM(nn.Module):
         zl = zs + self.c_lvl(typ * 2 + side)
         if self.cond_heads:
             ls = _pick(self.hc_side(zs), typ, 2)
-            ll = _pick(self.hc_lvl(zl), typ * 2 + side, NLVL)
+            ll = _pick(self.hc_lvl(zl), typ * 2 + side, self.nlvl)
             lz = _pick(self.hc_size(zl), typ * 2 + side, self.nsize)
             return lt, ls, ll, lz
         ls = self.h_side(zs)
@@ -194,18 +201,18 @@ class LMM(nn.Module):
     def lvl_size_logits(self, z, typ, side):
         zl = z + self.c_side(typ) + self.c_lvl(typ * 2 + side)
         if self.cond_heads:
-            return _pick(self.hc_lvl(zl), typ * 2 + side, NLVL), _pick(self.hc_size(zl), typ * 2 + side, self.nsize)
+            return _pick(self.hc_lvl(zl), typ * 2 + side, self.nlvl), _pick(self.hc_size(zl), typ * 2 + side, self.nsize)
         return self.h_lvl(zl), self.h_size(zl)
 
-    def loss(self, z, tgt, cmask):
+    def loss(self, z, tgt, cmask, spread=None):
         """tgt (B,T,4); cmask (B,T,2,D) cancel validity of the book BEFORE the event."""
         typ, side, lvl, size = tgt[..., 0], tgt[..., 1], tgt[..., 2], tgt[..., 3]
         lt, ls, ll, lz = self.heads_logits(z, typ, side)
-        ll = mask_lvl(ll, typ, side, cmask)
+        ll = mask_lvl(ll, typ, side, cmask, spread, self.nimp)
         nll = F.cross_entropy(lt.reshape(-1, 3), typ.reshape(-1), reduction='none')
         nll = nll + F.cross_entropy(ls.reshape(-1, 2), side.reshape(-1), reduction='none')
         m_l = (typ != 2).reshape(-1).float()
-        nll = nll + m_l * F.cross_entropy(ll.reshape(-1, NLVL), lvl.reshape(-1), reduction='none')
+        nll = nll + m_l * F.cross_entropy(ll.reshape(-1, self.nlvl), lvl.reshape(-1), reduction='none')
         if self.ndt:
             nll = nll + F.cross_entropy(lz.reshape(-1, self.nsize), size.reshape(-1), reduction='none')
             zl = z + self.c_side(typ) + self.c_lvl(typ * 2 + side)
@@ -222,16 +229,16 @@ class LMM(nn.Module):
             return (nll * w).sum() / w.sum().clamp(min=1)
         return nll.mean()
 
-    def loss_parts(self, z, tgt, cmask):
+    def loss_parts(self, z, tgt, cmask, spread=None):
         """v2 per-field NLL (B*T, 5): typ, side, lvl (non-market), size, dt."""
         typ, side, lvl, size = tgt[..., 0], tgt[..., 1], tgt[..., 2], tgt[..., 3]
         lt, ls, ll, lz = self.heads_logits(z, typ, side)
-        ll = mask_lvl(ll, typ, side, cmask)
+        ll = mask_lvl(ll, typ, side, cmask, spread, self.nimp)
         zl = z + self.c_side(typ) + self.c_lvl(typ * 2 + side)
         ld = self.h_dt(zl + self.c_size(size))
         p = [F.cross_entropy(lt.reshape(-1, 3), typ.reshape(-1), reduction='none'),
              F.cross_entropy(ls.reshape(-1, 2), side.reshape(-1), reduction='none'),
-             (typ != 2).reshape(-1).float() * F.cross_entropy(ll.reshape(-1, NLVL), lvl.reshape(-1), reduction='none'),
+             (typ != 2).reshape(-1).float() * F.cross_entropy(ll.reshape(-1, self.nlvl), lvl.reshape(-1), reduction='none'),
              F.cross_entropy(lz.reshape(-1, self.nsize), size.reshape(-1), reduction='none'),
              F.cross_entropy(ld.reshape(-1, self.ndt), tgt[..., 4].reshape(-1), reduction='none')]
         return torch.stack(p, -1)
@@ -244,14 +251,19 @@ def _pick(flat, idx, k):
     return torch.gather(g, -2, idx.unsqueeze(-1).unsqueeze(-1).expand(*sh, 1, k)).squeeze(-2)
 
 
-def mask_lvl(ll, typ, side, cmask):
+def mask_lvl(ll, typ, side, cmask, spread=None, nimp=0):
     """cancel: only levels with volume on that side (levels 0..D-1 -> logits 0..D-1, index D invalid).
     limit: all 0..D valid (lvl 0 means inside-spread; engine falls back if spread==1)."""
     neg = torch.finfo(ll.dtype).min / 4
     cm = torch.where(side.unsqueeze(-1) == 0, cmask[..., 0, :], cmask[..., 1, :]).float()
-    cm = torch.cat([cm, torch.zeros_like(cm[..., :1])], -1)
+    cm = torch.cat([cm, torch.zeros_like(cm[..., :1 + nimp])], -1)
     is_c = (typ == 1).unsqueeze(-1)
-    allow = torch.where(is_c, cm, torch.ones_like(cm))
+    lim = torch.ones_like(cm)
+    if nimp:
+        k = torch.arange(2, nimp + 2, dtype=cm.dtype)                   # improvement sizes
+        sp = spread.to(cm.dtype).unsqueeze(-1) if spread is not None else torch.zeros_like(cm[..., :1])
+        lim = torch.cat([lim[..., :-nimp], (sp > k).to(cm.dtype)], -1)
+    allow = torch.where(is_c, cm, lim)
     # if a cancel side has no volume (should not happen), allow everything to keep logits finite
     allow = torch.where(allow.sum(-1, keepdim=True) > 0, allow, torch.ones_like(allow))
     return torch.where(allow > 0, ll, torch.full_like(ll, neg))
