@@ -13,7 +13,7 @@ from almagest import splits as S
 from almagest.sim import world as W, engine as E
 from almagest.models import lmm as L
 from almagest.experiments.e1_calibrate_world import make
-from almagest.experiments.e2_train import build_stream, build_stream_inj, make_model, stack, run_windows
+from almagest.experiments.e2_train import build_stream, build_stream_inj, make_model, stack, run_windows, inj_schedule
 
 
 def run_traj(model, data, h0, T, reset, opt):
@@ -37,10 +37,23 @@ CH = 256
 
 
 @torch.no_grad()
-def collect(model, reset, par, days, sidx, steps, seed, beta=0.0):
+def collect(model, reset, par, days, sidx, steps, seed, beta=0.0, inject=False):
+    """inject=True: random tagged exogenous metaorders are executed during the rollout (as in evaluation), so the
+    oracle labels the market's REACTION in closed loop - where impact errors compound."""
     R = len(days)
     udays = np.unique(days)
     st = {d: build_stream(par, int(d), int(sidx.max()) + 1) for d in udays}
+    TAG = bool(getattr(model, 'tagch', False))
+    if TAG:
+        for d in st:
+            if st[d]['sb'].shape[-1] == 2 * len(L.SB_TAUS):
+                st[d]['sb'] = np.concatenate([st[d]['sb'], np.zeros((len(st[d]['sb']), len(L.SB_TAUS)), np.float32)], 1)
+    rng = np.random.default_rng(seed + 5)
+    if inject:
+        sch = [inj_schedule(steps, 0.11, rng) for _ in range(R)]
+        inj = np.stack([a for a, _, _ in sch]); iside = np.stack([b for _, b, _ in sch]); isize = np.stack([c for _, _, c in sch])
+    else:
+        inj = np.zeros((R, steps), np.int64); iside = inj.copy(); isize = np.ones_like(inj)
     # teacher-forced recurrent state at window starts (per row)
     state = []
     for i in range(R):
@@ -63,7 +76,7 @@ def collect(model, reset, par, days, sidx, steps, seed, beta=0.0):
     ema = snaps.sema[rd, rw].copy(); ns = int(par[8]) + 1
     ss = snaps.sss[rd, rw, :ns].copy(); sr = snaps.ssr[rd, rw, :ns].copy()
     rb, ra, rbb, rba = bid.copy(), ask.copy(), bb.copy(), ba.copy()   # single book (view == real)
-    sbank = L.SlowBank(R)
+    sbank = L.SlowBank(R, tag=TAG)
     from scipy.signal import lfilter
     lam = np.exp(-1.0 / L.SB_TAUS)
     for i in range(R):
@@ -99,9 +112,15 @@ def collect(model, reset, par, days, sidx, steps, seed, beta=0.0):
         # oracle label at the visited state (World's action); hidden state advanced as the World would
         W.oracle_labels(par, rb, ra, rbb, rba, ema, ss, sr,
                         (seed * 1_000_003 + t * 7919 + np.arange(R) * 104729) % (2 ** 31), lab)
+        it = inj[:, t] == 1
+        tgt = pad(torch.tensor(lab.copy()), 0)
+        if it.any():   # exogenous child is the next event on these rows: it is an input, never a target (src=1)
+            child = pad(torch.stack([torch.full((R,), 2), torch.tensor(iside[:, t]), torch.zeros(R, dtype=torch.long),
+                                     torch.tensor(isize[:, t])], 1), 1)
+            tgt = torch.where(torch.tensor(it).unsqueeze(-1), child, tgt)
         rec['prev'].append(pend_ev.numpy().copy()); rec['feat'].append(pf.numpy().copy())
         rec['dmid'].append(pend_dmid.numpy().copy()); rec['sb'].append(sbf.numpy().copy())
-        rec['tgt'].append(pad(torch.tensor(lab.copy()), 0).numpy()); rec['cm'].append(cm)
+        rec['tgt'].append(tgt.numpy()); rec['cm'].append(cm)
         # model action executes (on-policy states)
         u = torch.rand(R, 4, generator=g)
         typ = L.inv_cdf(model.h_typ(z), u[:, 0])
@@ -115,6 +134,10 @@ def collect(model, reset, par, days, sidx, steps, seed, beta=0.0):
         if beta > 0:   # beta-mixture: oracle executes on a random subset of rows (keeps states recoverable)
             use_o = torch.rand(R, generator=g) < beta
             ev = torch.where(use_o.unsqueeze(-1), torch.tensor(lab.copy()), ev)
+        if it.any():   # injected exogenous child replaces the agent event on these rows
+            ev = torch.where(torch.tensor(it).unsqueeze(-1),
+                             torch.stack([torch.full((R,), 2), torch.tensor(iside[:, t]), torch.zeros(R, dtype=torch.long),
+                                          torch.tensor(isize[:, t])], 1), ev)
         evn = ev.numpy().astype(np.int64)
         old = 0.5 * (rbb + rba).astype(float)
         E.step_events(bid, ask, rb, ra, bb, ba, rbb, rba, evn[:, 0].copy(), evn[:, 1].copy(), evn[:, 2].copy(),
@@ -123,8 +146,12 @@ def collect(model, reset, par, days, sidx, steps, seed, beta=0.0):
         E.observe(bid, ask, bb, ba, feat, cmb, cma)
         d = torch.tensor(0.5 * (rbb + rba) - old, dtype=torch.float32)
         sv = torch.where(ev[:, 0] == 2, torch.where(ev[:, 1] == 0, 1.0, -1.0) * ev[:, 3].float(), torch.zeros(R))
-        sbank.update(sv, d)
-        pend_ev, pend_dmid = pad(ev, 0), d
+        itt = torch.tensor(it)
+        sbank.update(sv, d, torch.where(itt, sv, torch.zeros(R)) if TAG else None)
+        pe = pad(ev, 0)
+        if SRC:
+            pe[:, -1] = itt.long()
+        pend_ev, pend_dmid = pe, d
     out = {k: np.stack(v, 1) for k, v in rec.items()}
     out['_h0'] = init_state
     depth_b = feat[:, :10].sum(1); depth_a = feat[:, 10:20].sum(1)
@@ -141,6 +168,8 @@ def main():
     par = make(ck['theta'])
     model, reset = make_model(ck['arm'], cfg=ck.get('cfg'))
     model.load_state_dict(ck['state'])
+    if getattr(model, 'tagch', False):
+        os.environ['TAG_CHANNEL'] = '1'
     bs = build_stream_inj if ck['arm'].endswith('_src') else build_stream
     orig = stack([bs(par, S.TRAIN_BASE + i, 120_000) for i in range(8)], 1)
     agg = []
@@ -152,7 +181,8 @@ def main():
         sidx = (20480 + 2048 * rng.integers(0, 20, rows)).astype(np.int64)
         model.eval()
         beta = float(os.environ.get('BETA0', 0.5)) * (0.5 ** r)
-        traj, coll = collect(model, reset, par, days, sidx, steps, seed=77 + r, beta=beta)
+        traj, coll = collect(model, reset, par, days, sidx, steps, seed=77 + r, beta=beta,
+                             inject=bool(getattr(model, 'src', False)))
         h0 = traj.pop('_h0')
         agg.append(({k: torch.tensor(v) for k, v in traj.items()}, h0))
         print(f'round {r}: beta {beta:.2f} collected {rows}x{steps}, end-of-rollout one-sided books {coll:.2f}, {time.time()-t0:.0f}s',

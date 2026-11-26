@@ -26,7 +26,7 @@ def loss(r):
     if not np.isfinite(r['delta']) or not np.isfinite(r.get('ep100', np.nan)):
         return 1e9
     L = ((r['delta'] - 0.5) / 0.05) ** 2 + (np.log(max(r['Y'], 1e-3) / 0.7) / 0.3) ** 2
-    L += ((r['ep100'] - 0.67) / 0.08) ** 2 + ((r['ep'] - 0.5) / 0.25) ** 2 + ((r['H'] - 0.5) / 0.03) ** 2
+    L += ((r['ep100'] - 0.67) / float(__import__('os').environ.get('EP100_SIGMA', 0.08))) ** 2 + ((r['ep'] - 0.5) / 0.25) ** 2 + ((r['H'] - 0.5) / 0.03) ** 2
     L += (max(0, 0.3 - r['gamma']) / 0.05) ** 2 + (max(0, r['gamma'] - 0.8) / 0.05) ** 2
     L += (max(0, r['slope100']) / 1.0) ** 2
     return float(L)

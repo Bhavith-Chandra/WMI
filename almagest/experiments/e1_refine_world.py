@@ -15,7 +15,8 @@ def score(theta, nd=16, nw=32):
     import os
     p = make(theta)
     bases = (1000, 1032) if os.environ.get('ROBUST') else (1000,)
-    rs = [C.evaluate(C.world_runner(p), p, n_days=nd, win_per_day=nw, base_seed=b, B=40, verbose=False) for b in bases]
+    rs = [C.evaluate(C.world_runner(p), p, n_days=nd, win_per_day=nw, base_seed=b, B=40, verbose=False,
+                     replicas=int(os.environ.get('REPL', 4))) for b in bases]
     Ls = [loss(r) for r in rs]
     i = int(np.argmax(Ls))
     return Ls[i], rs[i]
