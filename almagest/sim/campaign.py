@@ -59,7 +59,7 @@ def world_runner(par):
 
 
 def evaluate(runner, par_world, n_days=20, win_per_day=16, base_seed=1000, ref=None, B=300, verbose=True,
-             relax=True, stats=None):
+             relax=True, stats=None, relax_mult=1):
     """Full campaign. `par_world` defines the target market (day statistics). Returns dict of results."""
     days = np.arange(base_seed, base_seed + n_days)
     stats = stats or day_stats(par_world, days)
@@ -92,8 +92,11 @@ def evaluate(runner, par_world, n_days=20, win_per_day=16, base_seed=1000, ref=N
                gamma=np.nanmean([s['gamma'] for s in stats]), H=np.mean([s['H'] for s in stats]),
                curve=Iv.mean(0), q=q.mean(0))
     if relax:
-        rr, _, _ = run_arms(runner, sched, 10, gap, 100, child, modes=(1,))
-        Irel = (rr[1] / sig[:, None]).mean(0)
+        sched_r = schedule(n_days, win_per_day * relax_mult, base_seed, stride=4000 // relax_mult)
+        V_r = np.array([stats[d]['V'] for d in sched_r[3]], float)
+        sig_r = np.array([stats[d]['sigma'] for d in sched_r[3]], float)
+        rr, _, _ = run_arms(runner, sched_r, 10, gap, 100, child, modes=(1,))
+        Irel = (rr[1] / sig_r[:, None]).mean(0)
         ep, slope = M.relaxation(Irel, 10)
         out.update(ep=ep, slope=slope, relax_curve=Irel)
     if ref is not None:

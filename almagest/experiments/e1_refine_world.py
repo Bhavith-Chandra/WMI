@@ -12,7 +12,7 @@ HI = np.array([4.0, 1.0, 14.0, 1.2, 0.97, 1.95, 0.8, 3.0, 0.8, 0.5, 5.7, 0.95, 4
 
 def score(theta, nd=12, nw=12):
     p = make(theta)
-    r = C.evaluate(C.world_runner(p), p, n_days=nd, win_per_day=nw, B=40, verbose=False)
+    r = C.evaluate(C.world_runner(p), p, n_days=nd, win_per_day=nw, B=40, verbose=False, relax_mult=4)
     return loss(r), r
 
 
@@ -21,7 +21,7 @@ if __name__ == '__main__':
     recs = [json.loads(l) for l in open(src)]
     recs.sort(key=lambda r: r['loss'])
     rng = np.random.default_rng(seed)
-    pop = [(r['loss'], np.array(r['theta'])) for r in recs[:4]]
+    pop = [(score(np.array(r['theta']))[0], np.array(r['theta'])) for r in recs[:4]]  # re-score with low-noise relax
     step = 0.15 * (HI - LO)
     with open(out_path, 'a') as f:
         for g in range(gens):

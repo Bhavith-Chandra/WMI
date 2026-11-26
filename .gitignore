@@ -4,3 +4,5 @@ __pycache__/
 almagest/results/*.npy
 almagest/results/*.log
 almagest/results/*.jsonl
+almagest/results/*.npy
+almagest/results/*.json.tmp
