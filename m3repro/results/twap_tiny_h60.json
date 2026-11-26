@@ -1,0 +1,125 @@
+{
+  "meta": {
+    "model": "tiny",
+    "horizon": 60.0,
+    "children": 10,
+    "reps": 6,
+    "steps": 4000,
+    "B": 42,
+    "wall_s": 799.5440640449524,
+    "block": 32,
+    "seed": 7,
+    "mid_start": 58.045
+  },
+  "baseline": {
+    "mean_bp": -104.88198622085989,
+    "sd_bp": 45.92195529730568,
+    "n": 4
+  },
+  "cells": [
+    {
+      "side": "buy",
+      "Q": 10000,
+      "impact_bp_mean": 91.87494130165852,
+      "impact_bp_median": 100.57401812091584,
+      "impact_bp_se": 16.090919112379535,
+      "n_ok": 6,
+      "exec_qty_median": 10000.0,
+      "children_sent_median": 10.0
+    },
+    {
+      "side": "sell",
+      "Q": 10000,
+      "impact_bp_mean": 72.51543086934674,
+      "impact_bp_median": 93.47162434060048,
+      "impact_bp_se": 26.991606837755022,
+      "n_ok": 3,
+      "exec_qty_median": 6730.5,
+      "children_sent_median": 7.0
+    },
+    {
+      "side": "buy",
+      "Q": 40000,
+      "impact_bp_mean": 248.38026243253046,
+      "impact_bp_median": 98.41916145635678,
+      "impact_bp_se": 174.65155479323528,
+      "n_ok": 6,
+      "exec_qty_median": 40000.0,
+      "children_sent_median": 10.0
+    },
+    {
+      "side": "sell",
+      "Q": 40000,
+      "impact_bp_mean": 9.809587136155335,
+      "impact_bp_median": -18.368772525412837,
+      "impact_bp_se": 45.208072209907414,
+      "n_ok": 5,
+      "exec_qty_median": 38585.5,
+      "children_sent_median": 10.0
+    },
+    {
+      "side": "buy",
+      "Q": 160000,
+      "impact_bp_mean": 155.65250728658637,
+      "impact_bp_median": 164.0651108609211,
+      "impact_bp_se": 26.402104448872002,
+      "n_ok": 6,
+      "exec_qty_median": 109107.5,
+      "children_sent_median": 10.0
+    },
+    {
+      "side": "sell",
+      "Q": 160000,
+      "impact_bp_mean": 12.236940222300905,
+      "impact_bp_median": -61.718935783174864,
+      "impact_bp_se": 58.27515214764686,
+      "n_ok": 5,
+      "exec_qty_median": 104513.5,
+      "children_sent_median": 10.0
+    }
+  ],
+  "stall": {
+    "rule": "path stalled if sim clock < horizon after max_steps=4000 generated events",
+    "n_stalled": 7,
+    "n_total": 42,
+    "stalled_by_cell": {
+      "base_0": 2,
+      "buy_10000": 0,
+      "sell_10000": 3,
+      "buy_40000": 0,
+      "sell_40000": 1,
+      "buy_160000": 0,
+      "sell_160000": 1
+    },
+    "sim_t_reached_stalled": [
+      38.031815063674,
+      16.590883602621034,
+      24.25158500461839,
+      6.384423271287233,
+      27.737885135458782,
+      54.442016346147284,
+      23.514498758595437
+    ],
+    "dt_le_1ms_frac_stalled": [
+      0.47375,
+      0.75425,
+      0.47675,
+      0.84,
+      0.69775,
+      0.4815,
+      0.5265
+    ],
+    "dt_le_1ms_frac_ok_median": 0.2407108239095315
+  },
+  "fit_buy": {
+    "beta": 0.1912394180625774,
+    "r2": 0.6305575739270621,
+    "n_points": 3,
+    "n_excluded_nonpositive": 0
+  },
+  "fit_sell": {
+    "beta": null,
+    "n_points": 1,
+    "note": "<3 positive-impact bins"
+  }
+}
