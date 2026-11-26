@@ -671,3 +671,25 @@ def credit_trade(par, ema, typ, side, size, bb, ba):
         if typ[i] == 2:
             ema[i, IM] += size[i] if side[i] == 0 else -size[i]
         _update_ema(ema[i], par, 0.5 * (bb[i] + ba[i]))
+
+
+@njit(cache=True)
+def world_run_events(par, bid, ask, bb, ba, ema, ss, sr, seed, n, out_ev, out_feat, out_mid, out_cm):
+    """Advance the ground-truth World n events from an explicit state (Truth mode). Records each event, the cancel
+    mask of the book BEFORE it, and the book features / mid AFTER it. Returns (bb, ba)."""
+    np.random.seed(seed)
+    for t in range(n):
+        for k in range(D):
+            out_cm[t, 0, k] = 1 if (bb - k >= 0 and bid[bb - k] > 0) else 0
+            out_cm[t, 1, k] = 1 if (ba + k < P and ask[ba + k] > 0) else 0
+        typ, side, lvl, size = world_policy(bid, ask, bb, ba, par, ema, ss, sr)
+        bb, ba, _ = apply_action(bid, ask, bb, ba, typ, side, lvl, size)
+        bb, ba = _guard(bid, ask, bb, ba)
+        _update_ema(ema, par, 0.5 * (bb + ba))
+        out_ev[t, 0] = typ
+        out_ev[t, 1] = side
+        out_ev[t, 2] = lvl
+        out_ev[t, 3] = size
+        book_feat(bid, ask, bb, ba, out_feat[t])
+        out_mid[t] = 0.5 * (bb + ba)
+    return bb, ba
