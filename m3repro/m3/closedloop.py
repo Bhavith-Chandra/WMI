@@ -12,6 +12,7 @@ Injection timing granularity = one block (documented approximation).
 from __future__ import annotations
 
 import math
+import time
 
 import numpy as np
 import torch
@@ -21,8 +22,9 @@ from .engine import TICK, Book
 
 class ClosedLoop:
     def __init__(self, model, tok, prompt_codes, lob, st, book_after_prompt: Book, t0: float,
-                 B: int, ctx=1024, keep=512, block=32, temperature=1.0, seed=0):
+                 B: int, ctx=1024, keep=512, block=32, temperature=1.0, seed=0, log_every=10):
         self.m, self.tok = model, tok
+        self.log_every = log_every
         self.B, self.ctx, self.keep, self.block, self.temp = B, ctx, keep, block, temperature
         self.lob = lob.expand(B, -1, -1, -1).contiguous()
         self.st = st.expand(B, -1).contiguous()
@@ -35,6 +37,8 @@ class ClosedLoop:
         self.g = torch.Generator().manual_seed(seed)
         self.mid_path = [[] for _ in range(B)]
         self.injected = [[] for _ in range(B)]  # (time, qty_req, qty_filled)
+        self.n_ev = np.zeros(B, dtype=np.int64)    # generated events applied
+        self.n_dt0 = np.zeros(B, dtype=np.int64)   # of which decoded dt <= 1 ms (incl. negative)
         self._prefill()
 
     # ---- AR plumbing
@@ -66,6 +70,8 @@ class ClosedLoop:
         b = self.books[i]
         if not injected:
             self.t[i] += dt
+            self.n_ev[i] += 1
+            self.n_dt0[i] += float(f[2]) <= 1e-3
         filled = 0
         if a == 1:
             res = q
@@ -100,6 +106,7 @@ class ClosedLoop:
         """schedule[i] = list of (t_rel, side, qty) child orders for sequence i (aggressive limit +-10 ticks)."""
         t_start = self.t.copy()
         self.t_start = t_start
+        self._w0 = time.time()
         ptr = [0] * self.B
         steps = 0
         while (self.t - t_start < horizon_s).any() and steps < max_steps:
@@ -113,6 +120,10 @@ class ClosedLoop:
                 if self.ctx_len >= self.ctx:
                     self._prefill()
             steps += self.block
+            if self.log_every and (steps // self.block) % self.log_every == 0:
+                el = self.t - t_start
+                print(f"[cl] steps={steps} sim_t min/med/max={el.min():.1f}/{np.median(el):.1f}/{el.max():.1f}s "
+                      f"done={(el >= horizon_s).sum()}/{self.B} wall={time.time() - self._w0:.0f}s", flush=True)
             # decode the block in context (last <=1024 codes, training layout)
             W = min(1024, len(self.codes[0]))
             win = torch.tensor([c[-W:] for c in self.codes], dtype=torch.long)

@@ -18,7 +18,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--model", default="tiny"); ap.add_argument("--horizon", type=float, default=300)
 ap.add_argument("--children", type=int, default=20); ap.add_argument("--reps", type=int, default=16)
 ap.add_argument("--qgrid", default="2000,5000,10000,20000,50000,100000,200000")
-ap.add_argument("--seed", type=int, default=7); ap.add_argument("--block", type=int, default=32)
+ap.add_argument("--seed", type=int, default=7); ap.add_argument("--max-steps", type=int, default=4000); ap.add_argument("--block", type=int, default=32)
 a = ap.parse_args()
 codes = torch.from_numpy(np.load(REL / "examples/prompt_ids.npy").astype(np.int64))
 c = np.load(REL / "examples/conditioning.npz"); lob = torch.tensor(c["lob"]).float(); st = torch.tensor(c["initial_state_float"]).float()
@@ -41,14 +41,21 @@ for n, s, q in cells:
 B = len(rows); print("batch", B, "cells", len(cells))
 t0 = time.time()
 sim = ClosedLoop(m, tok, codes, lob, st, bp, float(sp.t[-1]), B, block=a.block, seed=a.seed)
-steps = sim.run(a.horizon, sched)
+steps = sim.run(a.horizon, sched, max_steps=a.max_steps)
+reached = (sim.t - sim.t_start) >= a.horizon
 mT = sim.terminal_mid(a.horizon); mid_start = bp.mid()
-lr = np.log(mT / mid_start)
+lr = np.where(reached, np.log(mT / mid_start), np.nan)  # stalled paths excluded
 base = lr[[i for i, r in enumerate(rows) if r[0] == "base"]]
 res = dict(meta=dict(model=a.model, horizon=a.horizon, children=a.children, reps=a.reps, steps=steps, B=B,
                      wall_s=time.time() - t0, block=a.block, seed=a.seed, mid_start=mid_start),
            baseline=dict(mean_bp=float(np.nanmean(base) * 1e4), sd_bp=float(np.nanstd(base) * 1e4), n=int(np.isfinite(base).sum())),
-           cells=[])
+           cells=[],
+           stall=dict(rule=f"path stalled if sim clock < horizon after max_steps={a.max_steps} generated events",
+                      n_stalled=int((~reached).sum()), n_total=B,
+                      stalled_by_cell={f"{n}_{q}": int(sum(1 for i, r in enumerate(rows) if r[0] == n and r[2] == q and not reached[i])) for n, _, q in cells},
+                      sim_t_reached_stalled=[float(x) for x in (sim.t - sim.t_start)[~reached]],
+                      dt_le_1ms_frac_stalled=[float(x) for x in (sim.n_dt0 / np.maximum(sim.n_ev, 1))[~reached]],
+                      dt_le_1ms_frac_ok_median=float(np.median((sim.n_dt0 / np.maximum(sim.n_ev, 1))[reached])) if reached.any() else None))
 for n, s, q in cells[1:]:
     idx = [i for i, r in enumerate(rows) if r[0] == n and r[2] == q]
     sign = 1 if s == 1 else -1
@@ -56,7 +63,7 @@ for n, s, q in cells[1:]:
     filled = [sum(f for _, _, f in sim.injected[i]) for i in idx]
     nch = [len(sim.injected[i]) for i in idx]
     res["cells"].append(dict(side=n, Q=q, impact_bp_mean=float(np.nanmean(imp)), impact_bp_median=float(np.nanmedian(imp)),
-                             impact_bp_se=float(np.nanstd(imp) / np.sqrt(np.isfinite(imp).sum())),
+                             impact_bp_se=float(np.nanstd(imp) / np.sqrt(max(np.isfinite(imp).sum(), 1))), n_ok=int(np.isfinite(imp).sum()),
                              exec_qty_median=float(np.median(filled)), children_sent_median=float(np.median(nch))))
 for side in ("buy", "sell"):
     cs = [x for x in res["cells"] if x["side"] == side]
