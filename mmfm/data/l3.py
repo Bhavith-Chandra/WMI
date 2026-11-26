@@ -159,11 +159,15 @@ def load_snapshot(hours, pair, us):
     raise FileNotFoundError(f"snapshot {pair} {us}")
 
 
-def pair_messages(hours, pair):
+def pair_messages(hours, pair, lo_ns=None, hi_ns=None):
+    """All model-relevant messages of `pair`, sorted by receive time; optional [lo_ns, hi_ns) receive-time bound
+    is applied while streaming (keeps memory bounded for long recorder segments)."""
     out = []
     for h in hours:
         for f in stream_files(h):
             for t, m in read_stream(f, pair):
+                if (lo_ns is not None and t < lo_ns) or (hi_ns is not None and t >= hi_ns):
+                    continue
                 if m.get("channel", "").endswith("_" + pair) and m.get("event") in (
                         "order_created", "order_changed", "order_deleted", "trade"):
                     out.append((t, m))

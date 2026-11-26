@@ -34,18 +34,22 @@ def build(raw: Path, out: Path, until_ns: int, pairs, from_ns: int = 0):
     connects = [e["t_ns"] for e in conn if e["ev"] == "connect"]
     ends = [e["t_ns"] for e in conn if e["ev"] in ("disconnect", "server_request_reconnect", "gap_start", "connect")]
     for pair in pairs:
-        msgs = [x for x in pair_messages(hours, pair) if x[0] < until_ns]
+        # v2-3: with a window (from_ns), read only from 15 min before it and anchor on the first REST snapshot
+        # >= 60 s after that read bound (snapshots every 300 s), instead of replaying since the connect.
+        lo_read = from_ns - 900 * 10**9 if from_ns else None
+        msgs = pair_messages(hours, pair, lo_ns=lo_read, hi_ns=until_ns)
         snaps = sorted((e for e in conn if e["ev"] == "snapshot" and e["pair"] == pair), key=lambda e: e["us"])
         segs = []
         for k, c_ns in enumerate(connects):
             t_hi = min([d for d in ends if d > c_ns] + [until_ns])
             if t_hi < from_ns:  # segment ends before the window of interest
                 continue
-            anch = [e for e in snaps if c_ns + 1e9 <= e["us"] * 1000 < t_hi]
+            anch = [e for e in snaps if c_ns + 1e9 <= e["us"] * 1000 < t_hi
+                    and (lo_read is None or e["us"] * 1000 >= lo_read + 60 * 10**9)]
             if not anch:
                 continue
             r = rebuild(pair, load_snapshot(hours, pair, anch[0]["us"]), int(anch[0]["us"]),
-                        [x for x in msgs if c_ns <= x[0] < t_hi], anch[1:], hours, k, TICK[pair], 200,
+                        [x for x in msgs if max(c_ns, lo_read or 0) <= x[0] < t_hi], anch[1:], hours, k, TICK[pair], 200,
                         t_lo_ns=c_ns, t_hi_ns=t_hi, want_state=True, ckpt_every_us=30_000_000)
             ev, stt = r["events"], r["state"]
             # v2-1: keep only intervals bounded by two consecutive PASSING verifications (anchor = pass)

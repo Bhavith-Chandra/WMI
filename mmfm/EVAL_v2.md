@@ -61,3 +61,13 @@ Addendum v2-2a (val only): grid 1 (temp 0.85/1.0/1.15, 20 starts) put event rati
 but coverage80 at 0.45–0.75, improving monotonically as temperature falls. Grid 2 extends to
 temp ∈ {0.6, 0.7, 0.85}, 30 starts per pair; grid 1 is kept as runs/v2/sim_calibration_grid1.json.
 The selection rule (loss in calibrate_sim.py) is unchanged.
+
+## Addendum v2-3 (forward build memory; no forward data was built, read by a model, or unsealed)
+
+Forward attempt 1 (window 20:35:25–22:05:25 UTC, freeze commit a194544) was OOM-killed inside data/build.py
+(13.9 GB RSS): the live recorder segment had been connected since 14:51, so the build replayed 7 h of every
+pair's messages from that first snapshot. Nothing was written to /home/user/data/mmfm_fwd and no evaluation ran
+(log kept: results/v2_forward_attempt1_oom.log). Fix: with `--from-ns`, messages are read only from 15 min
+before the window and the segment is anchored on the first REST order-id snapshot ≥ 60 s after that bound
+(snapshots every 300 s, all post-date the subscription). The v2-1 verification/exclusion rule is unchanged.
+The design build (from_ns = 0) path is unchanged. The same window and the same frozen bundle are used.
