@@ -52,3 +52,16 @@ Summary miss over attempts 2-10, ratio vs forward (paired bootstrap 95% CI):
   as Theorem 4 predicts consistency there).
 - Not pre-registered, observed: attempt 1 hindsight is 9-24% worse than forward (posterior-expected cost under the
   broad prior is more conservative than the point forward plan).
+
+## E-B outcome (3 seeds x 4 delays, 12 files; rules from 648ec46)
+Cost ratio vs forward (paired bootstrap 95% CI), regime `both`, K=5:
+| delay | posterior | pf_adapt | online_sgd | oracle |
+|---|---|---|---|---|
+| 0 | 0.977 [0.970, 0.984] | 0.984 | 0.986 | 0.975 |
+| 5 | 0.901 [0.877, 0.922] | 0.915 | 0.948 | 0.882 |
+| 10 | 0.756 [0.707, 0.799] | 0.768 | 0.891 | 0.692 |
+| 20 | 0.633 [0.585, 0.679] | 0.639 [0.589, 0.693] | 0.876 [0.851, 0.901] | 0.447 |
+
+- D1 SUPPORTED: gain grows monotonically with latency (2.3% -> 36.7%).
+- D2 SUPPORTED: at d=20 both hindsight variants beat forward and online SGD (CIs separated).
+- Caveat: at d=20 the oracle gap widens (0.633 vs 0.447): hindsight captures ~66% of oracle headroom.

@@ -7,7 +7,15 @@ fresh: {'forward': [0.855, 0.82, 0.866, 0.816, 0.866], 'hindsight': [0.931, 1.10
    summary ratio vs forward: {'forward': (1.0, [1.0, 1.0]), 'hindsight': (1.269, [1.254, 1.284]), 'oracle': (0.107, [0.099, 0.114]), 'residual': (1.407, [1.388, 1.425])}
 wind: {'forward': [0.731, 0.733, 0.73, 0.733, 0.735], 'hindsight': [0.797, 0.25, 0.135, 0.12, 0.125], 'oracle': [0.018, 0.02, 0.025, 0.02, 0.021], 'residual': [0.731, 0.148, 0.135, 0.122, 0.129]}
    summary ratio vs forward: {'forward': (1.0, [1.0, 1.0]), 'hindsight': (0.189, [0.181, 0.198]), 'oracle': (0.03, [0.025, 0.036]), 'residual': (0.18, [0.173, 0.189])}
+delay: commits ['12fca02', '1db147f', 'c1ae4eb'], seeds 12
+delay seeds per key: {'delay0/both': 3, 'delay10/both': 3, 'delay20/both': 3, 'delay5/both': 3}
+delay 0: {'forward': (1.0, [1.0, 1.0]), 'hindsight_latent_pf_adapt': (0.984, [0.977, 0.991]), 'hindsight_posterior': (0.977, [0.97, 0.984]), 'online_sgd': (0.986, [0.981, 0.991]), 'oracle_latent': (0.975, [0.968, 0.982])}
+delay 5: {'forward': (1.0, [1.0, 1.0]), 'hindsight_latent_pf_adapt': (0.915, [0.892, 0.935]), 'hindsight_posterior': (0.901, [0.877, 0.922]), 'online_sgd': (0.948, [0.934, 0.96]), 'oracle_latent': (0.882, [0.851, 0.908])}
+delay 10: {'forward': (1.0, [1.0, 1.0]), 'hindsight_latent_pf_adapt': (0.768, [0.721, 0.81]), 'hindsight_posterior': (0.756, [0.707, 0.799]), 'online_sgd': (0.891, [0.868, 0.915]), 'oracle_latent': (0.692, [0.635, 0.741])}
+delay 20: {'forward': (1.0, [1.0, 1.0]), 'hindsight_latent_pf_adapt': (0.639, [0.589, 0.693]), 'hindsight_posterior': (0.633, [0.585, 0.679]), 'online_sgd': (0.876, [0.851, 0.901]), 'oracle_latent': (0.447, [0.393, 0.5])}
 SUPPORTED T1 wind/damping/both: hindsight summary miss <= 0.5 x forward (upper CI < 0.5)
 SUPPORTED T2 damping/both: hindsight beats residual
 SUPPORTED T3 fresh: hindsight not better than forward
 NOT SUPPORTED T4 wind/damping/both: attempt-10 miss hindsight <= 2 x oracle
+SUPPORTED D1 posterior gain(d=20) > gain(d=0) and Spearman(d, gain) > 0
+SUPPORTED D2 d=20: posterior and pf_adapt beat forward AND online_sgd
