@@ -437,7 +437,7 @@ def b2(cache, split, mp, out, which, nwin=64, gen=4000):
     ck = torch.load(mp, weights_only=False)
     model = arm_model(ck['cfg']); model.load_state_dict(ck['state']); model.eval()
     rows = load_rows(cache, split[which], with_meta=True)
-    picks = pick_windows(rows, nwin, gen)
+    picks = pick_windows(rows, nwin, gen, seed=int(os.environ.get('B2_SEED', 0)))
     t0 = time.time()
     batch, zs = setup(model, rows, picks, ck['lot_table'])
     res = dict(which=which, model=mp, n_windows=nwin, gen_events=gen)
