@@ -47,7 +47,7 @@ Summary miss over attempts 2-10, ratio vs forward (paired bootstrap 95% CI):
 - T2 SUPPORTED (beats residual reuse where the disturbance is multiplicative).
 - T3 SUPPORTED (fresh: hindsight is *worse* than forward, +27%, as Theorem 2 implies it cannot help and the
   inference adds variance).
-- T4 NOT SUPPORTED: attempt-10 miss is 1.5x (both), 2.2x (damping), 6x (wind) the oracle. The learned-model
+- T4 NOT SUPPORTED: attempt-10 miss is 1.8x (both; first report said 1.5x, a reading error corrected from generated/numbers.tex), 2.2x (damping), 6x (wind) the oracle. The learned-model
   posterior converges but plateaus above the oracle; on wind, residual reuse ties hindsight (additive disturbance,
   as Theorem 4 predicts consistency there).
 - Not pre-registered, observed: attempt 1 hindsight is 9-24% worse than forward (posterior-expected cost under the
