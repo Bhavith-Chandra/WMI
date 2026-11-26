@@ -18,8 +18,8 @@ from almagest.experiments.e1_calibrate_world import make
 from almagest.models import lmm as L
 from almagest import splits as S
 
-torch.set_num_threads(4)
 import os
+torch.set_num_threads(int(os.environ.get("TORCH_THREADS", 4)))
 NTR = int(os.environ.get("NTR", 16))
 NTOK = int(os.environ.get("NTOK", 160000))
 
@@ -113,6 +113,8 @@ def make_model(arm):
         return L.LMM(mode='modebank'), None
     if arm == 'modebank_sb':
         return L.LMM(mode='modebank', slowbank=True), None
+    if arm == 'modebank_sb_L':     # capacity test: ~4x params
+        return L.LMM(d=128, h=256, layers=3, mode='modebank', slowbank=True), None
     if arm == 'short_src':
         return L.LMM(mode='learned', src=True), 512
     if arm == 'modebank_sb_src':

@@ -10,6 +10,7 @@ BURNED_BASE = 9000       # observed, retired
 TEST_BASE = 13000        # final test: run once per frozen arm
 TRAIN_BASE = 200000      # observational training streams
 VAL_BASE = 300000        # validation streams
+DIAG_BASE = 7_000_000    # free-run diagnostics (collapse tests); never used for training or selection of reported numbers
 SPAN = 64                # max days used from any base
 ROLL_OFFSET = 10_000_000 # rollout seed = ROLL_OFFSET + (day*1000 + window)*64 + replica  (window<1000, replica<64)
 
