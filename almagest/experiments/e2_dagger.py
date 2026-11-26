@@ -15,12 +15,29 @@ from almagest.models import lmm as L
 from almagest.experiments.e1_calibrate_world import make
 from almagest.experiments.e2_train import build_stream, build_stream_inj, make_model, stack, run_windows
 
+
+def run_traj(model, data, h0, T, reset, opt):
+    B, N = data['tgt'].shape[:2]
+    state = [h.clone() for h in h0]
+    tot, cnt = 0.0, 0
+    for s in range(0, N - T + 1, T):
+        sl = slice(s, s + T)
+        x = model.embed(data['prev'][:, sl], data['feat'][:, sl], data['dmid'][:, sl], data['sb'][:, sl])
+        z, state = model.trunk_seq(x, state)
+        loss = model.loss(z, data['tgt'][:, sl], data['cm'][:, sl])
+        opt.zero_grad(); loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        opt.step()
+        state = [h.detach() for h in state]
+        tot += loss.item(); cnt += 1
+    return tot / max(cnt, 1)
+
 torch.set_num_threads(int(os.environ.get('TORCH_THREADS', 2)))
 CH = 256
 
 
 @torch.no_grad()
-def collect(model, reset, par, days, sidx, steps, seed):
+def collect(model, reset, par, days, sidx, steps, seed, beta=0.0):
     R = len(days)
     udays = np.unique(days)
     st = {d: build_stream(par, int(d), int(sidx.max()) + 1) for d in udays}
@@ -65,6 +82,7 @@ def collect(model, reset, par, days, sidx, steps, seed):
     E.observe(bid, ask, bb, ba, feat, cmb, cma)
     since = np.full(R, (reset // 2) if reset else 0)
     rec = {k: [] for k in ('prev', 'feat', 'dmid', 'sb', 'tgt', 'cm')}
+    init_state = [h.clone() for h in state]
     g = torch.Generator().manual_seed(seed)
     lab = np.zeros((R, 4), np.int64)
     ones = np.ones(R, np.int64)
@@ -94,6 +112,9 @@ def collect(model, reset, par, days, sidx, steps, seed):
         lvl = torch.where(typ == 2, torch.zeros_like(lvl), lvl)
         size = torch.where(typ == 2, size, torch.ones_like(size))
         ev = torch.stack([typ, side, lvl, size], 1)
+        if beta > 0:   # beta-mixture: oracle executes on a random subset of rows (keeps states recoverable)
+            use_o = torch.rand(R, generator=g) < beta
+            ev = torch.where(use_o.unsqueeze(-1), torch.tensor(lab.copy()), ev)
         evn = ev.numpy().astype(np.int64)
         old = 0.5 * (rbb + rba).astype(float)
         E.step_events(bid, ask, rb, ra, bb, ba, rbb, rba, evn[:, 0].copy(), evn[:, 1].copy(), evn[:, 2].copy(),
@@ -105,6 +126,7 @@ def collect(model, reset, par, days, sidx, steps, seed):
         sbank.update(sv, d)
         pend_ev, pend_dmid = pad(ev, 0), d
     out = {k: np.stack(v, 1) for k, v in rec.items()}
+    out['_h0'] = init_state
     depth_b = feat[:, :10].sum(1); depth_a = feat[:, 10:20].sum(1)
     collapsed = float(np.mean(np.minimum(depth_b, depth_a) <= 1))
     return out, collapsed
@@ -129,15 +151,17 @@ def main():
         days = (S.TRAIN_BASE + 20 + rng.integers(0, 40, rows)).astype(np.int64)   # training-range day seeds only
         sidx = (20480 + 2048 * rng.integers(0, 20, rows)).astype(np.int64)
         model.eval()
-        traj, coll = collect(model, reset, par, days, sidx, steps, seed=77 + r)
-        agg.append({k: torch.tensor(v) for k, v in traj.items()})
-        print(f'round {r}: collected {rows}x{steps}, end-of-rollout one-sided books {coll:.2f}, {time.time()-t0:.0f}s',
+        beta = float(os.environ.get('BETA0', 0.5)) * (0.5 ** r)
+        traj, coll = collect(model, reset, par, days, sidx, steps, seed=77 + r, beta=beta)
+        h0 = traj.pop('_h0')
+        agg.append(({k: torch.tensor(v) for k, v in traj.items()}, h0))
+        print(f'round {r}: beta {beta:.2f} collected {rows}x{steps}, end-of-rollout one-sided books {coll:.2f}, {time.time()-t0:.0f}s',
               flush=True)
         model.train()
-        opt = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
+        opt = torch.optim.AdamW(model.parameters(), lr=float(os.environ.get('LR', 5e-4)), weight_decay=0.01)
         for ep in range(2):
             l1 = run_windows(model, orig, 256, reset, _Opt(opt))
-            l2 = np.mean([run_windows(model, a, 256, reset, _Opt(opt)) for a in agg])
+            l2 = np.mean([run_traj(model, a, h0, 256, reset, opt) for a, h0 in agg])
             print(f'  epoch {ep}: orig {l1:.4f} dagger {l2:.4f} {time.time()-t0:.0f}s', flush=True)
         hist.append(dict(round=r, collapsed=coll, orig=l1, dagger=l2))
     torch.save(dict(state=model.state_dict(), cfg=model.cfg, arm=ck['arm'], theta=ck['theta'], hist=hist,
