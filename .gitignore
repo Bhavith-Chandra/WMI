@@ -9,3 +9,4 @@ almagest/results/*.json.tmp
 data_raw/
 data_tok*/
 almagest/results/tmp*/
+almagest/results/real/*.log
