@@ -23,6 +23,7 @@ from pathlib import Path
 import websockets
 
 WS = "wss://ws.bitstamp.net"
+RUN_NS = time.time_ns()
 REST = "https://www.bitstamp.net/api/v2/order_book/{pair}/?group=2"
 
 
@@ -40,7 +41,7 @@ class HourWriter:
             if self.f:
                 self.f.close()
             d.mkdir(parents=True, exist_ok=True)
-            self.f = gzip.open(d / "stream.jsonl.gz", "ab", compresslevel=6)
+            self.f = gzip.open(d / f"stream_{RUN_NS}.jsonl.gz", "ab", compresslevel=6)  # one file per process run
             self.key = d
         self.f.write(line)
 
@@ -65,11 +66,16 @@ def fetch_snapshot(pair: str) -> bytes:
         return r.read()
 
 
-async def snapshot_all(w: HourWriter, pairs, why: str):
+async def snapshot_all(w: HourWriter, pairs, why: str, not_before_us: int = 0):
     for p in pairs:
         try:
-            raw = await asyncio.to_thread(fetch_snapshot, p)
-            us = json.loads(raw)["microtimestamp"]
+            for attempt in range(10):  # REST may serve a stale cached book: retry until it postdates not_before_us
+                raw = await asyncio.to_thread(fetch_snapshot, p)
+                us = json.loads(raw)["microtimestamp"]
+                if int(us) >= not_before_us:
+                    break
+                conn_log(w, ev="snapshot_stale", pair=p, us=int(us), not_before_us=not_before_us)
+                await asyncio.sleep(1.0)
             d = w.path()
             d.mkdir(parents=True, exist_ok=True)
             with gzip.open(d / f"snap_{p}_{us}.json.gz", "wb") as f:
@@ -82,13 +88,15 @@ async def snapshot_all(w: HourWriter, pairs, why: str):
 async def periodic_snaps(w, pairs, every):
     while True:
         await asyncio.sleep(every)
+        conn_log(w, ev="heartbeat")
         await snapshot_all(w, pairs, "periodic")
 
 
 async def run(a):
     w = HourWriter(Path(a.out))
     pairs = a.pairs.split(",")
-    asyncio.create_task(periodic_snaps(w, pairs, a.snap_every))
+    snap_task = asyncio.create_task(periodic_snaps(w, pairs, a.snap_every))  # keep a reference (else GC'd)
+    snap_task.add_done_callback(lambda t: conn_log(w, ev="snap_task_died", err=repr(t.exception())[:300]))
     backoff = 1
     while True:
         try:
@@ -97,7 +105,7 @@ async def run(a):
                     for ch in ("live_orders", "live_trades"):
                         await ws.send(json.dumps({"event": "bts:subscribe", "data": {"channel": f"{ch}_{p}"}}))
                 conn_log(w, ev="connect", pairs=pairs)
-                await snapshot_all(w, pairs, "connect")  # stream already buffering -> snapshot inside stream
+                await snapshot_all(w, pairs, "connect", not_before_us=time.time_ns() // 1000 + 500_000)
                 backoff, n, t_flush = 1, 0, time.time()
                 async for msg in ws:
                     w.write(f"{time.time_ns()}\t".encode() + (msg if isinstance(msg, bytes) else msg.encode()) + b"\n")
