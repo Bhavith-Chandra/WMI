@@ -66,7 +66,7 @@ def context_from_history2(ev, st, lvq, tok: Tokenizer2, book_now: LevelBook, T):
 
 class Rollout2:
     def __init__(self, model, tok: Tokenizer2, ctx: Context2, n_paths=16, seed=0, temperature=1.0, dt_scale=1.0,
-                 clock="model"):
+                 clock="model", count_bias=None):
         assert clock in ("model", "anchored")
         self.tok, self.temp, self.dt_scale, self.clock = tok, temperature, dt_scale, clock
         self.rng = np.random.default_rng(seed)
@@ -87,7 +87,11 @@ class Rollout2:
             self.knot_s = np.array([0.0] + [float(h) for h in HORIZONS])
             u = self.rng.random(n_paths)
             for i, p in enumerate(self.paths):
-                n = np.maximum.accumulate([cnt_quantile(fc[k], u[i]) for k in range(len(HORIZONS))])
+                n = np.array([cnt_quantile(fc[k], u[i]) for k in range(len(HORIZONS))])
+                if count_bias is not None:  # EVAL_v3 causal online recalibration (sim/recal.py)
+                    from sim.recal import shift_count
+                    n = shift_count(n, np.asarray(count_bias))
+                n = np.maximum.accumulate(n)
                 p["knots"] = np.r_[0, n].astype(np.int64)
 
     def times(self, p):

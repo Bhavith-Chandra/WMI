@@ -146,6 +146,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--clock", default="anchored", choices=["anchored", "model"])
+    ap.add_argument("--recal", action="store_true", help="EVAL_v3 causal online count recalibration (sim/recal.py)")
     a = ap.parse_args()
     events = Path(a.events)
     model, mhash = load_v2(a.run)
@@ -154,12 +155,13 @@ def main():
     tr_dir = Path(a.train_events or a.events)
     need_train = any(g in ("B1p", "B0p") for g in gens)
     train = load(tr_dir, "train", tok)[0] if need_train else []
-    purpose = "sim" + (f"-dt{a.dt_scale}" if a.dt_scale != 1 else "") + ("" if a.clock == "anchored" else "-freeclock")
+    purpose = "sim" + (f"-dt{a.dt_scale}" if a.dt_scale != 1 else "") + ("" if a.clock == "anchored" else "-freeclock") \
+        + ("-recal" if a.recal else "")
     chunks, sp = raw_chunks(events, a.split, include_heldout=("only" if a.heldout else False), forward=a.forward,
                             purpose=purpose + ("-heldout" if a.heldout else ""))
     rng = np.random.default_rng(0)
     res = dict(model_hash=mhash, split="forward" if a.forward else a.split, heldout=a.heldout, horizons=HORIZONS,
-               dt_scale=a.dt_scale, temp=a.temp, clock=a.clock, per_pair={})
+               dt_scale=a.dt_scale, temp=a.temp, clock=a.clock, recal=a.recal, per_pair={})
     for pair in a.pairs.split(","):
         cs = [c for c in chunks if c["pair"] == pair]
         if not cs:
@@ -182,6 +184,7 @@ def main():
         acc = {g: dict(sims={h: [] for h in HORIZONS}, cnt={h: [] for h in HORIZONS}, wall=0.0) for g in gens}
         reals = {h: [] for h in HORIZONS}
         rcnt = {h: [] for h in HORIZONS}
+        acc_bias = []
         for f, j, idx in pick:
             z = np.load(events / f)
             tick = float(z["tick"])
@@ -211,6 +214,11 @@ def main():
                 reals[h].append(rr[h][0])
                 rcnt[h].append(rr[h][1])
             ctx = context_from_history2(evs[idx - 1100:idx], st[idx - 1100:idx], lvq[idx - 1100:idx], tok, b, model.cfg["ctx"])
+            cb = None
+            if a.recal:
+                from sim.recal import count_bias
+                cb, _ = count_bias(model, tok, evs, st, lvq, idx)
+                acc_bias.append(cb)
             for g in gens:
                 t0 = time.perf_counter()
                 if g == "MMFM-direct":
@@ -218,10 +226,15 @@ def main():
                     for k, h in enumerate(HORIZONS):
                         acc[g]["sims"][h].append(sample_direct(fc[k], 400, rng))
                         pc = fc[k]["p_cnt"] / fc[k]["p_cnt"].sum()
-                        acc[g]["cnt"][h].append(np.array([fc[k]["cnt_values"][np.searchsorted(np.cumsum(pc), 0.5)]]))
+                        mc = fc[k]["cnt_values"][np.searchsorted(np.cumsum(pc), 0.5)]
+                        if cb is not None:
+                            from sim.recal import shift_count
+                            mc = shift_count(mc, cb[k])
+                        acc[g]["cnt"][h].append(np.array([mc]))
                 else:
                     if g == "MMFM-sim":
-                        R = Rollout2(model, tok, ctx, n_paths=a.paths, seed=idx, temperature=a.temp, dt_scale=a.dt_scale, clock=a.clock)
+                        R = Rollout2(model, tok, ctx, n_paths=a.paths, seed=idx, temperature=a.temp, dt_scale=a.dt_scale, clock=a.clock,
+                                     count_bias=cb)
                     else:
                         R = CountRollout(cg[g], tok, ctx, a.paths, idx)
                     R.run(max(HORIZONS), max_steps=60000)
@@ -242,6 +255,8 @@ def main():
                 s[str(h)] = metrics(acc[g]["sims"][h], np.array(reals[h]), acc[g]["cnt"][h], rcnt[h])
             s["sim_seconds_per_wall_second"] = max(HORIZONS) * len(reals[HORIZONS[0]]) / max(acc[g]["wall"], 1e-9)
             summ[g] = s
+        if acc_bias:
+            summ["_count_bias"] = dict(mean=np.mean(acc_bias, 0).tolist(), median=np.median(acc_bias, 0).tolist(), n=len(acc_bias))
         res["per_pair"][pair] = summ
         for g in gens:
             print(pair, g, " | ".join(f"{h}s ev{summ[g][str(h)].get('event_ratio_median', float('nan')):.2f} cov{summ[g][str(h)]['coverage80']:.2f} "

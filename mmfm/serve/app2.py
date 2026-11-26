@@ -54,6 +54,7 @@ class App:
         if dt_scale is not None:
             cal["dt_scale"] = dt_scale
         self.temp, self.clock = cal["temp"], cal.get("clock", "model")
+        self.recal = bool(cal.get("recal", False))
         dt_scale = cal["dt_scale"]
         self.tok = Tokenizer2.from_json(json.loads((Path(run) / "tokenizer.json").read_text()))
         sel = json.loads((Path(run) / "selection_log.json").read_text())
@@ -61,7 +62,7 @@ class App:
                          val_bits=sel.get("best", {}).get("event_bits"), dt_scale=dt_scale,
                          temp=self.temp, clock=self.clock)
         self.pair, self.dt_scale = pair, dt_scale
-        self.feed = LiveFeed2(pair, TICK[pair], self.tok, ctx_len=self.model.cfg["ctx"])
+        self.feed = LiveFeed2(pair, TICK[pair], self.tok, ctx_len=self.model.cfg["ctx"], hist=80000)
         self.paper = Paper()
         self.feed.listeners.append(self.paper.on_trade)
         self.lock = asyncio.Lock()
@@ -70,8 +71,21 @@ class App:
         toks, feats, inc = self.feed.context_arrays()
         return Context2(toks, feats, inc, self.feed.level_book(), int(self.feed.status["last_us"]))
 
+    def _bias(self):
+        """EVAL_v3 causal count recalibration from the live history (0 until ~5 min of history is buffered)."""
+        if not self.recal:
+            return None, dict(n=0, off=True)
+        from sim.recal import count_bias
+        ev, st = self.feed.history_arrays()
+        lvq = np.array(list(self.feed.lvqs), dtype=np.float64)
+        n = min(len(ev), len(st), len(lvq))
+        if n < 2000:
+            return np.zeros(len(HORIZONS)), dict(n=0)
+        return count_bias(self.model, self.tok, ev[-n:], st[-n:], lvq[-n:], n)
+
     def forecast(self, n_paths, budget, seed):
         ctx = self._ctx()
+        cb, cbd = self._bias()
         b = ctx.book
         mid0 = 0.5 * (max(b.bids) + min(b.asks)) * b.tick
         t0 = time.perf_counter()
@@ -88,10 +102,11 @@ class App:
             p_dn = float(p[vals < 0].sum())
             pc = f["p_cnt"] / f["p_cnt"].sum()
             direct.append(dict(t=h, q=q_from_probs(vals, f["ret_edges"], f["p_ret"], qs), p_up=p_up, p_down=p_dn,
-                               p_flat=float(p[z]), events_median=float(f["cnt_values"][np.searchsorted(np.cumsum(pc), 0.5)])))
+                               p_flat=float(p[z]), events_median=float(f["cnt_values"][np.searchsorted(np.cumsum(pc), 0.5)])
+                               * (float(np.exp(cb[k])) if cb is not None else 1.0)))
         t1 = time.perf_counter()
         R = Rollout2(self.model, self.tok, ctx, n_paths=n_paths, seed=seed, dt_scale=self.dt_scale,
-                         temperature=self.temp, clock=self.clock).run(max(HORIZONS), wall_budget_s=budget)
+                         temperature=self.temp, clock=self.clock, count_bias=cb).run(max(HORIZONS), wall_budget_s=budget)
         el = time.perf_counter() - t1
         m = R.mid_grid(np.array(HORIZONS))
         r = (m / mid0 - 1) * 1e4
@@ -101,16 +116,18 @@ class App:
                     events_median=float(np.median(cnt[:, k]))) for k, h in enumerate(HORIZONS)]
         sim_s = float(np.median([(R.last_time(p) - R.t0) / 1e6 for p in R.paths]))
         return dict(mid0=mid0, direct=direct, direct_ms=direct_ms, sim=sim, n_paths=n_paths, wall_s=el, steps=R.n_steps,
-                    realtime_factor=sim_s / el if el > 0 else None)
+                    realtime_factor=sim_s / el if el > 0 else None,
+                    count_bias=None if cb is None else [float(x) for x in cb], count_bias_origins=cbd.get("n"))
 
     def whatif(self, side, notional, n_paths, budget, seed):
         ctx = self._ctx()
         b = ctx.book
         mid0 = 0.5 * (max(b.bids) + min(b.asks)) * b.tick
+        cb, _ = self._bias()
         out = {}
         for name, inj in (("baseline", False), ("with_order", True)):
             R = Rollout2(self.model, self.tok, ctx, n_paths=n_paths, seed=seed, dt_scale=self.dt_scale,
-                         temperature=self.temp, clock=self.clock)
+                         temperature=self.temp, clock=self.clock, count_bias=cb)
             if inj:
                 qty = notional / mid0
                 lim = (min(b.asks) + 10_000) if side == BUY else (max(b.bids) - 10_000)

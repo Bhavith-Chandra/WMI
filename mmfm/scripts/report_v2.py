@@ -20,7 +20,7 @@ def sim_table(d, title):
     L = [f"**{title}** (n starts per cell shown; targets: event ratio 0.8–1.25, coverage 0.70–0.90, PIT 0.40–0.60)", "",
          "| pair | generator | h | n | event ratio | coverage80 | PIT mean | CRPS bp |", "|---|---|---|---|---|---|---|---|"]
     for pair, gs in d["per_pair"].items():
-        for g, s in gs.items():
+        for g, s in ((g, s) for g, s in gs.items() if not g.startswith("_")):
             for h in ("1.0", "5.0", "10.0"):
                 x = s[h]
                 L.append(f"| {pair} | {g} | {h}s | {x['n']} | {x.get('event_ratio_median', float('nan')):.2f} | {x['coverage80']:.2f} | "

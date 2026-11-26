@@ -48,9 +48,10 @@ class MMFM2(nn.Module):
         c = [head(h) / (self.t_cnt[k] if calibrated else 1.0) for k, head in enumerate(self.cnt)]
         return r, c
 
-    def losses(self, tokens, feats, rt, ct):
-        """bits: event NLL per event [B,T-1,5]; forecast NLL per position for returns/counts (masked)."""
-        h_all = self.hidden(tokens, feats)
+    def losses(self, tokens, feats, rt, ct, inputs=None):
+        """bits: event NLL per event [B,T-1,5]; forecast NLL per position for returns/counts (masked).
+        `inputs` (scheduled sampling, EVAL_v3): tokens fed to the trunk; targets are always the real `tokens`."""
+        h_all = self.hidden(tokens if inputs is None else inputs, feats)
         ev = self.heads(h_all[:, :-1], tokens[:, 1:])
         r, c = self.forecast_logits(h_all, calibrated=False)
         lr, lc = [], []

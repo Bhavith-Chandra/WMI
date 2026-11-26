@@ -98,6 +98,8 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--model", choices=["mmfm2", "b2"], default="mmfm2")
     ap.add_argument("--tokenizer", default=None)
+    ap.add_argument("--init", default=None, help="initialise from this model.pt (EVAL_v3 scheduled-sampling fine-tune)")
+    ap.add_argument("--ss-p", type=float, default=0.0, help="max scheduled-sampling replacement prob (ramp over 1st half)")
     a = ap.parse_args()
     out = ROOT / a.out
     out.mkdir(parents=True, exist_ok=True)
@@ -123,6 +125,10 @@ def main():
         model.losses = lambda tk, ft, rt, ct: (-model.logp(tk, ft) / math.log(2), torch.zeros(len(HORIZONS)), torch.zeros(len(HORIZONS)))
     else:
         model = MMFM2(tok.vocab, train[0]["feats"].shape[1], nret, ncnt, d=a.d, n_layers=a.layers, ctx=a.ctx)
+        if a.init:
+            ck0 = torch.load(a.init, map_location="cpu", weights_only=True)
+            model.load_state_dict(ck0["state"])
+            assert a.tokenizer and json.loads((Path(a.init).parent / "tokenizer.json").read_text())["hash"] == tok.to_json()["hash"]
     opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=0.01)
     def lr_at(frac):  # wall-clock schedule: 3% linear warmup, cosine decay to 5% of max over the time budget
         return a.lr * (frac / 0.03 if frac < 0.03 else 0.05 + 0.95 * 0.5 * (1 + math.cos(math.pi * min((frac - 0.03) / 0.97, 1.0))))
@@ -130,7 +136,19 @@ def main():
     best, t0, step = math.inf, time.time(), 0
     while time.time() - t0 < a.minutes * 60:
         b = windows(train, a.ctx, rng, a.batch)
-        ev, lr_, lc = model.losses(b["tokens"], b["feats"], b["rt"], b["ct"])
+        inputs = None
+        if a.ss_p > 0:  # two-pass scheduled sampling: replace input t>=1 by the model's own sample from position t-1
+            p_ss = a.ss_p * min(1.0, (time.time() - t0) / (a.minutes * 60) / 0.5)
+            with torch.no_grad():
+                hh = model.hidden(b["tokens"], b["feats"])
+                Bn, Tn, dn = hh.shape
+                smp = model.heads.sample(hh.reshape(Bn * Tn, dn)).reshape(Bn, Tn, -1)
+                rep = torch.rand(Bn, Tn) < p_ss
+                rep[:, 0] = False
+                inputs = b["tokens"].clone()
+                inputs[:, 1:][rep[:, 1:]] = smp[:, :-1][rep[:, 1:]]
+        ev, lr_, lc = model.losses(b["tokens"], b["feats"], b["rt"], b["ct"], inputs=inputs) if inputs is not None \
+            else model.losses(b["tokens"], b["feats"], b["rt"], b["ct"])
         loss = ev.sum(-1).mean() + a.lam * (lr_.sum() + lc.sum()) / len(HORIZONS)
         opt.zero_grad()
         loss.backward()
