@@ -170,6 +170,7 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
         sbank.ep = torch.where(mm, sbank.ep, ep0)
 
     fidx = np.where(np.array([ARMS[a] == 'F' for a in arm_of]))[0]
+    collapsed = np.zeros(R, bool)
     for blk in range(NBLK):
         do_inj = inj & ((~rel & (blk < N_EXEC)) | (rel & (blk < N_REL_EXEC)))
         if do_inj.any():
@@ -206,6 +207,9 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
             free_sign.append(np.where(evn[fidx, 0] == 2, np.where(evn[fidx, 1] == 0, 1, -1), 0))
             free_typ.append(evn[fidx, 0])
         out_mid[:, blk] = 0.5 * (rbb + rba)
+        E.observe(rb, ra, rbb, rba, feat, cmb, cma)          # REAL book depth (collapse monitor)
+        collapsed |= np.minimum(feat[:, :10].sum(1), feat[:, 10:20].sum(1)) <= 1
+        E.observe(vb, va, vbb, vba, feat, cmb, cma)          # restore view features for the model
     I = out_mid - mid0[:, None]
     res = {}
     for a, name in enumerate(ARMS):
@@ -213,6 +217,7 @@ def model_campaign(model, reset, par, days, sidx, gap, child, snaps, st, seed=0)
         res['h' + name] = hsh[arm_of == a]
     ft = np.array(free_typ)
     res['phi_model'] = float((ft == 2).mean())
+    res['collapse_rate'] = {name: float(collapsed[arm_of == a].mean()) for a, name in enumerate(ARMS)}
     return res, np.array(free_mid).T, np.array(free_sign).T
 
 
@@ -332,7 +337,7 @@ if __name__ == '__main__':
         drift = float(res['F'][:, N_EXEC - 1].mean())
         mres = analyze(Iv, Ib, Ir, V, sig, did, child, drift, M.pooled_gamma(fsign), M.pooled_hurst(fmid), ref,
                        free_end=res['F'][:, N_EXEC - 1])
-        mres.update(n_rollouts=int(len(did)), blind_invariant=blind_inv, visible_differs=vis_differs, phi_model=res['phi_model'],
+        mres.update(n_rollouts=int(len(did)), collapse_rate=res['collapse_rate'], blind_invariant=blind_inv, visible_differs=vis_differs, phi_model=res['phi_model'],
                     participation_model=1.0 / (1.0 + gap * res['phi_model']))
         print('model', ck['arm'], {k: v for k, v in mres.items() if k not in ('curve', 'relax_curve')},
               f'{time.time()-t0:.0f}s', flush=True)

@@ -644,3 +644,30 @@ def gen_stream_inj(par, seed, n, inj, inj_side, inj_size, ev, feat, mids, cm, sr
         bb, ba, _ = apply_action(bid, ask, bb, ba, typ, side, lvl, size)
         bb, ba = _guard(bid, ask, bb, ba)
         _update_ema(ema, par, 0.5 * (bb + ba))
+
+
+@njit(cache=True, parallel=True)
+def oracle_labels(par, bid, ask, bb, ba, ema, ss, sr, seeds, out):
+    """DAgger oracle: for each row, sample the World's action at the CURRENT (possibly model-visited) state.
+    The World's hidden state (ema incl. F, flow memory IM, splitters) is advanced as the World would, except that the
+    flow memory is NOT credited with the oracle's own hypothetical trade (the executed trade is credited separately by
+    `credit_trade`). out[i] = (typ, side, lvl, size)."""
+    n = bid.shape[0]
+    for i in prange(n):
+        np.random.seed(seeds[i])
+        im0 = ema[i, IM] * (1.0 - 1.0 / par[27])
+        typ, side, lvl, size = world_policy(bid[i], ask[i], bb[i], ba[i], par, ema[i], ss[i], sr[i])
+        ema[i, IM] = im0
+        out[i, 0] = typ
+        out[i, 1] = side
+        out[i, 2] = lvl
+        out[i, 3] = size
+
+
+@njit(cache=True, parallel=True)
+def credit_trade(par, ema, typ, side, size, bb, ba):
+    """After the executed (model's) event: credit its trade to the flow memory and update the mid EMAs."""
+    for i in prange(ema.shape[0]):
+        if typ[i] == 2:
+            ema[i, IM] += size[i] if side[i] == 0 else -size[i]
+        _update_ema(ema[i], par, 0.5 * (bb[i] + ba[i]))
