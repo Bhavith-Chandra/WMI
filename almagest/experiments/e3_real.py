@@ -20,8 +20,8 @@ WIN = 256
 FIELDS = ('typ', 'side', 'lvl', 'size', 'dt')
 
 
-def arm_model(arm):
-    kw = dict(nsize=T.NSB, ndt=T.NDT, size_all=True)
+def arm_model(arm, cond=True):
+    kw = dict(nsize=T.NSB, ndt=T.NDT, size_all=True, cond_heads=cond)   # type-conditional heads (see lmm.cond_heads)
     if arm == 'short':
         return L.LMM(mode='learned', **kw), 512
     if arm == 'modebank':
@@ -153,7 +153,7 @@ def b1(cache_dir, split, model_path, out_path, which):
     fit_rows = load_rows(cache_dir, split['fit'])
     ev_rows = load_rows(cache_dir, split[which])
     ck = torch.load(model_path, weights_only=False)
-    model, reset = arm_model(ck['arm'])
+    model, reset = arm_model(ck['arm'], cond=ck.get('cfg', {}).get('cond_heads', False))
     model.load_state_dict(ck['state']); model.eval()
     res = {}
     with torch.no_grad():

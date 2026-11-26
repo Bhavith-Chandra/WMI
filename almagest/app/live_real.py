@@ -49,7 +49,7 @@ class LiveReal:
     def __init__(self, ckpt_path, product='BTC-USD'):
         ck = torch.load(ckpt_path, weights_only=False)
         assert ck.get('version') == 'v2-real', 'LiveReal needs a v2 real-data checkpoint'
-        self.model, self.reset = arm_model(ck['arm'])
+        self.model, self.reset = arm_model(ck['arm'], cond=ck.get('cfg', {}).get('cond_heads', False))
         self.model.load_state_dict(ck['state'])
         self.model.eval()
         self.arm, self.n_params, self.ckpt = ck['arm'], self.model.n_params(), ckpt_path
