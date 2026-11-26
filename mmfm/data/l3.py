@@ -138,6 +138,16 @@ def hour_dirs(root: Path):
     return sorted(p for p in Path(root).glob("*/*") if p.is_dir())
 
 
+def _hour_ns(h: Path):
+    """Start of the UTC hour a recorder directory <YYYYmmdd>/<HH> covers, in ns (None if not of that form)."""
+    import datetime as _dt
+    try:
+        d = _dt.datetime.strptime(h.parent.name + h.name, "%Y%m%d%H").replace(tzinfo=_dt.timezone.utc)
+    except ValueError:
+        return None
+    return int(d.timestamp()) * 10**9
+
+
 def stream_files(h: Path):
     return sorted(h.glob("stream*.jsonl.gz"))
 
@@ -164,6 +174,9 @@ def pair_messages(hours, pair, lo_ns=None, hi_ns=None):
     is applied while streaming (keeps memory bounded for long recorder segments)."""
     out = []
     for h in hours:
+        h0 = _hour_ns(h)
+        if h0 is not None and ((lo_ns is not None and h0 + 3660 * 10**9 <= lo_ns) or (hi_ns is not None and h0 - 60 * 10**9 >= hi_ns)):
+            continue  # hour directory entirely outside [lo_ns, hi_ns) (1 min slack for receive-time skew)
         for f in stream_files(h):
             for t, m in read_stream(f, pair):
                 if (lo_ns is not None and t < lo_ns) or (hi_ns is not None and t >= hi_ns):

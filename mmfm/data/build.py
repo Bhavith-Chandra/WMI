@@ -27,30 +27,41 @@ TICK = {"btcusd": 0.01, "ethusd": 0.01, "solusd": 0.01, "xrpusd": 1e-5, "btceur"
 MIN_SEG_EVENTS = 1000
 
 
-def build(raw: Path, out: Path, until_ns: int, pairs, from_ns: int = 0):
+def build(raw: Path, out: Path, until_ns: int, pairs, from_ns: int = 0, chunk_s: int = 0):
     hours = hour_dirs(raw)
     conn = [e for e in load_conn(hours) if e["t_ns"] < until_ns]
     report = dict(raw=str(raw), until_ns=until_ns, built_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), pairs={})
     connects = [e["t_ns"] for e in conn if e["ev"] == "connect"]
     ends = [e["t_ns"] for e in conn if e["ev"] in ("disconnect", "server_request_reconnect", "gap_start", "connect")]
+    lo_read = from_ns - 900 * 10**9 if from_ns else None
     for pair in pairs:
-        # v2-3: with a window (from_ns), read only from 15 min before it and anchor on the first REST snapshot
-        # >= 60 s after that read bound (snapshots every 300 s), instead of replaying since the connect.
-        lo_read = from_ns - 900 * 10**9 if from_ns else None
-        msgs = pair_messages(hours, pair, lo_ns=lo_read, hi_ns=until_ns)
         snaps = sorted((e for e in conn if e["ev"] == "snapshot" and e["pair"] == pair), key=lambda e: e["us"])
         segs = []
+        jobs = []  # (seg k, chunk j, c_ns, anchor snapshot, verify snapshots, chunk end ns)
         for k, c_ns in enumerate(connects):
             t_hi = min([d for d in ends if d > c_ns] + [until_ns])
             if t_hi < from_ns:  # segment ends before the window of interest
                 continue
+            # v2-3: with a window, anchor on the first REST snapshot >= 60 s after (from_ns - 15 min)
             anch = [e for e in snaps if c_ns + 1e9 <= e["us"] * 1000 < t_hi
                     and (lo_read is None or e["us"] * 1000 >= lo_read + 60 * 10**9)]
             if not anch:
                 continue
-            r = rebuild(pair, load_snapshot(hours, pair, anch[0]["us"]), int(anch[0]["us"]),
-                        [x for x in msgs if max(c_ns, lo_read or 0) <= x[0] < t_hi], anch[1:], hours, k, TICK[pair], 200,
-                        t_lo_ns=c_ns, t_hi_ns=t_hi, want_state=True, ckpt_every_us=30_000_000)
+            # v3: long segments are cut into chunks re-anchored on a REST snapshot every ~chunk_s (bounded memory)
+            heads = [anch[0]]
+            if chunk_s:
+                for e in anch[1:]:
+                    if e["us"] - heads[-1]["us"] >= chunk_s * 10**6:
+                        heads.append(e)
+            for j, a in enumerate(heads):
+                end = heads[j + 1]["us"] * 1000 if j + 1 < len(heads) else t_hi
+                ver = [e for e in anch if a["us"] < e["us"] and e["us"] * 1000 <= end]
+                jobs.append((k, j, c_ns, a, ver, end))
+        for k, j, c_ns, a, ver, end in jobs:
+            msgs = pair_messages(hours, pair, lo_ns=max(c_ns, a["us"] * 1000 - 60 * 10**9), hi_ns=end)
+            r = rebuild(pair, load_snapshot(hours, pair, a["us"]), int(a["us"]), msgs, ver, hours, k, TICK[pair], 200,
+                        t_lo_ns=c_ns, t_hi_ns=end, want_state=True, ckpt_every_us=30_000_000)
+            del msgs
             ev, stt = r["events"], r["state"]
             # v2-1: keep only intervals bounded by two consecutive PASSING verifications (anchor = pass)
             bounds = [(r["snap_us"], True)] + [(v["us"], v["accept"]) for v in r["verify"]] + [(int(ev["us"][-1]) + 1 if len(ev) else r["snap_us"], True)]
@@ -66,7 +77,7 @@ def build(raw: Path, out: Path, until_ns: int, pairs, from_ns: int = 0):
                 elif not kk and i0 is not None:
                     runs.append((i0, i))
                     i0 = None
-            info = dict(seg=k, snap_us=r["snap_us"], n_events=int(len(ev)), n_kept=int(keep.sum()),
+            info = dict(seg=k, chunk=j, snap_us=r["snap_us"], n_events=int(len(ev)), n_kept=int(keep.sum()),
                         verify=r["verify"], lockstep={k2: v for k2, v in r["lockstep"].items() if k2 != "events_replay_book"},
                         parts=[])
             for pi, (a0, a1) in enumerate(runs):
@@ -93,7 +104,7 @@ def build(raw: Path, out: Path, until_ns: int, pairs, from_ns: int = 0):
                                           n_events=int(a1 - a0), t0_us=int(ev["us"][a0]), t1_us=int(ev["us"][a1 - 1])))
             info["excluded"] = not info["parts"]
             info["reason"] = None if info["parts"] else "no verified interval long enough"
-            print(pair, k, info["n_events"], "kept", info["n_kept"], "parts", len(info["parts"]), flush=True)
+            print(pair, k, j, info["n_events"], "kept", info["n_kept"], "parts", len(info["parts"]), flush=True)
             segs.append(info)
         report["pairs"][pair] = segs
     (out / "build_report.json").write_text(json.dumps(report, indent=1))
@@ -107,8 +118,9 @@ if __name__ == "__main__":
     ap.add_argument("--until-ns", type=int, default=None)
     ap.add_argument("--from-ns", type=int, default=0, help="skip connection segments that end before this time")
     ap.add_argument("--pairs", default=",".join(TICK))
+    ap.add_argument("--chunk-s", type=int, default=0, help="re-anchor long segments every ~N s on a REST snapshot")
     a = ap.parse_args()
     until = a.until_ns or time.time_ns()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    build(Path(a.raw), out, until, a.pairs.split(","), from_ns=a.from_ns)
+    build(Path(a.raw), out, until, a.pairs.split(","), from_ns=a.from_ns, chunk_s=a.chunk_s)
