@@ -260,6 +260,7 @@ if __name__ == '__main__':
     mpath, out_path, split = sys.argv[1], sys.argv[2], sys.argv[3]
     n_days = int(sys.argv[4]) if len(sys.argv) > 4 else 32
     wpd = int(sys.argv[5]) if len(sys.argv) > 5 else 30   # 30 windows: last window + 200-block horizon stays inside T_DAY
+    ETA = float(sys.argv[6]) if len(sys.argv) > 6 else 0.10   # participation; A8 uses held-out 0.05 and 0.20
     assert split in ('dev', 'test')
     assert not os.path.exists(out_path), f'refusing to overwrite {out_path}'
     base = S.DEV_BASE if split == 'dev' else S.TEST_BASE
@@ -278,8 +279,11 @@ if __name__ == '__main__':
     stats = C.day_stats(par, np.unique(days))
     phi = np.mean([s['phi'] for s in stats])
     child = int(round(np.median([s['med'] for s in stats])))
-    gap = int(round((1 / 0.10 - 1) / phi))
-    assert sidx.max() + gap * NBLK <= C.T_DAY, 'rollout horizon exceeds day span'
+    gap = int(round((1 / ETA - 1) / phi))
+    if sidx.max() + gap * NBLK > C.T_DAY:      # low participation -> longer horizon: keep windows inside the day span
+        keep = sidx + gap * NBLK <= C.T_DAY
+        assert keep.any(), 'rollout horizon exceeds day span for every window'
+        days, sidx = days[keep], sidx[keep]
     did = days - days.min()
     V = np.array([stats[d]['V'] for d in did], float)
     sig = np.array([stats[d]['sigma'] for d in did], float)
@@ -311,7 +315,7 @@ if __name__ == '__main__':
     print('truth', {k: v for k, v in truth.items() if k not in ('curve', 'relax_curve')}, f'{time.time()-t0:.0f}s',
           flush=True)
     rec = dict(split=split, base=base, days=sorted(set(days.tolist())), n_days=n_days, wpd=wpd, stride=STRIDE,
-               truth_replicas=TRUTH_REPLICAS, nblk=NBLK,
+               truth_replicas=TRUTH_REPLICAS, nblk=NBLK, eta=ETA,
                win0=WIN0, gap=gap, child=child, phi_world=phi, code_rev=rev, burn=W.BURN, truth=truth, theta=theta)
     if ck is not None:
         model, reset = make_model(ck['arm'])
