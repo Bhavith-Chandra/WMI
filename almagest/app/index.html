@@ -40,7 +40,7 @@ input,select{font:inherit;width:70px;padding:4px;border:1px solid var(--line);bo
       <div class="mono mut" id="spread" style="padding:4px 4px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)"></div>
       <table class="mono" id="bids"></table>
     </section>
-    <section style="margin-top:16px">
+    <section style="margin-top:16px" id="you">
       <h2>You</h2>
       <div class="row"><input id="qty" type="number" value="4" min="1" max="40"> lots
         <button class="buy" onclick="order('buy')">Buy mkt</button><button class="sell" onclick="order('sell')">Sell mkt</button></div>
@@ -63,8 +63,10 @@ input,select{font:inherit;width:70px;padding:4px;border:1px solid var(--line);bo
       <h2>What-if: metaorder impact (paired counterfactual)</h2>
       <div class="row">
         <select id="wside" style="width:80px"><option>buy</option><option>sell</option></select>
-        children <input id="wch" type="number" value="20"> size <input id="wsz" type="number" value="2">
-        gap <input id="wgap" type="number" value="40"> tail <input id="wtail" type="number" value="20">
+        children <input id="wch" type="number" value="20">
+        <span id="wsim">size <input id="wsz" type="number" value="2"> gap <input id="wgap" type="number" value="40"></span>
+        <span id="wlive" style="display:none">lots/child <input id="wlots" type="number" value="8"> participation % <input id="wpart" type="number" value="10"></span>
+        tail <input id="wtail" type="number" value="20">
         paths <input id="wp" type="number" value="64"> <button id="wbtn" onclick="whatif()">Run</button></div>
       <canvas id="wi"></canvas>
       <div class="note" id="wnote">Blue: model's predicted impact (your order visible to the market) minus the no-order path, same random numbers. Grey: blind arm, order fills but the market never reacts (mechanical part). Bands: 95%.</div>
@@ -72,7 +74,7 @@ input,select{font:inherit;width:70px;padding:4px;border:1px solid var(--line);bo
   </div>
 </main>
 <script>
-const $=id=>document.getElementById(id);let playing=true,busy=false;
+const $=id=>document.getElementById(id);let playing=true,busy=false,LIVE=false;
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function fit(c){const r=c.getBoundingClientRect(),d=devicePixelRatio||1;c.width=r.width*d;c.height=r.height*d;const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);return [x,r.width,r.height]}
 function line(x,pts,w,h,lo,hi,col,lw){x.strokeStyle=col;x.lineWidth=lw||1.5;x.beginPath();pts.forEach((v,i)=>{const X=i/(pts.length-1||1)*(w-40)+4,Y=h-6-(v-lo)/((hi-lo)||1)*(h-12);i?x.lineTo(X,Y):x.moveTo(X,Y)});x.stroke()}
@@ -83,9 +85,12 @@ function render(s){
   $('asks').innerHTML=b.asks.slice().reverse().map(a=>`<tr class="ask"><td>${a[0]}</td><td class="r">${a[1]}</td><td><span class="bar" style="width:${80*a[1]/mx}px;background:var(--ask)"></span></td></tr>`).join('');
   $('bids').innerHTML=b.bids.map(a=>`<tr class="bid"><td>${a[0]}</td><td class="r">${a[1]}</td><td><span class="bar" style="width:${80*a[1]/mx}px;background:var(--bid)"></span></td></tr>`).join('');
   $('spread').textContent=`mid ${b.mid.toFixed(1)} · spread ${b.spread}`;
-  const st=s.status;$('model').textContent=`${st.ckpt} · ${st.arm} · ${st.params.toLocaleString()} params`;
-  $('pnl').innerHTML=`<span>position</span><span>${st.pnl.position}</span><span>P&L (mid)</span><span>${st.pnl.mark_to_mid.toFixed(1)}</span>`;
-  $('mon').innerHTML=`<span>events</span><span>${st.t}</span><span>step p50</span><span>${st.lat_p50_ms.toFixed(2)} ms</span><span>step p99</span><span>${st.lat_p99_ms.toFixed(2)} ms</span><span>surprise</span><span>${st.surprise_mean.toFixed(3)} nats</span>`;
+  const st=s.status;LIVE=st.mode==='live';
+  $('model').textContent=`${st.ckpt} · ${st.arm} · ${st.params.toLocaleString()} params`+(LIVE?` · LIVE ${st.product} (${st.feed}, read-only)`:' · simulated market')+(st.dev_only?' · DEV CHECKPOINT (not evaluated)':'');
+  $('you').style.display=LIVE?'none':'';$('wlive').style.display=LIVE?'':'none';$('wsim').style.display=LIVE?'none':'';
+  if(!LIVE)$('pnl').innerHTML=`<span>position</span><span>${st.pnl.position}</span><span>P&L (mid)</span><span>${st.pnl.mark_to_mid.toFixed(1)}</span>`;
+  if(LIVE)$('spread').textContent=`$${(b.price_usd||0).toFixed(2)} · spread ${b.spread} × ${(b.kappa_usd||0).toFixed(2)} USD buckets · lot ${b.lot}`;
+  $('mon').innerHTML=(LIVE?`<span>feed rate</span><span>${st.events_per_s.toFixed(0)} ev/s</span><span>trade share</span><span>${(100*st.phi).toFixed(2)}%</span>`:'')+`<span>events</span><span>${st.t}</span><span>step p50</span><span>${st.lat_p50_ms.toFixed(2)} ms</span><span>step p99</span><span>${st.lat_p99_ms.toFixed(2)} ms</span><span>surprise</span><span>${st.surprise_mean.toFixed(3)} nats</span>`;
   const [x,w,h]=fit($('px'));x.clearRect(0,0,w,h);const m=s.mids;const lo=Math.min(...m)-1,hi=Math.max(...m)+1;line(x,m,w,h,lo,hi,css('--fg'),1.3);axis(x,w,h,lo,hi);
 }
 async function tick(){if(!playing||busy)return;busy=true;try{const n=Math.max(1,Math.round(+$('speed').value/5));const r=await fetch('/api/state?n='+n);render(await r.json())}finally{busy=false}}
@@ -93,12 +98,13 @@ setInterval(tick,200);fetch('/api/state?n=0').then(r=>r.json()).then(render);
 function toggle(){playing=!playing;$('play').textContent=playing?'Pause':'Play'}
 async function order(side){const r=await fetch('/api/order',{method:'POST',body:JSON.stringify({side,size:+$('qty').value})});const s=await r.json();if(s.error){$('lastfill').textContent=s.error;return}render(s);$('lastfill').textContent=`${s.fill.side} ${s.fill.qty} @ ${s.fill.avg_px.toFixed(2)}`}
 async function whatif(){const was=playing;playing=false;$('wbtn').disabled=true;$('wnote').textContent='simulating…';
-  try{const r=await fetch('/api/whatif',{method:'POST',body:JSON.stringify({side:$('wside').value,children:+$('wch').value,child_size:+$('wsz').value,gap:+$('wgap').value,tail_blocks:+$('wtail').value,paths:+$('wp').value})});const d=await r.json();if(d.error)throw new Error(d.error);
+  try{const r=await fetch('/api/whatif',{method:'POST',body:JSON.stringify({side:$('wside').value,children:+$('wch').value,child_size:+$('wsz').value,gap:+$('wgap').value,child_lots:+$('wlots').value,participation:(+$('wpart').value)/100,tail_blocks:+$('wtail').value,paths:+$('wp').value})});const d=await r.json();if(d.error)throw new Error(d.error);
   const [x,w,h]=fit($('wi'));x.clearRect(0,0,w,h);const all=[...d.visible.lo,...d.visible.hi,...d.blind.lo,...d.blind.hi,0];const lo=Math.min(...all),hi=Math.max(...all);
   band(x,d.blind.lo,d.blind.hi,w,h,lo,hi,css('--band2'));band(x,d.visible.lo,d.visible.hi,w,h,lo,hi,css('--band'));
   line(x,d.blind.mean,w,h,lo,hi,css('--mut'),1.2);line(x,d.visible.mean,w,h,lo,hi,css('--acc'),2);
   const X=d.children/d.blocks*(w-40)+4;x.strokeStyle=css('--line');x.setLineDash([3,3]);x.beginPath();x.moveTo(X,0);x.lineTo(X,h);x.stroke();x.setLineDash([]);axis(x,w,h,lo,hi);
-  $('wnote').textContent=`${d.paths} paired paths · peak ${d.peak.toFixed(2)} ticks · end ${d.end.toFixed(2)} ticks (end/peak ${(d.end/d.peak).toFixed(2)}) · ${d.events_simulated.toLocaleString()} events in ${d.seconds.toFixed(1)} s. Blue = your order visible to the market; grey = blind (mechanical only). Dashed line = last child.`}
+  const u=d.units||'ticks',tt=(d.units==='bp')?` · horizon ≈ ${d.seconds[d.seconds.length-1].toFixed(1)} s market time`:'',cs=(d.compute_s!==undefined?d.compute_s:d.seconds);
+  $('wnote').textContent=`${d.paths} paired paths · peak ${d.peak.toFixed(2)} ${u} · end ${d.end.toFixed(2)} ${u} (end/peak ${(d.end/d.peak).toFixed(2)})${tt} · computed in ${cs.toFixed(1)} s${d.dev_only?' · DEV CHECKPOINT: not evaluated, do not use for decisions':''}. Blue = your order visible to the market; grey = blind (mechanical only). Dashed line = last child.`}
   catch(e){$('wnote').textContent='error: '+e.message}finally{$('wbtn').disabled=false;playing=was}}
 </script>
 </body>

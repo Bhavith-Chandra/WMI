@@ -204,7 +204,8 @@ def train(cache_dir, split, arm, out, passes=4):
             val = np.mean([run(model, reset, b) for b in batches(vrows, 16)]) if vrows else float('nan')
         hist.append((float(trl), float(val)))
         print(f'pass {p} fit {trl:.4f} select {val:.4f} t {time.time()-t0:.0f}s', flush=True)
-    torch.save(dict(state=model.state_dict(), cfg=model.cfg, arm=arm, hist=hist, split=split, version='v2-real'), out)
+    torch.save(dict(state=model.state_dict(), cfg=model.cfg, arm=arm, hist=hist, split=split, version='v2-real',
+                    dev_only=bool(os.environ.get('DEV_ONLY'))), out)
 
 
 def smoke(raw_root):

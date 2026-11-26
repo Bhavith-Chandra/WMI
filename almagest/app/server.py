@@ -1,6 +1,8 @@
 """Minimal local server for ONE Almagest checkpoint. Standard library only. Binds 127.0.0.1 by default.
 
 usage: python -m almagest.app.server <checkpoint.pt> [port]
+  v1 (synthetic) checkpoint -> 'sim' mode (model generates the market; you can trade in it)
+  v2-real checkpoint -> 'live' mode (read-only Coinbase feed, env ALMAGEST_PRODUCT=BTC-USD; what-if from live state)
 API (JSON):
   GET  /api/state?n=K        advance K model events, return book, recent mids, trades, status
   POST /api/order            {"side":"buy|sell","size":int}  user market order (the model sees it and reacts)
@@ -12,7 +14,9 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, __file__.rsplit('/almagest/', 1)[0])
+import torch  # noqa: E402
 from almagest.app.live import LiveModel  # noqa: E402
+from almagest.app.live_real import LiveReal  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOCK = threading.Lock()
@@ -20,9 +24,20 @@ LM = None
 CKPT = None
 
 
+MODE = 'sim'
+
+
 def snapshot(n_mid=600):
+    if MODE == 'live':
+        LM.pump()
+        st = LM.status()
+        st['mode'] = 'live'
+        return dict(book=LM.book(), mids=LM.mids[-n_mid * 10::10] if len(LM.mids) > n_mid * 10 else LM.mids[-n_mid:],
+                    trades=[], status=st)
     b = LM.book()
-    return dict(book=b, mids=LM.mid_hist[-n_mid:], trades=LM.trade_hist[-60:], status=LM.status())
+    st = LM.status()
+    st['mode'] = 'sim'
+    return dict(book=b, mids=LM.mid_hist[-n_mid:], trades=LM.trade_hist[-60:], status=st)
 
 
 class H(BaseHTTPRequestHandler):
@@ -45,7 +60,7 @@ class H(BaseHTTPRequestHandler):
             n = int(parse_qs(u.query).get('n', ['0'])[0])
             n = max(0, min(n, 2000))
             with LOCK:
-                if n:
+                if n and MODE == 'sim':
                     LM.step(n)
                 return self._send(200, snapshot())
         return self._send(404, {'error': 'not found'})
@@ -60,6 +75,15 @@ class H(BaseHTTPRequestHandler):
             return self._send(400, {'error': 'bad json'})
         with LOCK:
             try:
+                if u.path == '/api/order' and MODE == 'live':
+                    return self._send(403, {'error': 'live mode is read-only: orders are never routed'})
+                if u.path == '/api/whatif' and MODE == 'live':
+                    kw = dict(side=req.get('side', 'buy'), children=max(1, min(int(req.get('children', 20)), 100)),
+                              child_lots=max(1, min(int(req.get('child_lots', 8)), 2048)),
+                              participation=max(0.01, min(float(req.get('participation', 0.1)), 0.5)),
+                              tail_blocks=max(0, min(int(req.get('tail_blocks', 20)), 100)),
+                              paths=max(8, min(int(req.get('paths', 48)), 128)))
+                    return self._send(200, LM.whatif(**kw))
                 if u.path == '/api/order':
                     fill = LM.submit_market(req.get('side', 'buy'), int(req.get('size', 1)))
                     return self._send(200, dict(fill=fill, **snapshot()))
@@ -84,11 +108,16 @@ class H(BaseHTTPRequestHandler):
 
 
 def main():
-    global LM, CKPT
+    global LM, CKPT, MODE
     CKPT = sys.argv[1]
     port = int(sys.argv[2]) if len(sys.argv) > 2 else 8765
     host = os.environ.get('ALMAGEST_HOST', '127.0.0.1')
-    LM = LiveModel(CKPT)
+    ver = torch.load(CKPT, weights_only=False).get('version')
+    if ver == 'v2-real':
+        MODE = 'live'
+        LM = LiveReal(CKPT, os.environ.get('ALMAGEST_PRODUCT', 'BTC-USD'))
+    else:
+        LM = LiveModel(CKPT)
     print(f'Almagest live: {CKPT} ({LM.n_params} params, arm={LM.arm}) on http://{host}:{port}', flush=True)
     ThreadingHTTPServer((host, port), H).serve_forever()
 
