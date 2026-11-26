@@ -47,12 +47,19 @@ def q_from_probs(values, edges, p, qs):
 
 
 class App:
-    def __init__(self, run, pair, dt_scale=1.0):
+    def __init__(self, run, pair, dt_scale=None):
         self.model, self.hash = load_v2(run)
+        cf = Path(run) / "sim_calibration.json"
+        cal = json.loads(cf.read_text())["chosen"] if cf.exists() else dict(dt_scale=1.0, temp=1.0, clock="model")
+        if dt_scale is not None:
+            cal["dt_scale"] = dt_scale
+        self.temp, self.clock = cal["temp"], cal.get("clock", "model")
+        dt_scale = cal["dt_scale"]
         self.tok = Tokenizer2.from_json(json.loads((Path(run) / "tokenizer.json").read_text()))
         sel = json.loads((Path(run) / "selection_log.json").read_text())
         self.info = dict(hash=self.hash, run=str(run), params=sel.get("n_params"), kind="MMFM2",
-                         val_bits=sel.get("best", {}).get("event_bits"), dt_scale=dt_scale)
+                         val_bits=sel.get("best", {}).get("event_bits"), dt_scale=dt_scale,
+                         temp=self.temp, clock=self.clock)
         self.pair, self.dt_scale = pair, dt_scale
         self.feed = LiveFeed2(pair, TICK[pair], self.tok, ctx_len=self.model.cfg["ctx"])
         self.paper = Paper()
@@ -83,7 +90,8 @@ class App:
             direct.append(dict(t=h, q=q_from_probs(vals, f["ret_edges"], f["p_ret"], qs), p_up=p_up, p_down=p_dn,
                                p_flat=float(p[z]), events_median=float(f["cnt_values"][np.searchsorted(np.cumsum(pc), 0.5)])))
         t1 = time.perf_counter()
-        R = Rollout2(self.model, self.tok, ctx, n_paths=n_paths, seed=seed, dt_scale=self.dt_scale).run(max(HORIZONS), wall_budget_s=budget)
+        R = Rollout2(self.model, self.tok, ctx, n_paths=n_paths, seed=seed, dt_scale=self.dt_scale,
+                         temperature=self.temp, clock=self.clock).run(max(HORIZONS), wall_budget_s=budget)
         el = time.perf_counter() - t1
         m = R.mid_grid(np.array(HORIZONS))
         r = (m / mid0 - 1) * 1e4
@@ -91,7 +99,7 @@ class App:
         sim = [dict(t=h, q=[None if not np.isfinite(x) else float(x) for x in np.nanpercentile(r[:, k], [5, 25, 50, 75, 95])],
                     p_up=float(np.nanmean(r[:, k] > 0)), reached=float(np.mean(np.isfinite(r[:, k]))),
                     events_median=float(np.median(cnt[:, k]))) for k, h in enumerate(HORIZONS)]
-        sim_s = float(np.median([(p["us"] - R.t0) / 1e6 for p in R.paths]))
+        sim_s = float(np.median([(R.last_time(p) - R.t0) / 1e6 for p in R.paths]))
         return dict(mid0=mid0, direct=direct, direct_ms=direct_ms, sim=sim, n_paths=n_paths, wall_s=el, steps=R.n_steps,
                     realtime_factor=sim_s / el if el > 0 else None)
 
@@ -101,7 +109,8 @@ class App:
         mid0 = 0.5 * (max(b.bids) + min(b.asks)) * b.tick
         out = {}
         for name, inj in (("baseline", False), ("with_order", True)):
-            R = Rollout2(self.model, self.tok, ctx, n_paths=n_paths, seed=seed, dt_scale=self.dt_scale)
+            R = Rollout2(self.model, self.tok, ctx, n_paths=n_paths, seed=seed, dt_scale=self.dt_scale,
+                         temperature=self.temp, clock=self.clock)
             if inj:
                 qty = notional / mid0
                 lim = (min(b.asks) + 10_000) if side == BUY else (max(b.bids) - 10_000)
@@ -198,6 +207,6 @@ if __name__ == "__main__":
     ap.add_argument("--pair", default="ethusd")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--dt-scale", type=float, default=1.0, help="simulator clock calibration (frozen with the model)")
+    ap.add_argument("--dt-scale", type=float, default=None, help="override; default = frozen runs/<run>/sim_calibration.json")
     a = ap.parse_args()
     web.run_app(make_app(a), host=a.host, port=a.port)

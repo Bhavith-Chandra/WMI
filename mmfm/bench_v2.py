@@ -33,7 +33,7 @@ def main():
     a = ap.parse_args()
     m, mh = load_v2(a.run)
     tok = Tokenizer2.from_json(json.loads((Path(a.run) / "tokenizer.json").read_text()))
-    cal = json.loads((Path(a.run) / "sim_calibration.json").read_text())["chosen"] if (Path(a.run) / "sim_calibration.json").exists() else dict(dt_scale=1.0, temp=1.0)
+    cal = json.loads((Path(a.run) / "sim_calibration.json").read_text())["chosen"] if (Path(a.run) / "sim_calibration.json").exists() else dict(dt_scale=1.0, temp=1.0, clock="model")
     ch, _ = raw_chunks(Path(a.events), "train")
     rates = {}
     for c in ch:
@@ -63,7 +63,8 @@ def main():
         dms = (time.perf_counter() - t0) / 50 * 1e3
         rr = {}
         for n in (8, 16):
-            R = Rollout2(m, tok, ctx, n_paths=n, seed=0, temperature=cal["temp"], dt_scale=cal["dt_scale"])
+            R = Rollout2(m, tok, ctx, n_paths=n, seed=0, temperature=cal["temp"], dt_scale=cal["dt_scale"],
+                       clock=cal.get("clock", "model"))
             t0 = time.perf_counter()
             for _ in range(400):
                 R.step()

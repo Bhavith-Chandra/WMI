@@ -56,3 +56,8 @@ the chosen config is frozen in runs/v2/sim_calibration.json with the model.
 
 B2 fairness note: the first B2-v2 run shared 4 CPU cores with calibration (load ≈ 8) and was aborted at
 16 min (log kept as runs/v2_b2_aborted_contention.log); B2-v2 is retrained alone for the full 60 min budget.
+
+Addendum v2-2a (val only): grid 1 (temp 0.85/1.0/1.15, 20 starts) put event ratio at 0.75–1.19 in all 9 cells
+but coverage80 at 0.45–0.75, improving monotonically as temperature falls. Grid 2 extends to
+temp ∈ {0.6, 0.7, 0.85}, 30 starts per pair; grid 1 is kept as runs/v2/sim_calibration_grid1.json.
+The selection rule (loss in calibrate_sim.py) is unchanged.
