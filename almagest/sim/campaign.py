@@ -82,7 +82,7 @@ def evaluate(runner, par_world, n_days=20, win_per_day=16, base_seed=1000, ref=N
     tost, ci90 = M.tost_pass(bd)
     vis_peak = res[1][:, -1].mean()
     blind_floor = res[2][:, -1].mean()
-    vb = vis_peak / blind_floor if blind_floor > 0 else np.inf
+    vb = M.vb_ratio(res[1][:, -1], res[2][:, -1])
     # free arm (no injection): drift = mean signed mid change over build-up horizon (buy-arm seeds)
     drift = raw[0][0][:, -1].mean()
     blind_equals_free = bool(np.all(hashes[2][0] == hashes[0][0]) and np.all(hashes[2][1] == hashes[0][1]))

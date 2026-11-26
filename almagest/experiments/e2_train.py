@@ -1,5 +1,7 @@
 """E2: train lightweight generators on World's OBSERVATIONAL stream only (no injections ever seen).
-Seeds: train streams 200000+, validation streams 300000+ (disjoint from calibration 1000+ and eval 5000+).
+Seeds from almagest/splits.py (train TRAIN_BASE+, val VAL_BASE+). Each training row is ONE contiguous stream from
+the (burned-in) day start with recurrent state carried across all windows, matching evaluation, where state is
+carried from day start to the window (audit fix #6).
 
 usage: e2_train.py <world_theta.json> <arm> <out.pt> [passes]
 arms: short (learned taus, state reset every 512 events = 500-msg-context analogue)
@@ -14,6 +16,7 @@ sys.path.insert(0, __file__.rsplit('/almagest/', 1)[0])
 from almagest.sim import world as W
 from almagest.experiments.e1_calibrate_world import make
 from almagest.models import lmm as L
+from almagest import splits as S
 
 torch.set_num_threads(4)
 import os
@@ -89,8 +92,8 @@ if __name__ == '__main__':
     par = make(theta)
     torch.manual_seed(0)
     t0 = time.time()
-    tr = stack([build_stream(par, 200000 + i, NTOK) for i in range(NTR)], 4)   # B=64 chunks of 40k
-    va = stack([build_stream(par, 300000 + i, 64_000) for i in range(4)], 4)
+    tr = stack([build_stream(par, S.TRAIN_BASE + i, NTOK) for i in range(NTR)], 1)   # B=16 contiguous streams
+    va = stack([build_stream(par, S.VAL_BASE + i, 100_000) for i in range(4)], 1)
     print('data', time.time() - t0, 'train tokens', tr['tgt'].shape[0] * tr['tgt'].shape[1], flush=True)
     model, reset = make_model(arm)
     print(arm, 'params', model.n_params(), flush=True)

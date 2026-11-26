@@ -1,0 +1,1 @@
+Pre-audit outputs. e2B_eval_short_DEV5000_preaudit.json was produced on DEV days 5000+ (not test) with the short arm evaluated without its training reset (audit finding #1/#2). Not valid evidence. Kept for provenance only.

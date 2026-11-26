@@ -51,12 +51,15 @@ def identifiable(q, I):
     return ok, bd, Y
 
 
-def law_from_pairs(Ib, qb):
-    """Ib: (n_roll, n_child) antisymmetrised impact in sigma units; qb same shape."""
+def law_from_pairs(Ib, qb, q_edge=None):
+    """Ib: (n_roll, n_child) antisymmetrised impact in sigma units; qb same shape.
+    Y is evaluated at a FIXED q_edge (median over rollouts of the final participation) so bootstrap resampling of
+    days does not move the evaluation point."""
     d, a = binned_law(qb, Ib)
     if not np.isfinite(d):
         return np.nan, np.nan
-    Y = a * qb.max() ** (d - 0.5)
+    qe = np.median(qb[:, -1]) if q_edge is None else q_edge
+    Y = a * qe ** (d - 0.5)
     return d, Y
 
 
@@ -68,7 +71,7 @@ def day_bootstrap(Ib, qb, day_id, B=400, seed=0):
     for _ in range(B):
         pick = rng.integers(0, len(days), len(days))
         ii = np.concatenate([groups[p] for p in pick])
-        d, Y = law_from_pairs(Ib[ii], qb[ii])
+        d, Y = law_from_pairs(Ib[ii], qb[ii], q_edge=np.median(qb[:, -1]))
         ds.append(d)
         Ys.append(Y)
     return np.array(ds), np.array(Ys)
@@ -120,7 +123,7 @@ def ladder(ref, res, ow_ep=None):
     C1 = (abs(res['gamma'] - ref['gamma']) <= 0.10 and abs(res['H'] - ref['H']) <= 0.02
           and abs(res['drift']) <= 5)
     C2 = bool(res['identified'])
-    C3 = res['vb'] >= 3 if res.get('vb') is not None else None
+    C3 = (bool(np.isfinite(res['vb']) and res['vb'] >= 3)) if res.get('vb') is not None else None
     C4 = (abs(res['delta'] - 0.5) <= 0.10 and 0.5 <= res['Y'] <= 1.0) if C2 else None
     ep_bar = ow_ep if ow_ep is not None else res.get('ep_target', 2 / 3)
     C5 = (res['ep'] <= ep_bar and res['slope'] <= 0 and abs(res['drift']) < 20) if C2 else None
@@ -138,3 +141,53 @@ def relax_bootstrap(Irows, day_id, n_exec, B=300, seed=0):
         ii = np.concatenate([groups[p] for p in pick])
         eps.append(relaxation(Irows[ii].mean(0), n_exec)[0])
     return np.nanquantile(eps, [0.025, 0.975])
+
+
+def vb_ratio(Ivis_end, Iblind_end):
+    """Visible-over-blind at the last child; fail closed: NaN unless both means are positive."""
+    v, b = np.mean(Ivis_end), np.mean(Iblind_end)
+    if not (v > 0 and b > 0):
+        return np.nan
+    return v / b
+
+
+def vb_bootstrap(Ivis_end, Iblind_end, day_id, B=300, seed=0):
+    rng = np.random.default_rng(seed)
+    days = np.unique(day_id)
+    groups = [np.where(day_id == d)[0] for d in days]
+    out = []
+    for _ in range(B):
+        ii = np.concatenate([groups[p] for p in rng.integers(0, len(days), len(days))])
+        out.append(vb_ratio(Ivis_end[ii], Iblind_end[ii]))
+    return np.nanquantile(out, [0.025, 0.975]) if np.isfinite(out).any() else np.array([np.nan, np.nan])
+
+
+def pooled_gamma(sign_rows, lmin=5, lmax=200):
+    """Sign-ACF exponent pooled across windows (same window set for truth and model): per-row lag products and
+    counts are summed, using the pooled mean; avoids per-row NaN selection and short-sample demeaning bias."""
+    rows = [np.asarray(s, float)[np.asarray(s) != 0] for s in sign_rows]
+    mu = np.concatenate(rows).mean()
+    num = np.zeros(lmax + 1)
+    cnt = np.zeros(lmax + 1)
+    for s in rows:
+        x = s - mu
+        n = len(x)
+        for l in range(min(lmax, n - 1) + 1):
+            num[l] += np.dot(x[:n - l], x[l:])
+            cnt[l] += n - l
+    ac = (num / np.maximum(cnt, 1)) / (num[0] / cnt[0])
+    lags = np.unique(np.logspace(np.log10(lmin), np.log10(lmax), 16).astype(int))
+    c = ac[lags]
+    m = c > 0
+    if m.sum() < 5:
+        return np.nan
+    return -np.polyfit(np.log(lags[m]), np.log(c[m]), 1)[0]
+
+
+def pooled_hurst(mid_rows, kmin=3, kmax=11):
+    lags = 2 ** np.arange(kmin, kmax + 1)
+    v = []
+    for l in lags:
+        inc = np.concatenate([m[l:] - m[:-l] for m in mid_rows if len(m) > l])
+        v.append(np.var(inc))
+    return 0.5 * np.polyfit(np.log(lags), np.log(v), 1)[0]

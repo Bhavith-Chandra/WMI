@@ -23,6 +23,7 @@ P = 4096
 D = 20
 SMAX = 4
 NEMA = 6
+BURN = 400_000  # pre-day burn-in (>= 5x slowest EMA tau 70k): every day starts from a stationary state
 
 
 @njit(cache=True)
@@ -341,7 +342,7 @@ def warm_state(par, seed, n_warm, bid, ask, ema, split_sign, split_rem):
     ema[IM] = 0.0
     split_sign[:] = 0
     split_rem[:] = 0
-    for t in range(n_warm):
+    for t in range(n_warm + BURN):
         typ, side, lvl, size = world_policy(bid, ask, bb, ba, par, ema, split_sign, split_rem)
         bb, ba, _ = apply_action(bid, ask, bb, ba, typ, side, lvl, size)
         bb, ba = _guard(bid, ask, bb, ba)

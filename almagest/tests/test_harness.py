@@ -75,15 +75,36 @@ def test_slowbank_online_equals_offline():
 
 
 def test_seed_splits_disjoint():
-    calib = set(range(1000, 1000 + 64))
-    evald = set(range(5000, 5000 + 64))
-    testd = set(range(9000, 9000 + 64))
-    train = set(range(200000, 200000 + 64))
-    val = set(range(300000, 300000 + 64))
-    s = [calib, evald, testd, train, val]
-    for i in range(5):
-        for j in range(i + 1, 5):
-            assert not (s[i] & s[j])
+    from almagest import splits as S
+    bases = [S.CALIB_BASE, S.DEV_BASE, S.BURNED_BASE, S.TEST_BASE, S.TRAIN_BASE, S.VAL_BASE]
+    rng = [set(range(b, b + S.SPAN)) for b in bases]
+    for i in range(len(rng)):
+        for j in range(i + 1, len(rng)):
+            assert not (rng[i] & rng[j]), (bases[i], bases[j])
+    assert max(bases) + S.SPAN < S.ROLL_OFFSET   # day/stream seeds < every rollout seed (>= ROLL_OFFSET + 1000*day)
+    import inspect
+    from almagest.experiments import e2_eval, e2_train
+    assert 'S.TEST_BASE' in inspect.getsource(e2_eval) and 'S.DEV_BASE' in inspect.getsource(e2_eval)
+    assert 'S.TRAIN_BASE' in inspect.getsource(e2_train) and 'S.VAL_BASE' in inspect.getsource(e2_train)
+
+
+def test_engine_book_equals_stream_book():
+    from almagest.sim import engine as E
+    from almagest.experiments.e2_train import build_stream
+    par = W.default_params()
+    s = build_stream(par, 4242, 3001)
+    vb = np.zeros((1, W.P), np.int64); va = np.zeros_like(vb); rb = np.zeros_like(vb); ra = np.zeros_like(vb)
+    z = [np.zeros(1, np.int64) for _ in range(4)]
+    E.init_rows(par, np.array([4242]), np.array([20000 + 3000]), vb, va, rb, ra, *z)
+    feat = np.zeros((1, 21)); cb = np.zeros((1, W.D), np.int64); ca = np.zeros_like(cb)
+    E.observe(vb, va, z[0], z[1], feat, cb, ca)
+    assert np.allclose(feat[0], s['feat'][3000])
+
+
+def test_vb_fails_closed():
+    assert np.isnan(M.vb_ratio(np.array([1.0]), np.array([-0.1])))
+    assert np.isnan(M.vb_ratio(np.array([-1.0]), np.array([0.1])))
+    assert abs(M.vb_ratio(np.array([3.0]), np.array([1.0])) - 3) < 1e-12
 
 
 if __name__ == '__main__':
