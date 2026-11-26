@@ -6,8 +6,8 @@ sys.path.insert(0, __file__.rsplit('/almagest/', 1)[0])
 from almagest.sim import campaign as C
 from almagest.experiments.e1_calibrate_world import make, loss  # noqa: E402  (module guarded below)
 
-LO = np.array([0.05, 0.0, 0.5, -0.8, 0.3, 1.15, 0.0, 0.05, 0.0, 0.0, 3.0])
-HI = np.array([4.0, 1.0, 14.0, 1.2, 0.97, 1.95, 0.8, 3.0, 0.8, 0.5, 5.7])
+LO = np.array([0.05, 0.0, 0.5, -0.8, 0.3, 1.15, 0.0, 0.05, 0.0, 0.0, 3.0, 0.0, 2.0])
+HI = np.array([4.0, 1.0, 14.0, 1.2, 0.97, 1.95, 0.8, 3.0, 0.8, 0.5, 5.7, 0.95, 40.0])
 
 
 def score(theta, nd=12, nw=12):

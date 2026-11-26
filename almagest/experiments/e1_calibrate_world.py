@@ -12,9 +12,10 @@ from almagest.sim import world as W, campaign as C
 
 def make(theta):
     p = W.default_params()
-    km, kl, zs, bw, rho, alpha, sF, kF, pinf, lK, ltK = theta
+    km, kl, zs, bw, rho, alpha, sF, kF, pinf, lK, ltK, pa, kl8 = theta
     p[5], p[4], p[9], p[6], p[7] = km, kl, zs, rho, alpha
     p[23], p[24], p[25], p[26], p[27] = sF, kF, pinf, lK, 10 ** ltK
+    p[28], p[29] = pa, kl8
     taus = p[17:23]
     w = taus ** (-bw)
     p[11:17] = w / w.sum()
@@ -40,7 +41,8 @@ def main():
         theta = [rng.uniform(0.1, 3.0), rng.uniform(0.0, 1.0), rng.uniform(1.0, 12.0),
                  rng.uniform(-0.6, 1.0), rng.uniform(0.4, 0.95), rng.uniform(1.2, 1.9),
                  rng.uniform(0.0, 0.6), rng.uniform(0.1, 2.0), rng.uniform(0.0, 0.6),
-                 rng.uniform(0.0, 0.3), rng.uniform(3.0, 5.5)]
+                 rng.uniform(0.0, 0.3), rng.uniform(3.0, 5.5),
+                 rng.uniform(0.0, 0.9), rng.uniform(2.0, 30.0)]
         p = make(theta)
         t0 = time.time()
         r = C.evaluate(C.world_runner(p), p, n_days=12, win_per_day=12, B=60, verbose=False)

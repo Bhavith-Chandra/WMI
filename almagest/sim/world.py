@@ -175,7 +175,9 @@ def abs_price(bb, ba, typ, side, lvl):
 # 7 alpha_pareto, 8 n_split, 9 z_scale, 10 kappa_cancel, 11..16 EMA weights (NEMA), 17..22 EMA taus,
 # 23 sigma_F (fundamental RW step, ticks/event), 24 kappa_F (informed sign strength), 25 p_inf (informed share of mkt)
 # 26 lambda_K (ticks per lot of remembered signed flow: market learns from flow), 27 tau_K (flow memory, events)
-NPAR = 28
+# 28 p_anchor (share of limit orders placed uniformly within K_lat ticks of the slow reference r: latent liquidity,
+#    LLOB-style, density grows with distance from current price), 29 K_lat (ticks)
+NPAR = 30
 IF = NEMA       # ema[IF]  = fundamental F
 IM = NEMA + 1   # ema[IM]  = signed-flow memory M (what the market has inferred from trades)
 
@@ -202,6 +204,8 @@ def default_params():
     p[25] = 0.0
     p[26] = 0.0
     p[27] = 50000.0
+    p[28] = 0.0
+    p[29] = 10.0
     return p
 
 
@@ -267,7 +271,24 @@ def world_policy(bid, ask, bb, ba, par, ema, split_sign, split_rem):
         pbuy = 0.5 - 0.5 * np.tanh(par[4] * z)
         side = 0 if np.random.random() < pbuy else 1
         spread = ba - bb
-        if spread > 1 and np.random.random() < 0.3:
+        if np.random.random() < par[28]:
+            k = np.random.randint(int(par[29]) + 1)
+            if side == 0:
+                pr = int(np.floor(r)) - k
+                if pr >= ba:
+                    pr = ba - 1
+                u = bb - pr
+            else:
+                pr = int(np.ceil(r)) + k
+                if pr <= bb:
+                    pr = bb + 1
+                u = pr - ba
+            if u < -1:
+                u = -1
+            if u > D - 1:
+                u = D - 1
+            lvl = u + 1
+        elif spread > 1 and np.random.random() < 0.3:
             lvl = 0
         else:
             k = 0
