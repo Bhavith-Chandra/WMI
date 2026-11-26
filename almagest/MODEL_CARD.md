@@ -49,8 +49,36 @@ All numbers below are tagged with their split. "dev" = selection split. **No tes
   - Relaxation is not comparable yet, because World D's truth relaxes unrealistically (0.34 vs ~0.67 in real
     markets).
   - A realistic truth (propagator-anchor World) is in calibration.
-- **Track B** (real): pipeline built (B1 likelihood vs baselines, B2/B3 realism, B4 forecasting, B5 impact); split v1
-  pre-registered; unified model training. Results pending.
+- **Track B** (real Coinbase; split v1 pre-registered: fit 02-06, select 08, report 15-17 UTC; numbers are SELECT):
+
+  B1 next-event NLL on 1.03M held-out events:
+
+  | | NLL (nats/event) | model − baseline (95% CI) |
+  |---|---|---|
+  | unified model | **5.995** | — |
+  | book-state table | 6.786 | **−0.79** [−0.82, −0.77] |
+  | marginal | 6.956 | −0.96 |
+
+  B4 mid-direction AUC:
+
+  | horizon | model probe | best baseline (book logistic) |
+  |---|---|---|
+  | 50 events | **0.858** | 0.836 |
+  | 200 events | **0.798** | 0.782 |
+  | 1000 events | **0.666** | 0.657 |
+
+  B2 closed-loop realism: **NOT yet realistic.**
+
+  | metric | generated | real | real-vs-real floor |
+  |---|---|---|---|
+  | trade-sign ACF(1) | 0.16–0.21 | 0.37–0.50 | — |
+  | volatility (100 events) | 0.5× | — | 0.75–0.85× |
+  | depth W1 | 1.3–1.6 | — | 0.3 |
+
+  Scalar generation calibration, deep book seeding and size representation did not close it. A rollout-level
+  post-training method is required (no oracle on real data).
+
+  B5 own-order impact on real data: not meaningful until B2 is fixed.
 - **Use case 3** (manipulation, synthetic, dev):
   - the hand-written spoof rule wins on its own template (AUC 0.89);
   - a model-state probe detects momentum ignition when trained in-family (AUC 0.80);

@@ -25,6 +25,13 @@ GEN = 4000
 DT_MID = np.concatenate([[0.0], np.sqrt(np.maximum(T.DT_EDGES[1:-1], 1e-6) * T.DT_EDGES[2:]), [T.DT_EDGES[-1] * 2]])
 
 
+def lots_of(b):
+    """Representative lots for a size bucket [2^b, 2^(b+1)): geometric mean 2^b*sqrt(2) (SIZE_REP=geo) or 2^b."""
+    if os.environ.get('SIZE_REP', 'pow2') == 'geo':
+        return np.maximum(1, np.round(np.power(2.0, b) * np.sqrt(2))).astype(np.int64)
+    return np.power(2, b).astype(np.int64)
+
+
 def seed_book(feat_rows):
     R = len(feat_rows)
     bid = np.zeros((R, W.P), np.int64); ask = np.zeros((R, W.P), np.int64)
@@ -35,6 +42,13 @@ def seed_book(feat_rows):
         bid[np.arange(R), bb - k] = np.maximum(feat_rows[:, k], 0).astype(np.int64)
         ask[np.arange(R), ba + k] = np.maximum(feat_rows[:, 10 + k], 0).astype(np.int64)
     bid[np.arange(R), bb] = np.maximum(bid[np.arange(R), bb], 1); ask[np.arange(R), ba] = np.maximum(ask[np.arange(R), ba], 1)
+    if os.environ.get('DEEP_SEED', '0') == '1':
+        # deeper levels (unobserved in features) seeded with the observed typical depth (median of levels 5-9),
+        # out to 60 levels: real books are never empty beyond level 10 (stated approximation)
+        db = np.median(feat_rows[:, 5:10], 1).astype(np.int64); da = np.median(feat_rows[:, 15:20], 1).astype(np.int64)
+        for k in range(10, 60):
+            bid[np.arange(R), bb - k] = db
+            ask[np.arange(R), ba + k] = da
     return bid, ask, bb, ba.astype(np.int64)
 
 
@@ -101,7 +115,7 @@ class Gen:
         evn = ev.numpy().astype(np.int64)
         old = 0.5 * (self.vbb + self.vba).astype(float)
         E.step_events(self.vb, self.va, self.rb, self.ra, self.vbb, self.vba, self.rbb, self.rba, evn[:, 0].copy(),
-                      evn[:, 1].copy(), evn[:, 2].copy(), np.power(2, evn[:, 3]).astype(np.int64),
+                      evn[:, 1].copy(), evn[:, 2].copy(), lots_of(evn[:, 3]),
                       np.ones(self.B, np.int64))
         self._pend(np.ones(self.B, bool), ev, old)
         return evn
