@@ -16,5 +16,6 @@ log "freeze model $H (sha256 of runs/final_mmfm/model.pt); unsealing test ONCE"
 export MMFM_UNSEAL=$H
 log m1-test; MMFM_PURPOSE=M1 python3 -I evaluate.py --events $EV --runs runs/final_mmfm runs/final_b2 --split test --T "${CTX:-64}" --out results/m1_test.json >> "$L" 2>&1
 log m1-heldout; MMFM_PURPOSE=M1 python3 -I evaluate.py --events $EV --runs runs/final_mmfm runs/final_b2 --split heldout_test --T "${CTX:-64}" --out results/m1_heldout_test.json >> "$L" 2>&1
+log m5; python3 -I bench_latency.py --events $EV --run runs/final_mmfm --out results/m5.json >> "$L" 2>&1
 log m2-test; MMFM_PURPOSE=M2 python3 -I sim_eval.py --events $EV --run runs/final_mmfm --split test --pairs ethusd,xrpusd,dogeusd --starts 15 --paths 8 --out results/m2_test.json >> "$L" 2>&1
 log done
