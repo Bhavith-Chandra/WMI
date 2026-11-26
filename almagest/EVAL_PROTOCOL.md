@@ -67,6 +67,22 @@ Primary comparison (pre-registered): `modebank_sb` vs `short`. Other arms are ab
 - **B5 real impact (no truth available):** LOB-Impact phases on test hours; report delta, Y, R10/R100 relaxation, v/b;
   compare with empirical crypto metaorder literature (to be converted to this Y convention before use).
 
+### 4.1 Addendum v1.2 (2026-11-26 ~19:00Z, registered BEFORE any v3 model was trained or evaluated)
+Finding that forced it: under the v2 tokens, replaying the REAL event stream through the engine diverged (log-depth
+error 1.18 after 1000 events), so B2 compared generated books against books the engine could not reproduce even with
+perfect events. v2 B2 numbers are therefore not interpretable as model error and are superseded.
+- **B0 representation fidelity (gate, automated):** replaying the tokens + hidden updates through the engine reproduces
+  every recorded feature bit-for-bit (`tests/test_harness.py::test_exact_tokenizer_replay`, and the B2 "oracle" arm on
+  real windows: token-only replay median log-depth error must be 0 at 100 events and < 0.05 at 1000 events). Share of
+  L2 lot changes that are hidden (outside the action window) is reported per product.
+- **B2 v3 pass rule (per metric, median over windows, select then report):** with g = model-vs-real and f = the
+  real-vs-real floor (next real window vs this one):
+  * distances (spread_L1, depth_W1, band_W1, imb_W1, lvl_L1, dt_L1): PASS if g <= 1.5 f + 0.02;
+  * ratios (mshare, vol10, vol100, vol1000): PASS if |log g| <= 1.5 |log f| + log 1.25;
+  * trade-sign ACF(1), ACF(10): PASS if |acf_gen - acf_real| <= 1.5 |acf_real2 - acf_real| + 0.05.
+  Overall B2 PASS requires every metric to pass. Failures are reported, not tuned away on report hours; any
+  calibration uses FIT hours only, selection uses select hours only.
+
 ## 5. Track C — real-time deployment readiness
 - C1 latency: p50/p99 per-event update and per-query what-if latency on target hardware (CPU baseline here)
 - C2 stability: 24 h continuous state update on live feed without divergence (state norm, surprise bounded)
