@@ -1,6 +1,0 @@
-fit rows 159 events 5022720 select events 743424
-params 105129
-pass 0 fit 5.6448 select 5.7621 t 95s
-pass 1 fit 5.3751 select 5.6455 t 190s
-pass 2 fit 5.3214 select 5.6076 t 284s
-pass 3 fit 5.2897 select 5.5074 t 378s

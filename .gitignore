@@ -10,3 +10,4 @@ data_raw/
 data_tok*/
 almagest/results/tmp*/
 almagest/results/real/*.log
+almagest/results/real3/*.log
