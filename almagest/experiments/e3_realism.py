@@ -150,8 +150,7 @@ def main():
     picks = []
     for _ in range(nwin):
         i = int(rng.integers(len(rows))); r = rows[i]
-        s = int(rng.integers(2 * WIN, (len(r['tgt']) - GEN * 2) // WIN)) * WIN // 1
-        s = (s // WIN) * WIN
+        s = int(rng.integers(2, (len(r['tgt']) - GEN * 2) // WIN)) * WIN    # block-aligned start, >= 2 blocks of context
         picks.append((i, s))
     t0 = time.time()
     # teacher-forced states at window starts
