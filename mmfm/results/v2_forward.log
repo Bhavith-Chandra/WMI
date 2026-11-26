@@ -4,3 +4,48 @@ btcusd 14 1025657 kept 1025657 parts 1
 btcusd 15 304271 kept 304271 parts 1
 ethusd 14 476893 kept 476893 parts 1
 ethusd 15 145690 kept 87332 parts 2
+solusd 14 367829 kept 367829 parts 1
+solusd 15 121317 kept 121317 parts 1
+xrpusd 14 419782 kept 419782 parts 1
+xrpusd 15 123706 kept 123706 parts 1
+btceur 14 183349 kept 183349 parts 1
+btceur 15 63372 kept 63372 parts 1
+ltcusd 14 68214 kept 68214 parts 1
+ltcusd 15 15849 kept 15849 parts 1
+dogeusd 14 182373 kept 182373 parts 1
+dogeusd 15 60742 kept 60742 parts 1
+linkusd 14 89986 kept 89986 parts 1
+linkusd 15 30878 kept 30878 parts 1
+=== splits (22:23:10)
+{'forward': [1795725325986508, 1795730725986508], 'train': [0, 0], 'val': [0, 0], 'heldout_pair': 'linkusd', 'files_hash': '23fd745974a930004d76c23f8e27df132ab0fb3b0b6069b2c1b5f1d85acfdf22', 'rule': 'EVAL_v2.md forward test'}
+=== m1 (22:23:10)
+B0         14.3337 [14.2732, 14.3932]
+B1         12.4153 [12.2747, 12.5732]
+MMFM-v2    9.0132 [8.6011, 9.4676]
+B2-v2      9.4908 [9.0696, 9.9595]
+MMFM-v2 - B2-v2: {'delta': -0.477614591908484, 'ci95': [-0.5037896737388172, -0.4537903275137973]} blocks 131
+=== m1-heldout (22:24:26)
+B0         13.9044 [13.8814, 13.9293]
+B1         13.0342 [12.9784, 13.0870]
+MMFM-v2    11.7650 [11.6020, 11.8975]
+B2-v2      11.6921 [11.5388, 11.8210]
+MMFM-v2 - B2-v2: {'delta': 0.07288792207217654, 'ci95': [0.05255390685019643, 0.09368612345822033]} blocks 19
+=== sim (22:25:40)
+ethusd MMFM-sim 1.0s ev1.31 cov0.80 pit0.38 crps0.272 | 5.0s ev1.62 cov0.88 pit0.47 crps0.508 | 10.0s ev1.48 cov0.92 pit0.54 crps0.727 rt 1.05
+ethusd MMFM-direct 1.0s ev1.24 cov0.84 pit0.36 crps0.225 | 5.0s ev1.60 cov0.96 pit0.43 crps0.471 | 10.0s ev1.47 cov0.96 pit0.38 crps0.722 rt 2113.66
+ethusd B1p 1.0s ev2.09 cov0.80 pit0.39 crps0.258 | 5.0s ev1.53 cov0.80 pit0.44 crps0.408 | 10.0s ev1.24 cov0.76 pit0.36 crps0.646 rt 2.70
+ethusd B0p 1.0s ev2.05 cov0.72 pit0.41 crps0.288 | 5.0s ev1.47 cov0.76 pit0.41 crps0.415 | 10.0s ev1.22 cov0.72 pit0.38 crps0.672 rt 2.69
+xrpusd MMFM-sim 1.0s ev1.11 cov0.84 pit0.24 crps0.391 | 5.0s ev1.13 cov0.64 pit0.37 crps1.159 | 10.0s ev1.11 cov0.76 pit0.45 crps1.267 rt 1.33
+xrpusd MMFM-direct 1.0s ev1.10 cov0.76 pit0.31 crps0.287 | 5.0s ev1.11 cov0.84 pit0.48 crps0.975 | 10.0s ev1.15 cov0.88 pit0.51 crps1.079 rt 2853.91
+xrpusd B1p 1.0s ev1.34 cov0.88 pit0.38 crps0.315 | 5.0s ev1.00 cov0.68 pit0.46 crps1.002 | 10.0s ev0.89 cov0.80 pit0.50 crps1.053 rt 3.58
+xrpusd B0p 1.0s ev1.36 cov0.80 pit0.42 crps0.323 | 5.0s ev0.92 cov0.68 pit0.43 crps0.969 | 10.0s ev0.92 cov0.56 pit0.46 crps1.167 rt 3.66
+dogeusd MMFM-sim 1.0s ev1.48 cov0.96 pit0.63 crps0.065 | 5.0s ev1.37 cov0.72 pit0.43 crps0.537 | 10.0s ev1.52 cov0.76 pit0.42 crps0.924 rt 1.98
+dogeusd MMFM-direct 1.0s ev1.09 cov0.96 pit0.65 crps0.058 | 5.0s ev1.28 cov0.96 pit0.48 crps0.463 | 10.0s ev1.53 cov0.92 pit0.46 crps0.821 rt 2816.80
+dogeusd B1p 1.0s ev2.10 cov0.96 pit0.57 crps0.093 | 5.0s ev1.48 cov0.84 pit0.43 crps0.552 | 10.0s ev1.20 cov0.76 pit0.36 crps0.911 rt 6.97
+dogeusd B0p 1.0s ev2.48 cov0.96 pit0.53 crps0.095 | 5.0s ev1.36 cov0.84 pit0.44 crps0.448 | 10.0s ev1.23 cov0.68 pit0.39 crps0.823 rt 6.88
+=== sim-heldout (22:42:01)
+linkusd MMFM-sim 1.0s ev1.25 cov0.92 pit0.54 crps0.157 | 5.0s ev0.46 cov0.64 pit0.45 crps1.011 | 10.0s ev0.19 cov0.64 pit0.44 crps1.515 rt 3.85
+linkusd MMFM-direct 1.0s ev0.75 cov0.88 pit0.52 crps0.119 | 5.0s ev0.26 cov0.80 pit0.47 crps0.994 | 10.0s ev0.17 cov0.84 pit0.48 crps1.449 rt 2930.21
+linkusd B1p 1.0s ev18.33 cov0.88 pit0.43 crps0.444 | 5.0s ev9.60 cov0.72 pit0.44 crps1.295 | 10.0s ev7.75 cov0.68 pit0.42 crps1.811 rt 3.43
+linkusd B0p 1.0s ev19.33 cov0.88 pit0.47 crps0.430 | 5.0s ev10.51 cov0.72 pit0.41 crps1.162 | 10.0s ev8.13 cov0.64 pit0.39 crps1.675 rt 3.46
+=== done (22:45:54)

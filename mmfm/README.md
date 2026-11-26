@@ -176,3 +176,204 @@ Test access log (every unseal):
 * **Event extraction**: the model-event stream reproduces the order-id book exactly on slower pairs. On BTC/ETH/XRP
   a small residue accumulates: top-50 level match is 86–100% after 0.4–0.8M events. Model state always
   comes from the exact order-id book.
+
+## v2 — what changed and what the forward test says
+
+Protocol: `EVAL_v2.md` (criteria fixed before training) + addenda v2-1 (data exclusion), v2-2/2a (anchored
+simulator clock, decided on val), v2-3 (forward build memory fix; no forward data was built before it).
+Frozen bundle: `FROZEN_v2.json` (sha256 of MMFM-v2, B2-v2, tokenizer, simulator calibration). Forward window:
+2026-11-26 20:35:25–22:05:25 UTC, recorded after the freeze, unsealed exactly once per metric (access log below).
+
+v2 changes vs v1: state-relative size tokens (a cancel/take is a fraction of the level it hits, with exact
+whole-level bins); monotone-clock features; direct forecast heads for R_h and N_h (h = 1, 5, 10 s), temperature-
+calibrated on val; KV-cache re-prefill bug fixed; simulator clock anchored on the count heads (free-running
+clock over-generated 2–3.6× on val, at 1 s already).
+
+Verdict (forward test, numbers in the generated block):
+* **Next-event NLL: MMFM-v2 beats the tuned feature MLP B2-v2** by about 0.48 bits/event, and the CI excludes 0
+  (criterion 5 met; the val gap was 0.63).
+* **Zero-shot linkusd NLL: MMFM-v2 is slightly worse than B2-v2** (+0.07 bits/event, CI excludes 0). Criterion 6
+  is not met, so a "foundation" transfer claim is still not supported at this scale. The gap shrank from +0.30 in v1.
+* **Simulator, criteria 1–4: not met.**
+  * Event counts are much closer than v1's free-running clock, but the forward window was 7–28% quieter than the
+    design data (post-hoc diagnostic). The count heads over-predicted by 1.1–1.6×, so only 3/9 cells fall in [0.8, 1.25].
+  * Coverage80 is in range in 6/9 cells and PIT in 5/9.
+  * CRPS beats the best count baseline in only 1/9 cells.
+* **The direct heads beat the MMFM simulator on CRPS in 9/9 cells**, in about 2.5 ms, but beat the best count
+  baseline in only 4/9. Event-level simulation is for what-ifs and paths; it is not yet a better
+  distributional forecaster than empirical count generators.
+* **Real time: met.** 8 paths on ETH run at 2.6× the median market event rate, and 16 paths at about 1× in the live UI.
+* **Not shown:** the model makes no trading-profitability claim, and no real orders can be sent. Deployment
+  would need a calibration monitor for regime shifts in activity. That monitor is the main measured failure mode.
+
+![v2 on the live ETH market](serve/screenshot_v2.png)
+
+```bash
+python3 -I serve/app2.py --run runs/v2 --pair ethusd --port 8766   # reads frozen sim_calibration.json
+```
+
+## v2 results (generated)
+<!-- AUTO:v2 -->
+**M1 next-event NLL — FORWARD test** — 96,957 events, 131 five-minute blocks
+
+| model | bits/event | 95% CI |
+|---|---|---|
+| B0 | 14.334 | [14.273, 14.393] |
+| B1 | 12.415 | [12.275, 12.573] |
+| MMFM-v2 | 9.013 | [8.601, 9.468] |
+| B2-v2 | 9.491 | [9.070, 9.960] |
+
+MMFM-v2 − B2-v2: -0.478 bits/event, 95% CI [-0.504, -0.454]
+
+**M1 zero-shot linkusd — FORWARD test** — 105,840 events, 19 five-minute blocks
+
+| model | bits/event | 95% CI |
+|---|---|---|
+| B0 | 13.904 | [13.881, 13.929] |
+| B1 | 13.034 | [12.978, 13.087] |
+| MMFM-v2 | 11.765 | [11.602, 11.897] |
+| B2-v2 | 11.692 | [11.539, 11.821] |
+
+MMFM-v2 − B2-v2: +0.073 bits/event, 95% CI [+0.053, +0.094]
+
+**M1 next-event NLL — v2 val (selection)** — 103,509 events, 40 five-minute blocks
+
+| model | bits/event | 95% CI |
+|---|---|---|
+| B0 | 14.149 | [14.090, 14.212] |
+| B1 | 12.436 | [12.175, 12.712] |
+| MMFM-v2 | 9.325 | [8.753, 9.932] |
+| B2-v2 | 9.957 | [9.371, 10.573] |
+
+MMFM-v2 − B2-v2: -0.632 bits/event, 95% CI [-0.666, -0.604]
+
+**Simulation & forecast calibration — FORWARD test** (n starts per cell shown; targets: event ratio 0.8–1.25, coverage 0.70–0.90, PIT 0.40–0.60)
+
+| pair | generator | h | n | event ratio | coverage80 | PIT mean | CRPS bp |
+|---|---|---|---|---|---|---|---|
+| ethusd | MMFM-sim | 1.0s | 25 | 1.31 | 0.80 | 0.38 | 0.272 |
+| ethusd | MMFM-sim | 5.0s | 25 | 1.62 | 0.88 | 0.47 | 0.508 |
+| ethusd | MMFM-sim | 10.0s | 25 | 1.48 | 0.92 | 0.54 | 0.727 |
+| ethusd | MMFM-direct | 1.0s | 25 | 1.24 | 0.84 | 0.36 | 0.225 |
+| ethusd | MMFM-direct | 5.0s | 25 | 1.60 | 0.96 | 0.43 | 0.471 |
+| ethusd | MMFM-direct | 10.0s | 25 | 1.47 | 0.96 | 0.38 | 0.722 |
+| ethusd | B1p | 1.0s | 25 | 2.09 | 0.80 | 0.39 | 0.258 |
+| ethusd | B1p | 5.0s | 25 | 1.53 | 0.80 | 0.44 | 0.408 |
+| ethusd | B1p | 10.0s | 25 | 1.24 | 0.76 | 0.36 | 0.646 |
+| ethusd | B0p | 1.0s | 25 | 2.05 | 0.72 | 0.41 | 0.288 |
+| ethusd | B0p | 5.0s | 25 | 1.47 | 0.76 | 0.41 | 0.415 |
+| ethusd | B0p | 10.0s | 25 | 1.22 | 0.72 | 0.38 | 0.672 |
+| xrpusd | MMFM-sim | 1.0s | 25 | 1.11 | 0.84 | 0.24 | 0.391 |
+| xrpusd | MMFM-sim | 5.0s | 25 | 1.13 | 0.64 | 0.37 | 1.159 |
+| xrpusd | MMFM-sim | 10.0s | 25 | 1.11 | 0.76 | 0.45 | 1.267 |
+| xrpusd | MMFM-direct | 1.0s | 25 | 1.10 | 0.76 | 0.31 | 0.287 |
+| xrpusd | MMFM-direct | 5.0s | 25 | 1.11 | 0.84 | 0.48 | 0.975 |
+| xrpusd | MMFM-direct | 10.0s | 25 | 1.15 | 0.88 | 0.51 | 1.079 |
+| xrpusd | B1p | 1.0s | 25 | 1.34 | 0.88 | 0.38 | 0.315 |
+| xrpusd | B1p | 5.0s | 25 | 1.00 | 0.68 | 0.46 | 1.002 |
+| xrpusd | B1p | 10.0s | 25 | 0.89 | 0.80 | 0.50 | 1.053 |
+| xrpusd | B0p | 1.0s | 25 | 1.36 | 0.80 | 0.42 | 0.323 |
+| xrpusd | B0p | 5.0s | 25 | 0.92 | 0.68 | 0.43 | 0.969 |
+| xrpusd | B0p | 10.0s | 25 | 0.92 | 0.56 | 0.46 | 1.167 |
+| dogeusd | MMFM-sim | 1.0s | 25 | 1.48 | 0.96 | 0.63 | 0.065 |
+| dogeusd | MMFM-sim | 5.0s | 25 | 1.37 | 0.72 | 0.43 | 0.537 |
+| dogeusd | MMFM-sim | 10.0s | 25 | 1.52 | 0.76 | 0.42 | 0.924 |
+| dogeusd | MMFM-direct | 1.0s | 25 | 1.09 | 0.96 | 0.65 | 0.058 |
+| dogeusd | MMFM-direct | 5.0s | 25 | 1.28 | 0.96 | 0.48 | 0.463 |
+| dogeusd | MMFM-direct | 10.0s | 25 | 1.53 | 0.92 | 0.46 | 0.821 |
+| dogeusd | B1p | 1.0s | 25 | 2.10 | 0.96 | 0.57 | 0.093 |
+| dogeusd | B1p | 5.0s | 25 | 1.48 | 0.84 | 0.43 | 0.552 |
+| dogeusd | B1p | 10.0s | 25 | 1.20 | 0.76 | 0.36 | 0.911 |
+| dogeusd | B0p | 1.0s | 25 | 2.48 | 0.96 | 0.53 | 0.095 |
+| dogeusd | B0p | 5.0s | 25 | 1.36 | 0.84 | 0.44 | 0.448 |
+| dogeusd | B0p | 10.0s | 25 | 1.23 | 0.68 | 0.39 | 0.823 |
+
+**Zero-shot linkusd — FORWARD test** (n starts per cell shown; targets: event ratio 0.8–1.25, coverage 0.70–0.90, PIT 0.40–0.60)
+
+| pair | generator | h | n | event ratio | coverage80 | PIT mean | CRPS bp |
+|---|---|---|---|---|---|---|---|
+| linkusd | MMFM-sim | 1.0s | 25 | 1.25 | 0.92 | 0.54 | 0.157 |
+| linkusd | MMFM-sim | 5.0s | 25 | 0.46 | 0.64 | 0.45 | 1.011 |
+| linkusd | MMFM-sim | 10.0s | 25 | 0.19 | 0.64 | 0.44 | 1.515 |
+| linkusd | MMFM-direct | 1.0s | 25 | 0.75 | 0.88 | 0.52 | 0.119 |
+| linkusd | MMFM-direct | 5.0s | 25 | 0.26 | 0.80 | 0.47 | 0.994 |
+| linkusd | MMFM-direct | 10.0s | 25 | 0.17 | 0.84 | 0.48 | 1.449 |
+| linkusd | B1p | 1.0s | 25 | 18.33 | 0.88 | 0.43 | 0.444 |
+| linkusd | B1p | 5.0s | 25 | 9.60 | 0.72 | 0.44 | 1.295 |
+| linkusd | B1p | 10.0s | 25 | 7.75 | 0.68 | 0.42 | 1.811 |
+| linkusd | B0p | 1.0s | 25 | 19.33 | 0.88 | 0.47 | 0.430 |
+| linkusd | B0p | 5.0s | 25 | 10.51 | 0.72 | 0.41 | 1.162 |
+| linkusd | B0p | 10.0s | 25 | 8.13 | 0.64 | 0.39 | 1.675 |
+
+**Simulation & forecast calibration — v2 val (selection split, not a test)** (n starts per cell shown; targets: event ratio 0.8–1.25, coverage 0.70–0.90, PIT 0.40–0.60)
+
+| pair | generator | h | n | event ratio | coverage80 | PIT mean | CRPS bp |
+|---|---|---|---|---|---|---|---|
+| ethusd | MMFM-sim | 1.0s | 25 | 0.93 | 0.76 | 0.36 | 0.383 |
+| ethusd | MMFM-sim | 5.0s | 25 | 0.99 | 0.64 | 0.48 | 0.841 |
+| ethusd | MMFM-sim | 10.0s | 25 | 0.95 | 0.60 | 0.66 | 1.482 |
+| ethusd | MMFM-direct | 1.0s | 25 | 0.77 | 0.72 | 0.38 | 0.308 |
+| ethusd | MMFM-direct | 5.0s | 25 | 0.99 | 0.84 | 0.45 | 0.850 |
+| ethusd | MMFM-direct | 10.0s | 25 | 0.90 | 0.80 | 0.53 | 1.338 |
+| ethusd | B1p | 1.0s | 25 | 1.08 | 0.68 | 0.36 | 0.363 |
+| ethusd | B1p | 5.0s | 25 | 0.89 | 0.48 | 0.41 | 0.991 |
+| ethusd | B1p | 10.0s | 25 | 0.78 | 0.40 | 0.52 | 1.594 |
+| ethusd | B0p | 1.0s | 25 | 1.12 | 0.60 | 0.33 | 0.377 |
+| ethusd | B0p | 5.0s | 25 | 0.98 | 0.56 | 0.43 | 0.941 |
+| ethusd | B0p | 10.0s | 25 | 0.87 | 0.36 | 0.51 | 1.506 |
+| xrpusd | MMFM-sim | 1.0s | 25 | 1.45 | 0.72 | 0.42 | 0.537 |
+| xrpusd | MMFM-sim | 5.0s | 25 | 1.25 | 0.68 | 0.44 | 1.115 |
+| xrpusd | MMFM-sim | 10.0s | 25 | 0.97 | 0.72 | 0.53 | 1.643 |
+| xrpusd | MMFM-direct | 1.0s | 25 | 1.39 | 0.76 | 0.38 | 0.391 |
+| xrpusd | MMFM-direct | 5.0s | 25 | 1.18 | 0.80 | 0.54 | 1.036 |
+| xrpusd | MMFM-direct | 10.0s | 25 | 0.99 | 0.80 | 0.52 | 1.367 |
+| xrpusd | B1p | 1.0s | 25 | 1.78 | 0.76 | 0.52 | 0.458 |
+| xrpusd | B1p | 5.0s | 25 | 1.08 | 0.52 | 0.58 | 1.114 |
+| xrpusd | B1p | 10.0s | 25 | 0.76 | 0.60 | 0.54 | 1.536 |
+| xrpusd | B0p | 1.0s | 25 | 1.85 | 0.80 | 0.50 | 0.452 |
+| xrpusd | B0p | 5.0s | 25 | 1.05 | 0.68 | 0.57 | 1.070 |
+| xrpusd | B0p | 10.0s | 25 | 0.80 | 0.64 | 0.53 | 1.462 |
+| dogeusd | MMFM-sim | 1.0s | 25 | 1.00 | 0.76 | 0.63 | 0.276 |
+| dogeusd | MMFM-sim | 5.0s | 25 | 0.77 | 0.60 | 0.54 | 1.154 |
+| dogeusd | MMFM-sim | 10.0s | 25 | 0.96 | 0.60 | 0.55 | 1.556 |
+| dogeusd | MMFM-direct | 1.0s | 25 | 0.79 | 0.76 | 0.62 | 0.242 |
+| dogeusd | MMFM-direct | 5.0s | 25 | 0.75 | 0.68 | 0.55 | 1.002 |
+| dogeusd | MMFM-direct | 10.0s | 25 | 0.92 | 0.76 | 0.58 | 1.355 |
+| dogeusd | B1p | 1.0s | 25 | 2.15 | 0.76 | 0.59 | 0.283 |
+| dogeusd | B1p | 5.0s | 25 | 0.91 | 0.44 | 0.55 | 1.260 |
+| dogeusd | B1p | 10.0s | 25 | 0.91 | 0.48 | 0.54 | 1.500 |
+| dogeusd | B0p | 1.0s | 25 | 2.33 | 0.80 | 0.59 | 0.292 |
+| dogeusd | B0p | 5.0s | 25 | 0.94 | 0.44 | 0.58 | 1.138 |
+| dogeusd | B0p | 10.0s | 25 | 0.83 | 0.40 | 0.57 | 1.496 |
+
+**Real time (CPU, 4 threads)**
+
+| pair | direct heads ms | 8 paths: sim events/path/s (×median rate) | 16 paths (×median) |
+|---|---|---|---|
+| ethusd | 2.5 | 347 (2.56×) | 225 (1.66×) |
+| btcusd | 2.8 | 345 (1.34×) | 278 (1.08×) |
+| xrpusd | 2.5 | 356 (3.42×) | 248 (2.38×) |
+| dogeusd | 2.5 | 362 (9.47×) | 252 (6.61×) |
+
+**EVAL_v2 pre-registered criteria (forward test)**
+
+| criterion | result | met |
+|---|---|---|
+| 1 event ratio in [0.8,1.25] (MMFM-sim) | 3/9 cells | ✗ |
+| 2 coverage80 in [0.70,0.90] (MMFM-sim) | 6/9 cells | ✗ |
+| 3 PIT mean in [0.40,0.60] (MMFM-sim) | 5/9 cells | ✗ |
+| 4 MMFM-sim CRPS <= best count baseline | 1/9 cells | ✗ |
+| (info) MMFM-direct coverage80 in [0.70,0.90] | 4/9 cells | — |
+| 5 NLL: MMFM-v2 beats tuned B2 (CI excludes 0) | -0.478 [-0.504, -0.454] bits/event | ✓ |
+| 6 zero-shot linkusd NLL gap vs B2 <= 0 | +0.073 [+0.053, +0.094] | ✗ |
+| 7 real time: 8 paths on ethusd >= 1x | 2.56x | ✓ |
+
+Forward-test access log:
+
+```
+{"model_hash": "66c25c4498451679e30747e6180d78b9f5d575c11b7362ed43eeaea4f57ba80a", "purpose": "M1", "utc": "2026-11-26T22:23:26Z"}
+{"model_hash": "66c25c4498451679e30747e6180d78b9f5d575c11b7362ed43eeaea4f57ba80a", "purpose": "M1-heldout", "utc": "2026-11-26T22:24:42Z"}
+{"model_hash": "66c25c4498451679e30747e6180d78b9f5d575c11b7362ed43eeaea4f57ba80a", "purpose": "sim", "utc": "2026-11-26T22:25:56Z"}
+{"model_hash": "66c25c4498451679e30747e6180d78b9f5d575c11b7362ed43eeaea4f57ba80a", "purpose": "sim-heldout", "utc": "2026-11-26T22:42:16Z"}
+```
+<!-- /AUTO:v2 -->

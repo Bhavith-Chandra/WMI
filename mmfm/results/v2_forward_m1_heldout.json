@@ -1,0 +1,68 @@
+{
+ "split": "forward",
+ "heldout": true,
+ "n_tiles": 1680,
+ "n_events": 105840,
+ "n_blocks": 19,
+ "model_hashes": {
+  "mmfm": "66c25c4498451679e30747e6180d78b9f5d575c11b7362ed43eeaea4f57ba80a",
+  "b2": "d55c50a59d89bec5268c19d332d7971e2e24b8c927fb0a45fa8cca668d05ecdd"
+ },
+ "tokenizer_hash": "08aa47669a66630060d762b50fc6833699533415b07502ab51782c9407319f79",
+ "models": {
+  "B0": {
+   "bits_per_event": 13.904354995776558,
+   "ci95": [
+    13.881371907988697,
+    13.929343278037056
+   ]
+  },
+  "B1": {
+   "bits_per_event": 13.034189129077056,
+   "ci95": [
+    12.978440298478878,
+    13.087007797176085
+   ]
+  },
+  "MMFM-v2": {
+   "bits_per_event": 11.764950058952211,
+   "ci95": [
+    11.601973445489138,
+    11.89747001134272
+   ]
+  },
+  "B2-v2": {
+   "bits_per_event": 11.692062136880034,
+   "ci95": [
+    11.53879809689084,
+    11.821015683088998
+   ]
+  }
+ },
+ "mmfm_minus_b2": {
+  "delta": 0.07288792207217654,
+  "ci95": [
+   0.05255390685019643,
+   0.09368612345822033
+  ]
+ },
+ "_provenance": {
+  "git_commit": "fc95baab07e3ad20cec54b1089c1f73fb9534844",
+  "argv": [
+   "evaluate_v2.py",
+   "--events",
+   "/home/user/data/mmfm_fwd",
+   "--train-events",
+   "/home/user/data/mmfm_v2",
+   "--mmfm",
+   "runs/v2",
+   "--b2",
+   "runs/v2_b2",
+   "--forward",
+   "--heldout",
+   "--out",
+   "results/v2_forward_m1_heldout.json"
+  ],
+  "utc": "2026-11-26T22:25:39Z"
+ }
+}

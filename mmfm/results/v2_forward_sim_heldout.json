@@ -1,0 +1,178 @@
+{
+ "model_hash": "66c25c4498451679e30747e6180d78b9f5d575c11b7362ed43eeaea4f57ba80a",
+ "split": "forward",
+ "heldout": true,
+ "horizons": [
+  1.0,
+  5.0,
+  10.0
+ ],
+ "dt_scale": 1.0,
+ "temp": 0.7,
+ "clock": "anchored",
+ "per_pair": {
+  "linkusd": {
+   "MMFM-sim": {
+    "1.0": {
+     "n": 25,
+     "coverage80": 0.92,
+     "pit_mean": 0.5440998664919744,
+     "crps_bp": 0.15712056758642848,
+     "brier_up_given_move": 0.2830233955078945,
+     "real_abs_med": 0.0,
+     "sim_abs_med": 0.0,
+     "event_ratio_median": 1.25
+    },
+    "5.0": {
+     "n": 25,
+     "coverage80": 0.64,
+     "pit_mean": 0.4516581898236636,
+     "crps_bp": 1.0109776497368572,
+     "brier_up_given_move": 0.1854322733981487,
+     "real_abs_med": 0.21568341988370904,
+     "sim_abs_med": 0.13345456244695303,
+     "event_ratio_median": 0.4605263157894737
+    },
+    "10.0": {
+     "n": 25,
+     "coverage80": 0.64,
+     "pit_mean": 0.4423101054575909,
+     "crps_bp": 1.514805525577944,
+     "brier_up_given_move": 0.2706695055289974,
+     "real_abs_med": 0.7492721359901526,
+     "sim_abs_med": 0.21416604261901326,
+     "event_ratio_median": 0.19101123595505617
+    },
+    "sim_seconds_per_wall_second": 3.8504896365766914
+   },
+   "MMFM-direct": {
+    "1.0": {
+     "n": 25,
+     "coverage80": 0.88,
+     "pit_mean": 0.5200815073966336,
+     "crps_bp": 0.11863396231029875,
+     "brier_up_given_move": 0.2813025629884434,
+     "real_abs_med": 0.0,
+     "sim_abs_med": 0.0,
+     "event_ratio_median": 0.7462042625086102
+    },
+    "5.0": {
+     "n": 25,
+     "coverage80": 0.8,
+     "pit_mean": 0.4720249985300368,
+     "crps_bp": 0.9939827377937003,
+     "brier_up_given_move": 0.24974160530864778,
+     "real_abs_med": 0.21568341988370904,
+     "sim_abs_med": 0.7891747730263725,
+     "event_ratio_median": 0.26409108281611393
+    },
+    "10.0": {
+     "n": 25,
+     "coverage80": 0.84,
+     "pit_mean": 0.4791409088236431,
+     "crps_bp": 1.449395820588274,
+     "brier_up_given_move": 0.2541137921310396,
+     "real_abs_med": 0.7492721359901526,
+     "sim_abs_med": 1.6393269741210625,
+     "event_ratio_median": 0.1720317352057981
+    },
+    "sim_seconds_per_wall_second": 2930.2067420120015
+   },
+   "B1p": {
+    "1.0": {
+     "n": 25,
+     "coverage80": 0.88,
+     "pit_mean": 0.42546202109151815,
+     "crps_bp": 0.4439468293789179,
+     "brier_up_given_move": 0.2792114866780046,
+     "real_abs_med": 0.0,
+     "sim_abs_med": 0.7996397898469303,
+     "event_ratio_median": 18.333333333333332
+    },
+    "5.0": {
+     "n": 25,
+     "coverage80": 0.72,
+     "pit_mean": 0.4363696168732145,
+     "crps_bp": 1.2949719463878873,
+     "brier_up_given_move": 0.30724131944444444,
+     "real_abs_med": 0.21568341988370904,
+     "sim_abs_med": 1.28240440508047,
+     "event_ratio_median": 9.60377358490566
+    },
+    "10.0": {
+     "n": 25,
+     "coverage80": 0.68,
+     "pit_mean": 0.425,
+     "crps_bp": 1.8114306922615975,
+     "brier_up_given_move": 0.3005642361111111,
+     "real_abs_med": 0.7492721359901526,
+     "sim_abs_med": 1.6512814943740342,
+     "event_ratio_median": 7.75
+    },
+    "sim_seconds_per_wall_second": 3.427013961815481
+   },
+   "B0p": {
+    "1.0": {
+     "n": 25,
+     "coverage80": 0.88,
+     "pit_mean": 0.46933163796473265,
+     "crps_bp": 0.4302516360137322,
+     "brier_up_given_move": 0.22036892361111113,
+     "real_abs_med": 0.0,
+     "sim_abs_med": 0.7491560599254139,
+     "event_ratio_median": 19.333333333333332
+    },
+    "5.0": {
+     "n": 25,
+     "coverage80": 0.72,
+     "pit_mean": 0.41136961687321455,
+     "crps_bp": 1.1624816276374792,
+     "brier_up_given_move": 0.2527499114229025,
+     "real_abs_med": 0.21568341988370904,
+     "sim_abs_med": 1.278629446165516,
+     "event_ratio_median": 10.511111111111111
+    },
+    "10.0": {
+     "n": 25,
+     "coverage80": 0.64,
+     "pit_mean": 0.39,
+     "crps_bp": 1.6745323656087168,
+     "brier_up_given_move": 0.2674495593692023,
+     "real_abs_med": 0.7492721359901526,
+     "sim_abs_med": 1.7125261593961527,
+     "event_ratio_median": 8.129213483146067
+    },
+    "sim_seconds_per_wall_second": 3.4601025151837224
+   }
+  }
+ },
+ "_provenance": {
+  "git_commit": "fc95baab07e3ad20cec54b1089c1f73fb9534844",
+  "argv": [
+   "sim_eval_v2.py",
+   "--events",
+   "/home/user/data/mmfm_fwd",
+   "--train-events",
+   "/home/user/data/mmfm_v2",
+   "--run",
+   "runs/v2",
+   "--forward",
+   "--heldout",
+   "--pairs",
+   "linkusd",
+   "--starts",
+   "25",
+   "--paths",
+   "16",
+   "--dt-scale",
+   "1.0",
+   "--temp",
+   "0.7",
+   "--clock",
+   "anchored",
+   "--out",
+   "results/v2_forward_sim_heldout.json"
+  ],
+  "utc": "2026-11-26T22:45:54Z"
+ }
+}
