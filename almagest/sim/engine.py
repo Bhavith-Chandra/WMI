@@ -11,7 +11,7 @@ NB = 10
 
 @njit(cache=True)
 def world_book_at(par, seed, n_warm, bid, ask):
-    ema = np.zeros(W.NEMA + 2)
+    ema = np.zeros(W.NSTATE)
     ss = np.zeros(int(par[8]) + 1, np.int64)
     sr = np.zeros(int(par[8]) + 1, np.int64)
     return W.warm_state(par, seed, n_warm, bid, ask, ema, ss, sr)

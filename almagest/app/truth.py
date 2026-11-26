@@ -14,7 +14,7 @@ class TruthLive(LiveModel):
         super().__init__(ckpt_path, context_seed=context_seed, context_len=context_len)
         n = context_len
         self.wb = np.zeros(W.P, np.int64); self.wa = np.zeros(W.P, np.int64)
-        self.wema = np.zeros(W.NEMA + 2); ns = int(self.par[8]) + 1
+        self.wema = np.zeros(W.NSTATE); ns = int(self.par[8]) + 1
         self.wss = np.zeros(ns, np.int64); self.wsr = np.zeros(ns, np.int64)
         self.wbb, self.wba = W.warm_state(self.par, context_seed, 20000 + n, self.wb, self.wa, self.wema,
                                           self.wss, self.wsr)

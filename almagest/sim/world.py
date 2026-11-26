@@ -178,9 +178,15 @@ def abs_price(bb, ba, typ, side, lvl):
 # 26 lambda_K (ticks per lot of remembered signed flow: market learns from flow), 27 tau_K (flow memory, events)
 # 28 p_anchor (share of limit orders placed uniformly within K_lat ticks of the slow reference r: latent liquidity,
 #    LLOB-style, density grows with distance from current price), 29 K_lat (ticks)
-NPAR = 30
+# 30 use_prop (1 = propagator anchor: reference = F + P, P = c * sum_s G(t-s) sign_s sqrt(size_s) over OBSERVED trades)
+# 31 c (ticks per sqrt lot), 32 G_inf (permanent fraction), 33..40 mode weights, 41..48 mode decay factors lambda_k
+NPAR = 49
 IF = NEMA       # ema[IF]  = fundamental F
 IM = NEMA + 1   # ema[IM]  = signed-flow memory M (what the market has inferred from trades)
+NP = 8          # propagator modes (World v2 'propagator anchor')
+IP0 = NEMA + 2  # ema[IP0:IP0+NP] = transient propagator modes
+IPINF = NEMA + 2 + NP   # permanent propagator part
+NSTATE = NEMA + 3 + NP
 
 
 def default_params():
@@ -207,7 +213,26 @@ def default_params():
     p[27] = 50000.0
     p[28] = 0.0
     p[29] = 10.0
+    p[30] = 0.0
     return p
+
+
+def set_propagator(p, c, beta, l0, g_inf, tau_max=1e5):
+    """Fill propagator params: G(l) = g_inf + (1-g_inf) (1 + l/l0)^-beta approximated by NP exponential modes
+    (NNLS on a log grid of lags). Returns max relative kernel error."""
+    from scipy.optimize import nnls
+    taus = np.geomspace(max(1.0, l0 / 4), tau_max * 2, NP)
+    lags = np.unique(np.geomspace(1, tau_max, 400).astype(int))
+    target = (1 + lags / l0) ** (-beta)
+    A = np.exp(-lags[:, None] / taus[None, :])
+    w, _ = nnls(A / target[:, None], np.ones(len(lags)))     # relative-error weighting
+    approx = A @ w
+    p[30] = 1.0
+    p[31] = c
+    p[32] = g_inf
+    p[33:41] = (1 - g_inf) * w
+    p[41:49] = np.exp(-1.0 / taus)
+    return float(np.max(np.abs(approx / target - 1)))
 
 
 @njit(cache=True)
@@ -226,6 +251,26 @@ def _sample_level_cancel(vol, best, sgn, total_w):
 
 
 @njit(cache=True)
+def credit(ema, par, side, size):
+    """An OBSERVED trade: flow memory and (if enabled) propagator modes."""
+    sg = 1.0 if side == 0 else -1.0
+    ema[IM] += sg * size
+    if par[30] > 0:
+        v = par[31] * sg * np.sqrt(size)
+        for k in range(NP):
+            ema[IP0 + k] += v * par[33 + k]
+        ema[IPINF] += v * par[32]
+
+
+@njit(cache=True)
+def prop_total(ema):
+    t = ema[IPINF]
+    for k in range(NP):
+        t += ema[IP0 + k]
+    return t
+
+
+@njit(cache=True)
 def world_policy(bid, ask, bb, ba, par, ema, split_sign, split_rem):
     """Sample one agent action from World given book + memory. Mutates splitter state."""
     ema[IF] += par[23] * np.random.standard_normal()
@@ -234,7 +279,17 @@ def world_policy(bid, ask, bb, ba, par, ema, split_sign, split_rem):
     r = 0.0
     for i in range(NEMA):
         r += par[11 + i] * ema[i]
-    z = (mid - r) / par[9]
+    anchor_inf = ema[IF] + par[26] * ema[IM]
+    z = (mid - r) / par[9]                     # market-order contrarian reference: price-based (no flow feedback)
+    if par[30] > 0:
+        for k in range(NP):
+            ema[IP0 + k] *= par[41 + k]
+        A = ema[IF] + prop_total(ema)          # LIQUIDITY anchor: quotes centre on fundamental + propagated flow
+        zl = (mid - A) / par[9]
+        anchor_inf = ema[IF]                   # informed traders know F only
+    else:
+        A = r
+        zl = z
     nb = 0
     na = 0
     for k in range(D):
@@ -250,7 +305,9 @@ def world_policy(bid, ask, bb, ba, par, ema, split_sign, split_rem):
         typ = 2
         ui = np.random.random()
         if ui < par[25]:
-            pb = 1.0 / (1.0 + np.exp(-par[24] * (ema[IF] + par[26] * ema[IM] - mid)))
+            pb = 1.0 / (1.0 + np.exp(-par[24] * (anchor_inf - mid)))
+            if par[30] > 0:
+                pb = 0.1 + 0.8 * pb
             side = 0 if np.random.random() < pb else 1
         elif np.random.random() < par[6]:
             j = np.random.randint(int(par[8]))
@@ -262,25 +319,27 @@ def world_policy(bid, ask, bb, ba, par, ema, split_sign, split_rem):
             split_rem[j] -= 1
         else:
             pbuy = 1.0 / (1.0 + np.exp(par[5] * z))
+            if par[30] > 0:                     # propagator Worlds: bounded contrarian skew (never one-sided)
+                pbuy = 0.1 + 0.8 * pbuy
             side = 0 if np.random.random() < pbuy else 1
         s = np.random.random()
         size = 1 if s < 0.4 else (2 if s < 0.7 else (3 if s < 0.88 else 4))
-        ema[IM] += size if side == 0 else -size
+        credit(ema, par, side, size)
         return typ, side, 0, size
     elif u < wm + wl:
         typ = 0
-        pbuy = 0.5 - 0.5 * np.tanh(par[4] * z)
+        pbuy = 0.5 - (0.4 if par[30] > 0 else 0.5) * np.tanh(par[4] * zl)  # liquidity skew around the anchor
         side = 0 if np.random.random() < pbuy else 1
         spread = ba - bb
         if np.random.random() < par[28]:
             k = np.random.randint(int(par[29]) + 1)
             if side == 0:
-                pr = int(np.floor(r)) - k
+                pr = int(np.floor(A)) - k
                 if pr >= ba:
                     pr = ba - 1
                 u = bb - pr
             else:
-                pr = int(np.ceil(r)) + k
+                pr = int(np.ceil(A)) + k
                 if pr <= bb:
                     pr = bb + 1
                 u = pr - ba
@@ -359,7 +418,7 @@ def run_branch(par, day_seed, n_warm, roll_seed, n_child, gap, n_silent_blocks, 
     Returns (start_mid, hash of agent event stream, agent market volume)."""
     bid = np.zeros(P, np.int64)
     ask = np.zeros(P, np.int64)
-    ema = np.zeros(NEMA + 2)
+    ema = np.zeros(NSTATE)
     ss = np.zeros(int(par[8]) + 1, np.int64)
     sr = np.zeros(int(par[8]) + 1, np.int64)
     bb, ba = warm_state(par, day_seed, n_warm, bid, ask, ema, ss, sr)
@@ -378,7 +437,7 @@ def run_branch(par, day_seed, n_warm, roll_seed, n_child, gap, n_silent_blocks, 
             bb, ba = _guard(bid, ask, bb, ba)
             if mode == 1:
                 # visible: the market observes the child trade (learns from flow); blind: it never does
-                ema[IM] += child_size if child_side == 0 else -child_size
+                credit(ema, par, child_side, child_size)
         for g in range(gap):
             if mode == 2:
                 typ, side, lvl, size = world_policy(vb, va, vbb, vba, par, ema, ss, sr)
@@ -427,7 +486,7 @@ def free_run(par, seed, n, out_mid, out_sign, out_vol):
     """Free generation from seed: per-event mid and trade sign (0 if no trade)."""
     bid = np.zeros(P, np.int64)
     ask = np.zeros(P, np.int64)
-    ema = np.zeros(NEMA + 2)
+    ema = np.zeros(NSTATE)
     ss = np.zeros(int(par[8]) + 1, np.int64)
     sr = np.zeros(int(par[8]) + 1, np.int64)
     bb, ba = warm_state(par, seed, 20000, bid, ask, ema, ss, sr)
@@ -458,7 +517,7 @@ def gen_stream(par, seed, n, ev, feat, mids, cm):
     feat[t] = book features before event t, mids[t] = mid before event t."""
     bid = np.zeros(P, np.int64)
     ask = np.zeros(P, np.int64)
-    ema = np.zeros(NEMA + 2)
+    ema = np.zeros(NSTATE)
     ss = np.zeros(int(par[8]) + 1, np.int64)
     sr = np.zeros(int(par[8]) + 1, np.int64)
     bb, ba = warm_state(par, seed, 20000, bid, ask, ema, ss, sr)
@@ -493,7 +552,7 @@ def day_snapshots(par, day_seeds, warms, sb, sa, sbb, sba, sema, sss, ssr):
     for d in prange(nd):
         bid = np.zeros(P, np.int64)
         ask = np.zeros(P, np.int64)
-        ema = np.zeros(NEMA + 2)
+        ema = np.zeros(NSTATE)
         ss = np.zeros(ns, np.int64)
         sr = np.zeros(ns, np.int64)
         bb, ba = warm_state(par, day_seeds[d], warms[0], bid, ask, ema, ss, sr)
@@ -532,7 +591,7 @@ def run_from(par, bid, ask, bb, ba, ema, ss, sr, roll_seed, n_child, gap, n_sile
             bb, ba, _ = apply_action(bid, ask, bb, ba, 2, child_side, 0, child_size)
             bb, ba = _guard(bid, ask, bb, ba)
             if mode == 1:
-                ema[IM] += child_size if child_side == 0 else -child_size
+                credit(ema, par, child_side, child_size)
         for g in range(gap):
             if mode == 2:
                 typ, side, lvl, size = world_policy(vb, va, vbb, vba, par, ema, ss, sr)
@@ -592,7 +651,7 @@ class Snapshots:
         self.sa = _np.zeros((nd, nw, P), _np.int64)
         self.sbb = _np.zeros((nd, nw), _np.int64)
         self.sba = _np.zeros((nd, nw), _np.int64)
-        self.sema = _np.zeros((nd, nw, NEMA + 2))
+        self.sema = _np.zeros((nd, nw, NSTATE))
         self.sss = _np.zeros((nd, nw, NSS), _np.int64)
         self.ssr = _np.zeros((nd, nw, NSS), _np.int64)
         assert int(par[8]) + 1 <= NSS
@@ -620,7 +679,7 @@ def gen_stream_inj(par, seed, n, inj, inj_side, inj_size, ev, feat, mids, cm, sr
     with src[t]=1. Otherwise identical to gen_stream (src=0)."""
     bid = np.zeros(P, np.int64)
     ask = np.zeros(P, np.int64)
-    ema = np.zeros(NEMA + 2)
+    ema = np.zeros(NSTATE)
     ss = np.zeros(int(par[8]) + 1, np.int64)
     sr = np.zeros(int(par[8]) + 1, np.int64)
     bb, ba = warm_state(par, seed, 20000, bid, ask, ema, ss, sr)
@@ -632,7 +691,7 @@ def gen_stream_inj(par, seed, n, inj, inj_side, inj_size, ev, feat, mids, cm, sr
             cm[t, 1, k] = 1 if (ba + k < P and ask[ba + k] > 0) else 0
         if inj[t] == 1:
             typ, side, lvl, size = 2, inj_side[t], 0, inj_size[t]
-            ema[IM] += size if side == 0 else -size
+            credit(ema, par, side, size)
             src[t] = 1
         else:
             typ, side, lvl, size = world_policy(bid, ask, bb, ba, par, ema, ss, sr)
@@ -656,8 +715,13 @@ def oracle_labels(par, bid, ask, bb, ba, ema, ss, sr, seeds, out):
     for i in prange(n):
         np.random.seed(seeds[i])
         im0 = ema[i, IM] * (1.0 - 1.0 / par[27])
+        pk0 = ema[i, IP0:IPINF + 1].copy()
+        if par[30] > 0:
+            for k in range(NP):
+                pk0[k] *= par[41 + k]
         typ, side, lvl, size = world_policy(bid[i], ask[i], bb[i], ba[i], par, ema[i], ss[i], sr[i])
         ema[i, IM] = im0
+        ema[i, IP0:IPINF + 1] = pk0
         out[i, 0] = typ
         out[i, 1] = side
         out[i, 2] = lvl
@@ -669,7 +733,7 @@ def credit_trade(par, ema, typ, side, size, bb, ba):
     """After the executed (model's) event: credit its trade to the flow memory and update the mid EMAs."""
     for i in prange(ema.shape[0]):
         if typ[i] == 2:
-            ema[i, IM] += size[i] if side[i] == 0 else -size[i]
+            credit(ema[i], par, side[i], size[i])
         _update_ema(ema[i], par, 0.5 * (bb[i] + ba[i]))
 
 
@@ -703,7 +767,7 @@ def gen_stream_forced(par, seed, n, f_typ, f_side, f_lvl, f_ep, f_size, ev, feat
     (skipped if nothing rests there). 2: market order. Labels are kept by the caller (never model inputs)."""
     bid = np.zeros(P, np.int64)
     ask = np.zeros(P, np.int64)
-    ema = np.zeros(NEMA + 2)
+    ema = np.zeros(NSTATE)
     ss = np.zeros(int(par[8]) + 1, np.int64)
     sr = np.zeros(int(par[8]) + 1, np.int64)
     bb, ba = warm_state(par, seed, 20000, bid, ask, ema, ss, sr)
@@ -739,7 +803,7 @@ def gen_stream_forced(par, seed, n, f_typ, f_side, f_lvl, f_ep, f_size, ev, feat
         if typ < 0:
             typ, side, lvl, size = world_policy(bid, ask, bb, ba, par, ema, ss, sr)
         elif typ == 2:
-            ema[IM] += size if side == 0 else -size
+            credit(ema, par, side, size)
         ev[t, 0] = typ
         ev[t, 1] = side
         ev[t, 2] = lvl
