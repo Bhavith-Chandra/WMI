@@ -35,3 +35,24 @@ Every result is reported, including misses.
   counts as passing). An interval bounded by a failure is dropped, and the segment is split there, so no context
   window spans the hole. The book is never corrected; this only changes what is excluded.
 * As in v1, the tail after a segment's last verification is kept (it cannot be verified before the connection ends).
+
+## Addendum v2-2 (simulator clock; decided on v2-VAL, before any forward data is built or unsealed)
+
+Observation (v2-val, 3 starts per pair, `--clock model`): the free-running simulator over-generates events
+2.0–3.6× already at the 1 s horizon (ethusd 2.9×, dogeusd 2.7×), while teacher-forced dt sampling on the same
+val data sums to 0.75–0.95× (ethusd) of the real elapsed time. Diagnosis: exposure feedback in the model's own
+clock, not a decoding bug. A dt_scale grid of 0.8–1.25 cannot remove a ~3× bias, and a larger per-pair scale
+would be horizon-dependent curve fitting.
+
+Change: the simulator used for criteria 1–4 runs with `clock="anchored"` (sim/rollout2.py docstring):
+MMFM generates event content and its internal clock; per path one u ~ U(0,1) draws N_1 ≤ N_5 ≤ N_10
+comonotonically from MMFM's own val-temperature-calibrated count heads (real context only), and the model's
+internal times are mapped piecewise-linearly onto those knots. Consequences, stated up front:
+- criterion 1 (event ratio) now tests MMFM's count heads + the coupling, not free-running timing;
+- criteria 2–4 (return coverage/PIT/CRPS) still test the generated event content per event;
+- the free-running clock is reported as a diagnostic (`--clock model`, purpose tag `sim-freeclock`), never as the criterion.
+Calibration grid on val changes to temperature ∈ {0.85, 1.0, 1.15} with dt_scale = 1.0, 20 starts per pair;
+the chosen config is frozen in runs/v2/sim_calibration.json with the model.
+
+B2 fairness note: the first B2-v2 run shared 4 CPU cores with calibration (load ≈ 8) and was aborted at
+16 min (log kept as runs/v2_b2_aborted_contention.log); B2-v2 is retrained alone for the full 60 min budget.

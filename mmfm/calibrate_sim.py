@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent
 def run(cfg, a, out):
     cmd = [sys.executable, "-I", str(ROOT / "sim_eval_v2.py"), "--events", a.events, "--run", a.run, "--split", "val",
            "--pairs", a.pairs, "--starts", str(a.starts), "--paths", str(a.paths), "--dt-scale", str(cfg[0]),
-           "--temp", str(cfg[1]), "--gens", "MMFM-sim", "--out", str(out)]
+           "--temp", str(cfg[1]), "--clock", "anchored", "--gens", "MMFM-sim", "--out", str(out)]
     subprocess.run(cmd, check=True, capture_output=True)
     r = json.loads(Path(out).read_text())
     loss, cells = [], []
@@ -41,10 +41,10 @@ def main():
     ap.add_argument("--run", default=str(ROOT / "runs/v2"))
     ap.add_argument("--events", default="/home/user/data/mmfm_v2")
     ap.add_argument("--pairs", default="ethusd,xrpusd,dogeusd")
-    ap.add_argument("--starts", type=int, default=12)
+    ap.add_argument("--starts", type=int, default=20)
     ap.add_argument("--paths", type=int, default=16)
-    ap.add_argument("--dt", default="0.8,1.0,1.25")
-    ap.add_argument("--temp", default="0.9,1.0")
+    ap.add_argument("--dt", default="1.0")
+    ap.add_argument("--temp", default="0.85,1.0,1.15")
     a = ap.parse_args()
     grid = list(itertools.product([float(x) for x in a.dt.split(",")], [float(x) for x in a.temp.split(",")]))
     out = Path(a.run) / "calib_tmp.json"
@@ -54,7 +54,7 @@ def main():
         res.append(dict(dt_scale=cfg[0], temp=cfg[1], loss=l_, cells=cells))
         print(f"dt_scale {cfg[0]} temp {cfg[1]} loss {l_:.3f}", flush=True)
     best = min(res, key=lambda r: r["loss"])
-    Path(a.run, "sim_calibration.json").write_text(json.dumps(dict(chosen=dict(dt_scale=best["dt_scale"], temp=best["temp"]),
+    Path(a.run, "sim_calibration.json").write_text(json.dumps(dict(chosen=dict(dt_scale=best["dt_scale"], temp=best["temp"], clock="anchored"),
                                                                    split="val", grid=res), indent=1))
     out.unlink(missing_ok=True)
     print("chosen", best["dt_scale"], best["temp"], best["loss"])

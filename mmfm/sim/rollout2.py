@@ -6,6 +6,15 @@ Decoding of a sampled token (act, side, px, size, dt):
          (WHOLE-LEVEL bin removes the level exactly -> the mid moves as in real books)
   TAKE   qty = sampled FRACTION x opposite touch quantity (WHOLE-TOUCH / sweep bins), limit from sampled depth
 The event actually applied is re-tokenised (with its pre-state and pre-event level quantity) and fed back.
+
+Clock (EVAL_v2 addendum v2-2):
+  clock="model"    : event times = the model's own sampled dt (free-running; over-generates 2-3.6x on v2-val
+                     because of exposure feedback, although teacher-forced dt is calibrated).
+  clock="anchored" : the model generates event CONTENT and its internal clock; per path one u~U(0,1) draws the
+                     event counts N_1<=N_5<=N_10 comonotonically from the val-temperature-calibrated count heads
+                     (conditioned on the real context only). Output times map the model's internal clock
+                     piecewise-linearly so that exactly N_h events fall in (0, h]; the within-segment burst
+                     structure is the model's own. Past the last knot the last segment's rate is extrapolated.
 """
 from __future__ import annotations
 
@@ -56,8 +65,10 @@ def context_from_history2(ev, st, lvq, tok: Tokenizer2, book_now: LevelBook, T):
 
 
 class Rollout2:
-    def __init__(self, model, tok: Tokenizer2, ctx: Context2, n_paths=16, seed=0, temperature=1.0, dt_scale=1.0):
-        self.tok, self.temp, self.dt_scale = tok, temperature, dt_scale
+    def __init__(self, model, tok: Tokenizer2, ctx: Context2, n_paths=16, seed=0, temperature=1.0, dt_scale=1.0,
+                 clock="model"):
+        assert clock in ("model", "anchored")
+        self.tok, self.temp, self.dt_scale, self.clock = tok, temperature, dt_scale, clock
         self.rng = np.random.default_rng(seed)
         self.g = torch.Generator().manual_seed(seed)
         self.fm = FastMMFM(model)
@@ -70,6 +81,55 @@ class Rollout2:
                            t=[ctx.last_us], mid=[0.5 * (s0[0] + s0[1])], alive=True, n_ev=0) for _ in range(n_paths)]
         self.t0 = ctx.last_us
         self.gen_seconds, self.n_steps = 0.0, 0
+        if clock == "anchored":
+            from data.tokenizer_v2 import HORIZONS
+            fc = direct_forecast(model, tok, ctx)
+            self.knot_s = np.array([0.0] + [float(h) for h in HORIZONS])
+            u = self.rng.random(n_paths)
+            for i, p in enumerate(self.paths):
+                n = np.maximum.accumulate([cnt_quantile(fc[k], u[i]) for k in range(len(HORIZONS))])
+                p["knots"] = np.r_[0, n].astype(np.int64)
+
+    def times(self, p):
+        """Output event times (us, absolute) for path p; index 0 = context end."""
+        t = np.asarray(p["t"], dtype=np.float64)
+        if self.clock == "model":
+            return t
+        n_ev = len(t) - 1
+        K, H = p["knots"], self.knot_s * 1e6
+        out = np.empty_like(t)
+        out[0] = self.t0
+        tau = t - self.t0
+        for k in range(1, len(K)):
+            a, b = K[k - 1], min(K[k], n_ev)
+            if b <= a:
+                continue
+            seg = tau[a:b + 1] - tau[a]
+            span = tau[K[k]] - tau[a] if K[k] <= n_ev else None
+            if span is None:  # segment not complete yet: map at the segment's mean rate
+                w = (np.arange(1, b - a + 1)) / (K[k] - a)
+            else:
+                w = seg[1:] / span if span > 0 else np.arange(1, b - a + 1) / (b - a)
+            w = np.clip(w, 1e-6, 1.0)  # segments are (H[k-1], H[k]]: a dt=0 burst at the boundary stays inside
+            out[a + 1:b + 1] = self.t0 + H[k - 1] + w * (H[k] - H[k - 1])
+        last = K[-1]
+        if n_ev > last:
+            k = len(K) - 1
+            while k > 0 and K[k] == K[k - 1]:
+                k -= 1
+            rate = (K[k] - K[k - 1]) / (H[k] - H[k - 1]) if k > 0 else max(K[-1], 1) / H[-1]
+            rate = max(rate, max(K[-1], 1) / H[-1] * 0.25)
+            out[last + 1:] = self.t0 + H[-1] + np.arange(1, n_ev - last + 1) / rate
+        return out
+
+    def last_time(self, p):
+        if self.clock == "model":
+            return p["us"]
+        n_ev = len(p["t"]) - 1
+        if n_ev >= p["knots"][-1]:
+            return self.times(p)[-1]
+        k = int(np.searchsorted(p["knots"], n_ev, side="right"))  # n_ev < K[k]; time < H[k]
+        return self.t0 + self.knot_s[k - 1] * 1e6
 
     def _concrete(self, p, row):
         tk = self.tok
@@ -172,7 +232,7 @@ class Rollout2:
     def run(self, horizon_s, max_steps=40000, wall_budget_s=None):
         ts = time.perf_counter()
         for _ in range(max_steps):
-            if all((not p["alive"]) or p["us"] - self.t0 >= horizon_s * 1e6 for p in self.paths):
+            if all((not p["alive"]) or self.last_time(p) - self.t0 >= horizon_s * 1e6 for p in self.paths):
                 break
             if wall_budget_s is not None and time.perf_counter() - ts > wall_budget_s:
                 break
@@ -182,15 +242,33 @@ class Rollout2:
     def mid_grid(self, grid_s):
         out = np.full((len(self.paths), len(grid_s)), np.nan)
         for i, p in enumerate(self.paths):
-            t = (np.array(p["t"]) - self.t0) / 1e6
+            t = (self.times(p) - self.t0) / 1e6
             m = np.array(p["mid"])
             idx = np.searchsorted(t, grid_s, side="right") - 1
-            ok = (idx >= 0) & (grid_s <= t[-1])
+            ok = (idx >= 0) & (grid_s * 1e6 <= self.last_time(p) - self.t0 + 1e-6)
             out[i, ok] = m[idx[ok]]
         return out
 
     def counts(self, grid_s):
-        return np.array([[int(np.sum((np.array(p["t"][1:]) - self.t0) <= h * 1e6)) for h in grid_s] for p in self.paths])
+        return np.array([[int(np.sum((self.times(p)[1:] - self.t0) <= h * 1e6)) for h in grid_s] for p in self.paths])
+
+
+def cnt_quantile(fc, u):
+    """Inverse CDF of the count head at u (uniform within the bin in log1p space)."""
+    p = np.asarray(fc["p_cnt"], dtype=np.float64)
+    p = p / p.sum()
+    e = np.asarray(fc["cnt_edges"], dtype=np.float64)
+    lo = np.r_[0.0, e]
+    hi = np.r_[e, e[-1] + (e[-1] - e[-2] if len(e) > 1 else 0.5)]
+    c = np.cumsum(p)
+    b = min(int(np.searchsorted(c, u, side="right")), len(p) - 1)
+    f = (u - (c[b] - p[b])) / max(p[b], 1e-12)
+    x = lo[b] + min(max(f, 0.0), 1.0) * (hi[b] - lo[b])
+    # bin b holds log1p(N) in (lo, hi]; map to an integer inside the bin
+    n = int(np.floor(np.expm1(x) + 1e-9))
+    n_lo = int(np.floor(np.expm1(lo[b]) + 1e-9)) + (1 if b > 0 else 0)
+    n_hi = max(int(np.floor(np.expm1(hi[b]) + 1e-9)), n_lo)
+    return int(min(max(n, n_lo), n_hi))
 
 
 @torch.no_grad()

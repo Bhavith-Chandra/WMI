@@ -144,26 +144,31 @@ def main():
     ap.add_argument("--gens", default="MMFM-sim,MMFM-direct,B1p,B0p")
     ap.add_argument("--train-events", default=None, help="events dir whose TRAIN split fits the count baselines")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--clock", default="anchored", choices=["anchored", "model"])
     a = ap.parse_args()
     events = Path(a.events)
     model, mhash = load_v2(a.run)
     tok = Tokenizer2.from_json(json.loads((Path(a.run) / "tokenizer.json").read_text()))
     gens = a.gens.split(",")
     tr_dir = Path(a.train_events or a.events)
-    train, _ = load(tr_dir, "train", tok)
-    purpose = "sim" + (f"-dt{a.dt_scale}" if a.dt_scale != 1 else "")
+    need_train = any(g in ("B1p", "B0p") for g in gens)
+    train = load(tr_dir, "train", tok)[0] if need_train else []
+    purpose = "sim" + (f"-dt{a.dt_scale}" if a.dt_scale != 1 else "") + ("" if a.clock == "anchored" else "-freeclock")
     chunks, sp = raw_chunks(events, a.split, include_heldout=("only" if a.heldout else False), forward=a.forward,
                             purpose=purpose + ("-heldout" if a.heldout else ""))
     rng = np.random.default_rng(0)
     res = dict(model_hash=mhash, split="forward" if a.forward else a.split, heldout=a.heldout, horizons=HORIZONS,
-               dt_scale=a.dt_scale, temp=a.temp, per_pair={})
+               dt_scale=a.dt_scale, temp=a.temp, clock=a.clock, per_pair={})
     for pair in a.pairs.split(","):
         cs = [c for c in chunks if c["pair"] == pair]
         if not cs:
             continue
-        tr_tokens = np.concatenate([c["tokens"] for c in train if c["pair"] == pair]) if any(c["pair"] == pair for c in train) \
-            else np.concatenate([c["tokens"] for c in train])
-        cg = dict(B1p=CountGen(tr_tokens, tok.vocab, True), B0p=CountGen(tr_tokens, tok.vocab, False))
+        cg = {}
+        if need_train:
+            tr_tokens = np.concatenate([c["tokens"] for c in train if c["pair"] == pair]) if any(c["pair"] == pair for c in train) \
+                else np.concatenate([c["tokens"] for c in train])
+            cg = dict(B1p=CountGen(tr_tokens, tok.vocab, True), B0p=CountGen(tr_tokens, tok.vocab, False))
         starts = []
         for c in cs:
             z = np.load(events / c["file"])
@@ -216,10 +221,13 @@ def main():
                         acc[g]["cnt"][h].append(np.array([fc[k]["cnt_values"][np.searchsorted(np.cumsum(pc), 0.5)]]))
                 else:
                     if g == "MMFM-sim":
-                        R = Rollout2(model, tok, ctx, n_paths=a.paths, seed=idx, temperature=a.temp, dt_scale=a.dt_scale)
+                        R = Rollout2(model, tok, ctx, n_paths=a.paths, seed=idx, temperature=a.temp, dt_scale=a.dt_scale, clock=a.clock)
                     else:
                         R = CountRollout(cg[g], tok, ctx, a.paths, idx)
                     R.run(max(HORIZONS), max_steps=60000)
+                    if a.verbose:
+                        print(f"  {pair} {g} start {idx} steps {R.n_steps if hasattr(R, 'n_steps') else '?'} "
+                              f"ev/path {[p['n_ev'] for p in R.paths][:4]} cnt10 {list(R.counts([10.0])[:4, 0]) if g == 'MMFM-sim' else ''} real10s {rr[10.0][1]} {time.perf_counter()-t0:.1f}s", file=sys.stderr, flush=True)
                     m = R.mid_grid(np.array(HORIZONS))
                     cnts = R.counts(HORIZONS)
                     for k, h in enumerate(HORIZONS):
