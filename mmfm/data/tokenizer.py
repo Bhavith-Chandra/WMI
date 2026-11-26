@@ -31,7 +31,7 @@ def raw_fields(ev, state):
     sweep = np.where(side == 1, (p - ba) / mid, (bb - p) / mid) * 1e4          # TAKE: beyond opposite touch
     px = np.where(typ == TAKE, np.maximum(sweep, 0.0), dist)
     notional = np.log10(np.maximum(ev["qty"] * mid, 1e-9))
-    dt = np.diff(ev["us"], prepend=ev["us"][0]).astype(np.float64)
+    dt = np.maximum(np.diff(ev["us"], prepend=ev["us"][0]), 0).astype(np.float64)  # stamps not monotonic across channels
     return typ, side, px, notional, dt, mid
 
 
@@ -61,7 +61,7 @@ def state_features(ev, state):
     after = np.concatenate([f[1:], f[-1:]], 0)
     # activity: mean inter-arrival of the last 32 events up to and including event i (NOT event i+1's dt,
     # which is a prediction target)
-    dt = np.diff(ev["us"], prepend=ev["us"][0]).astype(np.float64)
+    dt = np.maximum(np.diff(ev["us"], prepend=ev["us"][0]), 0).astype(np.float64)  # stamps not monotonic across channels
     act_rate = np.log1p(np.convolve(dt, np.ones(32) / 32, "full")[: len(dt)])
     after = np.concatenate([after, act_rate[:, None]], 1)
     return after.astype(np.float32)
@@ -77,6 +77,7 @@ class Tokenizer:
     feat_mean: np.ndarray
     feat_std: np.ndarray
     fit_split: dict
+    bin_q: dict = None  # field -> [n_bins, 9] empirical quantiles (train) of the raw value inside each bin
 
     @property
     def vocab(self):
@@ -104,6 +105,23 @@ class Tokenizer:
                   edges_take=cls._q(take, N_TAKE) if len(take) > N_TAKE else np.array([0.5, 1, 2, 4, 8, 16, 32.]),
                   edges_size=cls._q(sz, N_SIZE), edges_dt=cls._q(np.log10(dt[dt > 0]), N_DT),
                   feat_mean=np.nanmean(feats, 0), feat_std=np.nanstd(feats, 0) + 1e-6, fit_split=split_info)
+        # per-bin empirical quantiles of the raw quantity (for realistic within-bin decoding)
+        qs = np.linspace(0.05, 0.95, 9)
+        ev_all = np.concatenate([e for e, _ in segs]); st_all = np.concatenate([s_ for _, s_ in segs])
+        toks, _, _ = tok.encode(ev_all, st_all)
+        _, _, pxr, szr, dtr, _ = raw_fields(ev_all, st_all)
+        raw = dict(px=pxr, size=szr, dt=np.log10(np.maximum(dtr, 1e-9)))
+        bq = {}
+        for k, f in ((2, "px"), (3, "size"), (4, "dt")):
+            v = tok.vocab[f]
+            arr = np.full((v, 9), np.nan)
+            for b in range(v):
+                x = raw[f][toks[:, k] == b]
+                x = x[np.isfinite(x)]
+                if len(x):
+                    arr[b] = np.quantile(x, qs)
+            bq[f] = arr
+        tok.bin_q = bq
         return tok
 
     def encode(self, ev, st):
@@ -127,6 +145,8 @@ class Tokenizer:
 
     def to_json(self):
         d = {k: (v.tolist() if isinstance(v, np.ndarray) else v) for k, v in self.__dict__.items()}
+        if self.bin_q is not None:
+            d["bin_q"] = {k: np.where(np.isfinite(v), v, None).tolist() for k, v in self.bin_q.items()}
         d["hash"] = hashlib.sha256(json.dumps(d, sort_keys=True).encode()).hexdigest()
         return d
 
@@ -134,4 +154,39 @@ class Tokenizer:
     def from_json(cls, d):
         d = dict(d)
         d.pop("hash", None)
-        return cls(**{k: (np.array(v) if k != "fit_split" else v) for k, v in d.items()})
+        bq = d.pop("bin_q", None)
+        t = cls(**{k: (np.array(v) if k != "fit_split" else v) for k, v in d.items()})
+        if bq is not None:
+            t.bin_q = {k: np.array([[np.nan if x is None else x for x in row] for row in v], float) for k, v in bq.items()}
+        return t
+
+    @staticmethod
+    def _mid_of(e, j, lo_pad, hi_pad):
+        j = int(min(max(j, 0), len(e)))  # bins past the last unique edge (collapsed quantiles) -> top bin
+        lo = e[j - 1] if j > 0 else e[0] - lo_pad
+        hi = e[j] if j < len(e) else e[-1] + hi_pad
+        return 0.5 * (lo + hi)
+
+    def _edge_value(self, field, b):
+        """Fallback for a bin never seen in train: midpoint of its edges (raw units of bin_q)."""
+        if field == "size":
+            return self._mid_of(self.edges_size, b, 0.5, 0.5)
+        if field == "dt":
+            return self._mid_of(self.edges_dt, b - 1, 0.5, 0.5)
+        if b < N_INSIDE:
+            return min(self._mid_of(self.edges_inside, b, abs(self.edges_inside[0]), 0.0), 0.0)
+        if b == N_INSIDE:
+            return 0.0
+        if b <= N_INSIDE + N_DEEP:
+            return 10 ** self._mid_of(self.edges_deep, b - N_INSIDE - 1, 0.5, 0.5)
+        return max(self._mid_of(self.edges_take, b - N_INSIDE - 1 - N_DEEP, self.edges_take[0], self.edges_take[-1]), 0.0)
+
+    def sample_value(self, field, b, rng):
+        """Draw a raw value for bin b of field from the train within-bin quantiles (linear interpolation)."""
+        q = self.bin_q[field][b] if self.bin_q is not None else np.full(9, np.nan)
+        if not np.isfinite(q).any():
+            return self._edge_value(field, b)
+        q = q[np.isfinite(q)]
+        u = rng.random() * (len(q) - 1)
+        i = int(u)
+        return float(q[i] + (u - i) * (q[min(i + 1, len(q) - 1)] - q[i]))

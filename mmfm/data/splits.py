@@ -16,7 +16,7 @@ EMBARGO_US = 10 * 60 * 1_000_000
 FRAC = (0.70, 0.10, 0.20)
 
 
-def make(events: Path):
+def make(events: Path, embargo_us: int = EMBARGO_US):
     rep = json.loads((events / "build_report.json").read_text())
     segs = [s for p, ss in rep["pairs"].items() for s in ss if not s["excluded"]]
     t0 = min(s["t0_us"] for s in segs)
@@ -26,9 +26,13 @@ def make(events: Path):
     b2 = b1 + int(FRAC[1] * span)
     files = sorted((s["file"], s["sha256"]) for s in segs)
     h = hashlib.sha256(json.dumps(files).encode()).hexdigest()
-    return dict(t0_us=t0, t1_us=t1, train=[t0, b1 - EMBARGO_US], val=[b1, b2 - EMBARGO_US], test=[b2, t1],
-                embargo_us=EMBARGO_US, heldout_pair=HELDOUT, files=files, files_hash=h,
+    out = dict(t0_us=t0, t1_us=t1, train=[t0, b1 - embargo_us], val=[b1, b2 - embargo_us], test=[b2, t1],
+                embargo_us=embargo_us, heldout_pair=HELDOUT, files=files, files_hash=h,
                 build_until_ns=rep["until_ns"], rule="EVAL.md §1: 70/10/20 by wall clock, 10-min embargo before val and test")
+    for k in ("train", "val", "test"):
+        if out[k][1] - out[k][0] < 60_000_000:
+            raise SystemExit(f"split {k} has < 60 s ({out[k]}): span too short for the embargo; collect longer")
+    return out
 
 
 if __name__ == "__main__":
@@ -39,7 +43,7 @@ if __name__ == "__main__":
     p = Path(a.events) / "splits.json"
     if p.exists():
         sys.exit(f"{p} exists: splits are frozen (EVAL.md §1). Delete only with a committed reason.")
-    s = make(Path(a.events))
+    s = make(Path(a.events), embargo_us=(60_000_000 if a.dev else EMBARGO_US))
     dev = Path("/home/user/data/dev_cut_ns.txt")
     if dev.exists() and not a.dev:
         dev_us = int(dev.read_text()) // 1000

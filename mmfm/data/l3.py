@@ -212,88 +212,76 @@ def _lv_ticks(levels, tick):
     return [(int(round(p / tick)), q) for p, q in levels]
 
 
-def rebuild(pair, snap, snap_us, msgs, verify_snaps, hours, seg_id, tick=None, lockstep_every=50, t_lo_ns=None,
-            t_hi_ns=None, debug=None, want_state=False):
-    from sim.book import LevelBook  # local import: sim.book imports this module's constants
+class L3Processor:
+    """Message -> model-event logic (single implementation used by batch rebuild AND the live interface).
 
-    book = IdBook.from_snapshot(snap)
-    trades_by_ms, taker_traded, taker_first, taker_worst, traded_ids = {}, {}, {}, {}, {}
-    taker_done = set()  # takers whose TAKE was emitted at order_created time
-    for _, m in msgs:
-        if m["event"] == "trade":
-            d = m["data"]
-            us = int(d["microtimestamp"])
-            trades_by_ms.setdefault(us, []).append(d)
-            tid = int(d["buy_order_id"] if d["type"] == 0 else d["sell_order_id"])
-            taker_traded[tid] = taker_traded.get(tid, 0.0) + float(d["amount"])
-            taker_first[tid] = min(taker_first.get(tid, us), us)
-            px_ = float(d["price"])
-            taker_worst[tid] = (max if d["type"] == 0 else min)(taker_worst.get(tid, px_), px_)
-            traded_ids.setdefault(us, set()).update((int(d["buy_order_id"]), int(d["sell_order_id"])))
-    rows, verify, states = [], [], []
-    led = {oid: list(v) for oid, v in book.orders.items()}  # event-level ledger, starts equal to the snapshot
-    pend = sorted(verify_snaps, key=lambda p: p["us"])
-    taken = set()
-    lvl = LevelBook.from_idbook(book, tick) if tick else None
-    applied = n_ms = n_checked = n_div = 0
-    last_us = None
-    for idx, (_, m) in enumerate(msgs):
+    Trades must be registered (add_trade) before the order messages of the same matching step are handled;
+    batch registers all trades up front, live registers on arrival and handles order messages after a delay.
+    """
+
+    def __init__(self, snap, snap_us):
+        self.book = IdBook.from_snapshot(snap)
+        self.snap_us = int(snap_us)
+        self.led = {oid: list(v) for oid, v in self.book.orders.items()}  # event-level resting ledger
+        self.trades_by_ms, self.taker_traded, self.taker_first, self.taker_worst, self.traded_ids = {}, {}, {}, {}, {}
+        self.taker_done, self.taken = set(), set()
+
+    def add_trade(self, d):
+        us = int(d["microtimestamp"])
+        self.trades_by_ms.setdefault(us, []).append(d)
+        tid = int(d["buy_order_id"] if d["type"] == 0 else d["sell_order_id"])
+        self.taker_traded[tid] = self.taker_traded.get(tid, 0.0) + float(d["amount"])
+        self.taker_first[tid] = min(self.taker_first.get(tid, us), us)
+        px_ = float(d["price"])
+        self.taker_worst[tid] = (max if d["type"] == 0 else min)(self.taker_worst.get(tid, px_), px_)
+        self.traded_ids.setdefault(us, set()).update((int(d["buy_order_id"]), int(d["sell_order_id"])))
+
+    def prune(self, before_us):
+        """Live use: forget trade aggregates older than before_us (bounded memory)."""
+        for k in [k for k in self.trades_by_ms if k < before_us]:
+            for d in self.trades_by_ms.pop(k):
+                tid = int(d["buy_order_id"] if d["type"] == 0 else d["sell_order_id"])
+                for dd in (self.taker_traded, self.taker_first, self.taker_worst):
+                    dd.pop(tid, None)
+                self.taker_done.discard(tid)
+            self.traded_ids.pop(k, None)
+        self.taken = {x for x in self.taken if x[0] >= before_us}
+
+    def handle(self, m):
+        """Process one message (already registered if it is a trade). Returns list of event rows."""
         d = m["data"]
         us = int(d["microtimestamp"])
-        if us <= snap_us:
-            continue
-        n_before = len(rows)
-        pre = book.state() if want_state else None
-        if last_us is not None and us != last_us:
-            n_ms += 1
-            if lvl is not None:
-                for r in rows[applied:]:
-                    lvl.apply(r[1], r[2], int(round(r[3] / tick)), r[4])
-                applied = len(rows)
-                if n_ms % lockstep_every == 0:
-                    n_checked += 1
-                    bad = any(compare_levels(_lv_ticks(book.levels(sd, 10), tick), lvl.levels(sd, 10), 1e-7) < 1.0
-                              for sd in (BUY, SELL))
-                    n_div += bad
-                    if bad and debug is not None and not debug:
-                        debug.append(dict(us=last_us, id_levels={sd: _lv_ticks(book.levels(sd, 6), tick) for sd in (BUY, SELL)},
-                                          ev_levels={sd: lvl.levels(sd, 6) for sd in (BUY, SELL)},
-                                          recent=[(x[1]["event"], {k: x[1]["data"].get(k) for k in ("microtimestamp", "id", "order_type", "type", "price", "amount", "amount_traded", "buy_order_id", "sell_order_id")}) for x in msgs[max(0, idx - 25):idx]],
-                                          rows=rows[-12:]))
-            while pend and pend[0]["us"] < us:
-                p = pend.pop(0)
-                verify.append(dict(us=p["us"], **compare(book, load_snapshot(hours, pair, p["us"]))))
-        last_us = us
+        rows = []
+        if us <= self.snap_us:
+            return rows
         if m["event"] == "trade":
             taker = int(d["buy_order_id"] if d["type"] == 0 else d["sell_order_id"])
-            if (us, taker) in taken or taker in taker_done:
-                continue
-            same = [x for x in trades_by_ms[us] if x["type"] == d["type"]
+            if (us, taker) in self.taken or taker in self.taker_done:
+                return rows
+            same = [x for x in self.trades_by_ms[us] if x["type"] == d["type"]
                     and int(x["buy_order_id"] if x["type"] == 0 else x["sell_order_id"]) == taker]
             qty = sum(float(x["amount"]) for x in same)
             px = max(float(x["price"]) for x in same) if d["type"] == 0 else min(float(x["price"]) for x in same)
             rows.append((us, TAKE, BUY if d["type"] == 0 else SELL, px, qty, taker))
-            taken.add((us, taker))
-            if want_state:
-                states.extend([pre] * (len(rows) - n_before))
-            continue
+            self.taken.add((us, taker))
+            return rows
+        book, led = self.book, self.led
         oid = int(d["id"])
         side = BUY if int(d["order_type"]) == 0 else SELL
         price, amt = float(d["price"]), float(d["amount"])
         ev = m["event"]
-        traded_now = oid in traded_ids.get(us, ())
+        traded_now = oid in self.traded_ids.get(us, ())
         prev = book.orders.get(oid)
         if ev == "order_created":
             # aggressive part: this id's taker volume, if its trades fall in the same matching step (<= 50 ms;
             # Bitstamp sometimes stamps the trades 1 ms after the order_created)
-            agg_q = taker_traded.get(oid, 0.0) if abs(taker_first.get(oid, us) - us) <= 50_000 else 0.0
+            agg_q = self.taker_traded.get(oid, 0.0) if abs(self.taker_first.get(oid, us) - us) <= 50_000 else 0.0
             rest = max(amt - agg_q, 0.0)
-            if agg_q > 1e-12 and oid not in taker_done and not any(k[1] == oid for k in taken):
-                # matching happens before the remainder rests: TAKE first, then ADD of the remainder
-                rows.append((us, TAKE, side, taker_worst[oid], agg_q, oid))
-                taker_done.add(oid)
+            if agg_q > 1e-12 and oid not in self.taker_done and not any(k[1] == oid for k in self.taken):
+                rows.append((us, TAKE, side, self.taker_worst[oid], agg_q, oid))  # matching first, then rest
+                self.taker_done.add(oid)
             book.set(oid, side, price, amt)  # id-level truth (amount still to match during a sweep)
-            led[oid] = [side, price, rest]   # event-level resting quantity
+            led[oid] = [side, price, rest]
             if rest > 1e-12:
                 rows.append((us, ADD, side, price, rest, oid))
         elif ev == "order_changed":
@@ -321,8 +309,55 @@ def rebuild(pair, snap, snap_us, msgs, verify_snaps, hours, seg_id, tick=None, l
             q = min(amt, L[2]) if L is not None else 0.0
             if q > 1e-12:
                 rows.append((us, CANCEL, side, L[1], q, oid))
+        return rows
+
+
+def rebuild(pair, snap, snap_us, msgs, verify_snaps, hours, seg_id, tick=None, lockstep_every=50, t_lo_ns=None,
+            t_hi_ns=None, debug=None, want_state=False, ckpt_every_us=None, ckpt_levels=300):
+    from sim.book import LevelBook  # local import: sim.book imports this module's constants
+
+    P = L3Processor(snap, snap_us)
+    ckpts, next_ck = [], (snap_us + ckpt_every_us) if ckpt_every_us else None
+    book = P.book
+    for _, m in msgs:
+        if m["event"] == "trade":
+            P.add_trade(m["data"])
+    rows, verify, states = [], [], []
+    pend = sorted(verify_snaps, key=lambda p: p["us"])
+    lvl = LevelBook.from_idbook(book, tick) if tick else None
+    applied = n_ms = n_checked = n_div = 0
+    last_us = None
+    for idx, (_, m) in enumerate(msgs):
+        us = int(m["data"]["microtimestamp"])
+        if us <= snap_us:
+            continue
+        pre = book.state() if want_state else None
+        if next_ck is not None and us >= next_ck and last_us is not None and us != last_us:
+            # exact id-book checkpoint BEFORE event index len(rows) (book after all previous events)
+            ckpts.append((len(rows), last_us, book.levels(BUY, ckpt_levels), book.levels(SELL, ckpt_levels)))
+            next_ck = us + ckpt_every_us
+        if last_us is not None and us != last_us:
+            n_ms += 1
+            if lvl is not None:
+                for r in rows[applied:]:
+                    lvl.apply(r[1], r[2], int(round(r[3] / tick)), r[4])
+                applied = len(rows)
+                if n_ms % lockstep_every == 0:
+                    n_checked += 1
+                    bad = any(compare_levels(_lv_ticks(book.levels(sd, 10), tick), lvl.levels(sd, 10), 1e-7) < 1.0
+                              for sd in (BUY, SELL))
+                    n_div += bad
+                    if bad and debug is not None and not debug:
+                        debug.append(dict(us=last_us, id_levels={sd: _lv_ticks(book.levels(sd, 6), tick) for sd in (BUY, SELL)},
+                                          ev_levels={sd: lvl.levels(sd, 6) for sd in (BUY, SELL)}, rows=rows[-12:]))
+            while pend and pend[0]["us"] < us:
+                p = pend.pop(0)
+                verify.append(dict(us=p["us"], **compare(book, load_snapshot(hours, pair, p["us"]))))
+        last_us = us
+        new = P.handle(m)
+        rows.extend(new)
         if want_state:
-            states.extend([pre] * (len(rows) - n_before))
+            states.extend([pre] * len(new))
     for p in pend:
         verify.append(dict(us=p["us"], **compare(book, load_snapshot(hours, pair, p["us"]))))
     final = None
@@ -334,4 +369,4 @@ def rebuild(pair, snap, snap_us, msgs, verify_snaps, hours, seg_id, tick=None, l
     st = np.array(states, dtype=np.float64).reshape(-1, 6) if want_state else None
     return dict(pair=pair, seg=seg_id, snap_us=snap_us, events=np.array(rows, dtype=EV_DTYPE), verify=verify, state=st,
                 final_book=book, snapshot=snap, events_book=lvl, t_lo_ns=t_lo_ns, t_hi_ns=t_hi_ns,
-                lockstep=dict(ms=n_ms, checked=n_checked, diverged=n_div, final_top50_match=final))
+                lockstep=dict(ms=n_ms, checked=n_checked, diverged=n_div, final_top50_match=final), ckpts=ckpts)

@@ -44,7 +44,7 @@ def build(raw: Path, out: Path, until_ns: int, pairs):
                 continue
             r = rebuild(pair, load_snapshot(hours, pair, anch[0]["us"]), int(anch[0]["us"]),
                         [x for x in msgs if c_ns <= x[0] < t_hi], anch[1:], hours, k, TICK[pair], 200,
-                        t_lo_ns=c_ns, t_hi_ns=t_hi, want_state=True)
+                        t_lo_ns=c_ns, t_hi_ns=t_hi, want_state=True, ckpt_every_us=30_000_000)
             ev, stt = r["events"], r["state"]
             ok_verify = all(v["accept"] for v in r["verify"])
             excluded = (not ok_verify) or len(ev) < MIN_SEG_EVENTS
@@ -57,8 +57,19 @@ def build(raw: Path, out: Path, until_ns: int, pairs):
                 d = out / pair
                 d.mkdir(parents=True, exist_ok=True)
                 f = d / f"seg_{r['snap_us']}.npz"
+                ck = r["ckpts"]
+                L = 300
+                ck_idx = np.array([c[0] for c in ck], np.int64)
+                ck_b = np.full((len(ck), L, 2), np.nan)
+                ck_a = np.full((len(ck), L, 2), np.nan)
+                for j, c in enumerate(ck):
+                    if c[2]:
+                        ck_b[j, :len(c[2])] = c[2]
+                    if c[3]:
+                        ck_a[j, :len(c[3])] = c[3]
                 np.savez_compressed(f, us=ev["us"], type=ev["type"], side=ev["side"], price=ev["price"], qty=ev["qty"],
-                                    state=stt.astype(np.float64), tick=np.float64(TICK[pair]))
+                                    state=stt.astype(np.float64), tick=np.float64(TICK[pair]),
+                                    ck_idx=ck_idx, ck_bids=ck_b, ck_asks=ck_a)
                 info["file"] = str(f.relative_to(out))
                 info["sha256"] = hashlib.sha256(f.read_bytes()).hexdigest()
             segs.append(info)
