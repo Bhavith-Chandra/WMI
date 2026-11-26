@@ -20,7 +20,7 @@ torch.set_num_threads(1)
 class LiveReal3:
     def __init__(self, ckpt_path, product='BTC-USD'):
         ck = torch.load(ckpt_path, weights_only=False)
-        assert ck.get('version') in ('v3-real-exact', 'v3.1-real-exact'), 'LiveReal3 needs a v3 checkpoint'
+        assert str(ck.get('version', '')).startswith('v3'), 'LiveReal3 needs a v3 checkpoint'
         self.model = r3.arm_model(ck['cfg']); self.model.load_state_dict(ck['state']); self.model.eval()
         self.tab = ck['lot_table']
         self.arm, self.n_params, self.ckpt, self.dev_only = 'v3', self.model.n_params(), ckpt_path, True
@@ -75,10 +75,11 @@ class LiveReal3:
             x = self.model.embed(pv, torch.tensor(f[None], dtype=torch.float32),
                                  torch.tensor([dmid], dtype=torch.float32), self.sb.feat())
             z, self.state = self.model.trunk_step(x, self.state)
-            evt = torch.tensor([list(ev)])
+            ev = list(ev); ev[3] = int(X.size_class(ev[0], lots, qv))   # same size classes as training (r3.inputs)
+            evt = torch.tensor([ev])
             nll = self.model.loss_parts(z[:, None], evt[:, None], torch.tensor(cm[None, None].astype(np.int64)),
-                                        torch.tensor([[int(f[20])]])).sum().item()
-            self.prev, self.prev_lots = evt, float(lots)
+                                        torch.tensor([[int(f[20])]]), torch.tensor([[float(np.log1p(qv))]])).sum().item()
+            self.prev, self.prev_lots = evt, float(lots)   # (sizes as v3.1 classes: done in r3.inputs offline)
             self.n += 1; self.n_mkt += int(ev[0] == 2)
             self.surprise.append(nll); self.mids.append(float(mid)); self.times.append(float(t))
             self.lat.append(time.perf_counter() - t0)

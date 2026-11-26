@@ -81,12 +81,12 @@ class DiagRec(nn.Module):
 class LMM(nn.Module):
     def __init__(self, d=64, h=128, layers=2, mode='learned', slowbank=False, nsize=NSIZE, ndt=0, size_all=False,
                  src=False, cond_heads=False, tagch=False, ndom=0, tag_gain=1.0, gen_cal=None, nlvl=NLVL, nimp=0,
-                 nfeat=21, nsb_extra=0):
+                 nfeat=21, nsb_extra=0, size_cond=False):
         """v1 (synthetic): nsize=4, ndt=0, size only for markets. v2 (real): nsize=12 for all types, ndt=11 (Dt head)."""
         super().__init__()
         self.cfg = dict(d=d, h=h, layers=layers, mode=mode, slowbank=slowbank, nsize=nsize, ndt=ndt, size_all=size_all,
                         src=src, cond_heads=cond_heads, tagch=tagch, ndom=ndom, tag_gain=tag_gain,
-                        nlvl=nlvl, nimp=nimp, nfeat=nfeat, nsb_extra=nsb_extra)
+                        nlvl=nlvl, nimp=nimp, nfeat=nfeat, nsb_extra=nsb_extra, size_cond=size_cond)
         # v3 (replay-exact real data): nlvl = DR + 1 + nimp level classes; the last nimp limit classes mean 'improve
         # own best by k = 2..nimp+1 buckets' (valid only if spread > k); cancels use the first DR classes (book mask)
         self.nlvl, self.nimp, self.nfeat = nlvl, nimp, nfeat
@@ -129,6 +129,13 @@ class LMM(nn.Module):
             self.hc_lvl = nn.Linear(d, 6 * nlvl)
             self.hc_size = nn.Linear(d, 6 * nsize)
         self.c_size = nn.Embedding(nsize, d) if ndt else None
+        # size_cond (v3.4): size | (type, side, LEVEL, log queue volume at that level). Without it a cancel at the
+        # best and one 40 levels deep share one size law; whole-queue cancels at the best (21% real) came out at 6%
+        # in generation and limit sizes at the best x2 -> depth x2 within 200 events (found 2026-11-26).
+        self.size_cond = size_cond
+        if size_cond:
+            self.c_lvl_sz = nn.Embedding(nlvl, d)
+            self.q_sz = nn.Linear(1, d)
         self.h_dt = nn.Linear(d, ndt) if ndt else None
         self.hdim = h
 
@@ -179,14 +186,25 @@ class LMM(nn.Module):
             new.append(h)
         return x + self.mlp(x), new
 
-    def heads_logits(self, z, typ, side):
+    def size_input(self, zl, lvl=None, lq=None):
+        """Size-head input: zl (+ level and log-queue conditioning when size_cond)."""
+        if self.size_cond and lvl is not None:
+            return zl + self.c_lvl_sz(lvl) + self.q_sz(lq.unsqueeze(-1).float())
+        return zl
+
+    def size_logits(self, z, typ, side, lvl=None, lq=None):
+        zl = z + self.c_side(typ) + self.c_lvl(typ * 2 + side)
+        zz = self.size_input(zl, lvl, lq)
+        return _pick(self.hc_size(zz), typ * 2 + side, self.nsize) if self.cond_heads else self.h_size(zz)
+
+    def heads_logits(self, z, typ, side, lvl=None, lq=None):
         lt = self.h_typ(z)
         zs = z + self.c_side(typ)
         zl = zs + self.c_lvl(typ * 2 + side)
         if self.cond_heads:
             ls = _pick(self.hc_side(zs), typ, 2)
             ll = _pick(self.hc_lvl(zl), typ * 2 + side, self.nlvl)
-            lz = _pick(self.hc_size(zl), typ * 2 + side, self.nsize)
+            lz = _pick(self.hc_size(self.size_input(zl, lvl, lq)), typ * 2 + side, self.nsize)
             return lt, ls, ll, lz
         ls = self.h_side(zs)
         ll = self.h_lvl(zl)
@@ -204,10 +222,10 @@ class LMM(nn.Module):
             return _pick(self.hc_lvl(zl), typ * 2 + side, self.nlvl), _pick(self.hc_size(zl), typ * 2 + side, self.nsize)
         return self.h_lvl(zl), self.h_size(zl)
 
-    def loss(self, z, tgt, cmask, spread=None):
-        """tgt (B,T,4); cmask (B,T,2,D) cancel validity of the book BEFORE the event."""
+    def loss(self, z, tgt, cmask, spread=None, lq=None):
+        """tgt (B,T,4); cmask (B,T,2,D) cancel validity of the book BEFORE the event; lq log1p queue volume."""
         typ, side, lvl, size = tgt[..., 0], tgt[..., 1], tgt[..., 2], tgt[..., 3]
-        lt, ls, ll, lz = self.heads_logits(z, typ, side)
+        lt, ls, ll, lz = self.heads_logits(z, typ, side, lvl if self.size_cond else None, lq)
         ll = mask_lvl(ll, typ, side, cmask, spread, self.nimp)
         nll = F.cross_entropy(lt.reshape(-1, 3), typ.reshape(-1), reduction='none')
         nll = nll + F.cross_entropy(ls.reshape(-1, 2), side.reshape(-1), reduction='none')
@@ -229,10 +247,10 @@ class LMM(nn.Module):
             return (nll * w).sum() / w.sum().clamp(min=1)
         return nll.mean()
 
-    def loss_parts(self, z, tgt, cmask, spread=None):
+    def loss_parts(self, z, tgt, cmask, spread=None, lq=None):
         """v2 per-field NLL (B*T, 5): typ, side, lvl (non-market), size, dt."""
         typ, side, lvl, size = tgt[..., 0], tgt[..., 1], tgt[..., 2], tgt[..., 3]
-        lt, ls, ll, lz = self.heads_logits(z, typ, side)
+        lt, ls, ll, lz = self.heads_logits(z, typ, side, lvl if self.size_cond else None, lq)
         ll = mask_lvl(ll, typ, side, cmask, spread, self.nimp)
         zl = z + self.c_side(typ) + self.c_lvl(typ * 2 + side)
         ld = self.h_dt(zl + self.c_size(size))

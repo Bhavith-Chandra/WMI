@@ -68,6 +68,10 @@ def rollout_logp(model, g, T, gen):
         sp = torch.tensor(g.feat[:, 20], dtype=torch.long)
         llm = L.mask_lvl(ll, typ, sd, cm, sp, model.nimp)
         lvl = L.inv_cdf(llm.detach(), u[:, 2])
+        lvl = torch.where(typ == 2, torch.zeros_like(lvl), lvl)
+        qv = g.queue(torch.stack([typ, sd, lvl, lvl, lvl], 1).numpy().astype(np.int64))
+        if model.size_cond:
+            lz = model.size_logits(z, typ, sd, lvl, torch.tensor(np.log1p(qv), dtype=torch.float32))
         szb = L.inv_cdf(lz.detach(), u[:, 3])
         zl = z + model.c_side(typ) + model.c_lvl(typ * 2 + sd)
         ld = model.h_dt(zl + model.c_size(szb))
@@ -79,9 +83,8 @@ def rollout_logp(model, g, T, gen):
                 + torch.log_softmax(lz, -1).gather(1, szb[:, None])[:, 0]
                 + torch.log_softmax(ld, -1).gather(1, dtb[:, None])[:, 0])
         lp = lp + step
-        lvl = torch.where(typ == 2, torch.zeros_like(lvl), lvl)
         evn = torch.stack([typ, sd, lvl, szb, dtb], 1).numpy().astype(np.int64)
-        lots = r3.draw_lots(g.tab, evn, g.queue(evn), u[:, 5].numpy())
+        lots = r3.draw_lots(g.tab, evn, qv, u[:, 5].numpy())
         g.apply(evn, lots)
         g.state = [h for h in g.state]
         evs.append(evn); mids.append(g.mid())
@@ -173,7 +176,7 @@ def _nll(model, data):
         sl = slice(s, s + r3.WIN)
         x = model.embed(data['prev'][:, sl], data['feat'][:, sl], data['dmid'][:, sl], r3.sbx(model, data['sb'][:, sl]))
         z, state = model.trunk_seq(x, state)
-        tot = tot + model.loss(z, data['tgt'][:, sl], data['cm'][:, sl], data['spread'][:, sl]); n += 1
+        tot = tot + model.loss(z, data['tgt'][:, sl], data['cm'][:, sl], data['spread'][:, sl], data['lq'][:, sl]); n += 1
     return tot / n
 
 

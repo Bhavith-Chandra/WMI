@@ -117,7 +117,7 @@ def main():
     port = int(sys.argv[2]) if len(sys.argv) > 2 else 8765
     host = os.environ.get('ALMAGEST_HOST', '127.0.0.1')
     ver = torch.load(CKPT, weights_only=False).get('version')
-    if ver in ('v3-real-exact', 'v3.1-real-exact'):
+    if str(ver).startswith('v3'):
         from almagest.app.live_real3 import LiveReal3
         MODE = 'live'
         LM = LiveReal3(CKPT, os.environ.get('ALMAGEST_PRODUCT', 'BTC-USD'))

@@ -32,6 +32,7 @@ def arm_model(cfg=None):
         return L.LMM(**cfg)
     return L.LMM(mode='modebank', slowbank=True, cond_heads=True, nsize=X.NSZ, ndt=T.NDT, size_all=True,
                  nlvl=X.NLVL, nimp=X.KI, nfeat=X.NF, nsb_extra=L.NFB if FLOW else 0,
+                 size_cond=os.environ.get('SIZE_COND', '1') == '1',
                  d=int(os.environ.get('D_MODEL', 64)), h=int(os.environ.get('H_MODEL', 128)))
 
 
@@ -48,7 +49,8 @@ def inputs(ev, lots, feat, mids, cm, qv):
     fb = L.flowbank_offline(prev[:, 0] == 2, np.where(prev[:, 1] == 0, 1.0, -1.0), plots)
     sb = np.concatenate([sb, fb], 1)        # flow features always computed; the model uses them iff nsb_extra > 0
     return dict(prev=prev, feat=feat.astype(np.float32), dmid=dmid, sb=sb, tgt=ev, cm=cm,
-                spread=feat[:, 20].astype(np.int64), lots=lots, qv=qv)
+                spread=feat[:, 20].astype(np.int64), lots=lots, qv=qv,
+                lq=np.log1p(qv).astype(np.float32))
 
 
 def load_rows(cache, hours, with_meta=False):
@@ -77,7 +79,7 @@ def load_rows(cache, hours, with_meta=False):
     return rows
 
 
-TK = ('prev', 'feat', 'dmid', 'sb', 'tgt', 'cm', 'spread')
+TK = ('prev', 'feat', 'dmid', 'sb', 'tgt', 'cm', 'spread', 'lq')
 
 
 def batches(rows, bsz):
@@ -102,9 +104,9 @@ def run(model, data, opt=None, parts=False):
         x = model.embed(data['prev'][:, sl], data['feat'][:, sl], data['dmid'][:, sl], sbx(model, data['sb'][:, sl]))
         z, state = model.trunk_seq(x, state)
         if parts:
-            acc.append(model.loss_parts(z, data['tgt'][:, sl], data['cm'][:, sl], data['spread'][:, sl]).detach())
+            acc.append(model.loss_parts(z, data['tgt'][:, sl], data['cm'][:, sl], data['spread'][:, sl], data['lq'][:, sl]).detach())
             continue
-        loss = model.loss(z, data['tgt'][:, sl], data['cm'][:, sl], data['spread'][:, sl])
+        loss = model.loss(z, data['tgt'][:, sl], data['cm'][:, sl], data['spread'][:, sl], data['lq'][:, sl])
         if opt is not None:
             opt.zero_grad(); loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -174,7 +176,7 @@ def train(cache, split, out, passes=4):
             val = np.mean([run(model, b) for b in batches(vrows, 16)]) if vrows else float('nan')
         hist.append((float(trl), float(val)))
         print(f'pass {p} fit {trl:.4f} select {val:.4f} t {time.time()-t0:.0f}s', flush=True)
-    torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3.3-real-exact',
+    torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3.4-real-exact',
                     lot_table=lot_table(rows), DR=X.DR, KI=X.KI, NF=X.NF), out)
 
 
@@ -265,12 +267,15 @@ class Gen3:
         cm = torch.stack([torch.tensor(self.cmb), torch.tensor(self.cma)], 1)
         sp = torch.tensor(self.feat[:, 20], dtype=torch.long)
         lvl = L.inv_cdf(L.mask_lvl(ll, typ, sd, cm, sp, m.nimp), u[:, 2])
+        lvl = torch.where(typ == 2, torch.zeros_like(lvl), lvl)
+        qv = self.queue(torch.stack([typ, sd, lvl, lvl, lvl], 1).numpy().astype(np.int64))
+        if m.size_cond:
+            lz = m.size_logits(z, typ, sd, lvl, torch.tensor(np.log1p(qv), dtype=torch.float32))
         szb = L.inv_cdf(lz, u[:, 3])
         zl = z + m.c_side(typ) + m.c_lvl(typ * 2 + sd)
         dtb = L.inv_cdf(m.h_dt(zl + m.c_size(szb)), u[:, 4])
-        lvl = torch.where(typ == 2, torch.zeros_like(lvl), lvl)
         evn = torch.stack([typ, sd, lvl, szb, dtb], 1).numpy().astype(np.int64)
-        return evn, draw_lots(self.tab, evn, self.queue(evn), u[:, 5].numpy())
+        return evn, draw_lots(self.tab, evn, qv, u[:, 5].numpy())
 
     def queue(self, evn):
         """Queue volume each event would hit on the VIEW book (cancel: its level; market: opposite best)."""
