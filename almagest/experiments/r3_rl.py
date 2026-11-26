@@ -111,10 +111,11 @@ def main():
     tab = ck['lot_table']
     rows = r3.load_rows(cache, split['fit'], with_meta=True)
     nll_batches = list(r3.batches(rows, 8))
+    print('loaded rows', len(rows), flush=True)
     # held-out FIT evaluation windows (fixed, disjoint seed from training draws)
     vpicks = r3.pick_windows(rows, 16, 2000, seed=777)
-    vbatch, _ = r3.setup(model, rows, vpicks, tab)
-    s0, n0, _ = eval_fit(model, rows, vpicks, vbatch, tab)
+    tt = time.time(); vbatch, _ = r3.setup(model, rows, vpicks, tab); print('val setup s', round(time.time() - tt), flush=True)
+    tt = time.time(); s0, n0, _ = eval_fit(model, rows, vpicks, vbatch, tab); print('val eval s', round(time.time() - tt), flush=True)
     log = [dict(it=0, fit_val_score=s0, fit_val_pass=n0)]
     print(json.dumps(log[-1]), flush=True)
     best = (s0, 0); torch.save(dict(ck), outp + '_it0.pt')
