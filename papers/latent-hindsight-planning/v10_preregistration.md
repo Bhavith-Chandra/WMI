@@ -60,3 +60,11 @@ Same task, planners, calibration, test and hypotheses S1-S6, with three changes:
 3. Seeds: gate schedule 99997, planner 97, world 99996; calibration world 420000+s; test world 700000+s
    (all disjoint; tested). Results: fork_gate_v10b, fork_calib_v10b, fork_main_v10b.
 Belief and fork detection use the observed (noisy) state, never the true state.
+
+## Outcome of the v10b gate: FAILED on all 16 rungs -> subgoal redrawing untestable in this task (no further tuning)
+Forward low level, best case: A-only 0.20 but B-only 0.02 (narrow 0.40, T 100); B-only at most 0.12. Not pre-registered,
+computed from the gate episodes: the ceiling of ANY route-choice rule = P(A or B succeeds) - max(P(A), P(B)):
+forward low level +0.02 to +0.05 on every rung (idealised and with deployment realism); oracle low level +0.00 on every
+rung. In the same episodes, giving the low level the true latent raises the best fixed route's success by +0.17 to
++0.63 (values from generated/numbers.tex). Conclusion: in this task almost all of the value of hindsight lies in correcting execution of a subgoal, not in
+choosing a different subgoal; a perfect high-level redraw could add at most 5 points. Calibration and test were not run.

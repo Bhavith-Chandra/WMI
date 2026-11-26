@@ -155,7 +155,7 @@ which cancels its local bias. Combined with inference, $z$ is drawn from $q_t$.
 
 \paragraph{Hindsight in a hierarchy.} All levels share one belief $q_t(z)$, so evidence from one subgoal informs
 every later one. In our experiments the high level supplies fixed subgoals and hindsight acts through the shared
-belief; redrawing the subgoals themselves is discussed in Section~\ref{sec:lim}.
+belief; whether the high level should also redraw the subgoals from the posterior is tested in Section~\ref{sec:redraw}.
 
 % ===============================================================================================================
 \section{When must hindsight help? Theory}
@@ -263,6 +263,19 @@ spurious offset (about $-0.5$\,N), absorbing the world model's own bias, and the
 short of the wall while it does not. Subgoals placed in the open gap row protect the hierarchical planner from this.
 Hindsight inference can absorb model bias into the latent and hurt plans that depend on exact stopping distances near
 hazards.
+
+\paragraph{Redrawing subgoals from the posterior.}\label{sec:redraw} The original pitch of hindsight in a hierarchy is
+that the high level should redraw its subgoals after a surprise. We built a task in which the right subgoal should
+depend on the latent: one wall with a short narrow gap and a long wide detour, a strong crosswind threatening the narrow
+gap and a weak motor with headwind threatening the detour's time limit, and a high level that chooses the route at a fork
+point from the prior, from the hindsight posterior (via route-success models fitted on separate calibration episodes),
+or from the true latent. The pre-registered validity gate required each route to be the only successful one in at
+least 15\% of episodes. It failed on all \fkRungs{} rungs of its ladder, first with an oracle low level and then, in an
+amendment, with a forward low level, with and without deployment realism, so the test was not run. The gate episodes
+bound what any route-choice rule could achieve: choosing the better route for every episode with perfect foresight adds
+between \fkCeilFwdMin{} and \fkCeilFwdMax{} to the best fixed route with a forward low level, and \fkCeilOracleMax{} with
+an oracle low level, while giving the low level the true latent adds between \fkLowGainMin{} and \fkLowGainMax{}. In
+this task almost all of the value of hindsight lies in executing a subgoal correctly, not in choosing a different one.
 
 % ===============================================================================================================
 \section{Relabeling: anchoring the plan on what actually happened}
@@ -427,8 +440,9 @@ unoptimised and slower than the Python one at the paper's population size.
 \label{sec:lim}
 \textbf{Privileged training.} The world models are trained with the latent as an input, so the latent space is given,
 not learned; in a self-supervised world model \citep{lecun2022path,hjepa_2610_06805} it would have to be discovered, and its
-identifiability (Section~\ref{sec:ident}) becomes central. \textbf{Subgoals are not redrawn.} Hindsight acts through the
-shared belief; the high level does not change the subgoals. In an earlier river-crossing task designed to need subgoal
+identifiability (Section~\ref{sec:ident}) becomes central. \textbf{Subgoal redrawing is untested.} In the fork task (Section~\ref{sec:redraw}) route choice barely mattered, so
+the validity gate failed and the high-level comparison was not run; a task in which subgoal choice carries real value
+under a latent remains to be built. In an earlier river-crossing task designed to need subgoal
 redrawing (choosing between fording and a bridge), three pre-registered designs found no benefit (success \rvOneHind{} vs
 \rvOneFwd{}; \rvTwoHind{} vs \rvTwoFwd; and a design in which forward planning pushed through, \rvThreeFwd{}, while the
 oracle's bridge execution succeeded only \rvThreeOracle{} of the time). Execution and fast feedback decided those
@@ -453,8 +467,10 @@ of labour: the predictor models what is the same across worlds, a low-dimensiona
 one, and the agent infers that latent from its own recent history rather than marginalising it away at every step.
 Relabeling adds a second, model-light use of the same history, and the two combine. The gains appear where the theory
 says they must (persistent surprises, committed actions, delayed feedback) and vanish or reverse where it says they
-cannot. Three steps remain before this is a robot result: a latent learned without labels, a high level that redraws
-subgoals from the posterior, and a physical system.
+cannot. In the tasks we could build, hindsight earned its value by correcting the execution of subgoals; we found no
+task in which redrawing the subgoals themselves had more than a few points of value to offer. Three steps remain before
+this is a robot result: a latent learned without labels, a task where subgoal choice under a latent matters, and a
+physical system.
 
 \bibliographystyle{plainnat}
 \bibliography{../refs}
