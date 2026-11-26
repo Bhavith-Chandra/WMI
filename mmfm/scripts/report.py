@@ -41,13 +41,17 @@ def main():
         n_ev = sum(s["n_events"] for p in br["pairs"].values() for s in p if not s["excluded"])
         L += [f"**M6 data fidelity**: {acc}/{len(v)} snapshot verifications accepted "
               f"(mean order-id Jaccard {np.mean([x['id_jaccard'] for x in v]):.4f}); {n_ev:,} model events in used segments.", ""]
-    L += m1_table(J("m1_val.json"), "M1 val (selection split)")
-    L += m1_table(J("m1_test.json"), "M1 TEST (sealed, single unseal)")
-    L += m1_table(J("m1_heldout_test.json"), "M1 held-out pair, test period (zero-shot)")
-    m2 = J("m2_test.json")
+    L += m1_table(J("m1_val_ci.json") or J("m1_val.json"), "M1 val (selection split; 5-min block CIs)")
+    L += m1_table(J("m1_test_ci.json") or J("m1_test.json"), "M1 TEST (sealed; CIs recomputed with 5-min blocks, addendum 4)")
+    L += m1_table(J("m1_heldout_test_ci.json") or J("m1_heldout_test.json"), "M1 held-out pair linkusd, test period (zero-shot; addendum-4 CIs)")
+    o = J("m1_test.json")
+    if o:
+        v = o["models"][[k for k in o["models"] if "MMFM" in k][0]]["vs_best_baseline"]
+        L += [f"Original (defective, 20k-event-block) test CI for MMFM−B2: [{v['delta_ci95'][0]:+.3f}, {v['delta_ci95'][1]:+.3f}] — kept for the record.", ""]
+    m2 = J("m2_test_fixed.json") or J("m2_test.json")
     if m2:
-        L += ["**M2/M3 simulation realism, test** (start points = exact book checkpoints; lower CRPS/W1 better; PIT mean 0.5 and "
-              "event-count ratio 1.0 ideal)", "", "| pair | generator | h (s) | n | PIT mean | in central 80% | CRPS bp | W1 bp | Brier P(up) | event ratio |",
+        L += ["**M2/M3 simulation realism, test** (addendum-5 metrics; start points = exact book checkpoints; lower CRPS/W1 better; "
+              "PIT mean 0.5, central-80 coverage 0.8 and event-count ratio 1.0 ideal)", "", "| pair | generator | h (s) | n | PIT mean | in central 80% | CRPS bp | W1 bp | Brier P(up) | event ratio |",
               "|---|---|---|---|---|---|---|---|---|---|"]
         for pair, gs in m2["per_pair"].items():
             for g, s in gs.items():
