@@ -1,0 +1,7 @@
+{"fit": ["20261126T02", "20261126T03", "20261126T04", "20261126T05", "20261126T06"],
+ "embargo": ["20261126T07"],
+ "select": ["20261126T08"],
+ "gap_no_data": ["20261126T09", "20261126T10", "20261126T11", "20261126T12", "20261126T13", "20261126T14"],
+ "report": ["20261126T15", "20261126T16", "20261126T17"],
+ "registered": "2026-11-26T16:20Z, before any real-data model training",
+ "note": "Calendar split for all products; 1h embargo after fit; recording outage 09-14 acts as a natural >=6h gap before report. Report hours are touched once per frozen model, after 18:00Z."}
