@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Almagest Live</title>
 <style>
-:root{--bg:#fbfbfa;--fg:#1d1d1b;--mut:#76756f;--line:#e3e2dc;--bid:#1f7a4d;--ask:#b3402e;--acc:#2f5bd3;--band:rgba(47,91,211,.15);--band2:rgba(118,117,111,.18)}
-@media (prefers-color-scheme:dark){:root{--bg:#151514;--fg:#ecebe6;--mut:#9a998f;--line:#2c2c29;--bid:#47b37e;--ask:#e2725f;--acc:#7c9cf0;--band:rgba(124,156,240,.18);--band2:rgba(154,153,143,.2)}}
+:root{--bg:#fbfbfa;--fg:#1d1d1b;--mut:#76756f;--line:#e3e2dc;--bid:#1f7a4d;--ask:#b3402e;--acc:#2f5bd3;--band:rgba(47,91,211,.15);--band2:rgba(118,117,111,.18);--tru:#1f8a5a;--band3:rgba(31,138,90,.16)}
+@media (prefers-color-scheme:dark){:root{--bg:#151514;--fg:#ecebe6;--mut:#9a998f;--line:#2c2c29;--bid:#47b37e;--ask:#e2725f;--acc:#7c9cf0;--band:rgba(124,156,240,.18);--band2:rgba(154,153,143,.2);--tru:#5cc694;--band3:rgba(92,198,148,.18)}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif}
 header{display:flex;gap:16px;align-items:baseline;padding:14px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 h1{font-size:16px;margin:0;font-weight:600}.mut{color:var(--mut)}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
@@ -86,7 +86,7 @@ function render(s){
   $('bids').innerHTML=b.bids.map(a=>`<tr class="bid"><td>${a[0]}</td><td class="r">${a[1]}</td><td><span class="bar" style="width:${80*a[1]/mx}px;background:var(--bid)"></span></td></tr>`).join('');
   $('spread').textContent=`mid ${b.mid.toFixed(1)} · spread ${b.spread}`;
   const st=s.status;LIVE=st.mode==='live';
-  $('model').textContent=`${st.ckpt} · ${st.arm} · ${st.params.toLocaleString()} params`+(LIVE?` · LIVE ${st.product} (${st.feed}, read-only)`:' · simulated market')+(st.dev_only?' · DEV CHECKPOINT (not evaluated)':'');
+  $('model').textContent=`${st.ckpt} · ${st.arm} · ${st.params.toLocaleString()} params`+(LIVE?` · LIVE ${st.product} (${st.feed}, read-only)`:(st.mode==='truth'?' · TRUTH mode: ground-truth World runs the market, model shadows':' · model-generated market'))+(st.dev_only?' · DEV CHECKPOINT (not evaluated)':'');
   $('you').style.display=LIVE?'none':'';$('wlive').style.display=LIVE?'':'none';$('wsim').style.display=LIVE?'none':'';
   if(!LIVE)$('pnl').innerHTML=`<span>position</span><span>${st.pnl.position}</span><span>P&L (mid)</span><span>${st.pnl.mark_to_mid.toFixed(1)}</span>`;
   if(LIVE)$('spread').textContent=`$${(b.price_usd||0).toFixed(2)} · spread ${b.spread} × ${(b.kappa_usd||0).toFixed(2)} USD buckets · lot ${b.lot}`;
@@ -99,12 +99,13 @@ function toggle(){playing=!playing;$('play').textContent=playing?'Pause':'Play'}
 async function order(side){const r=await fetch('/api/order',{method:'POST',body:JSON.stringify({side,size:+$('qty').value})});const s=await r.json();if(s.error){$('lastfill').textContent=s.error;return}render(s);$('lastfill').textContent=`${s.fill.side} ${s.fill.qty} @ ${s.fill.avg_px.toFixed(2)}`}
 async function whatif(){const was=playing;playing=false;$('wbtn').disabled=true;$('wnote').textContent='simulating…';
   try{const r=await fetch('/api/whatif',{method:'POST',body:JSON.stringify({side:$('wside').value,children:+$('wch').value,child_size:+$('wsz').value,gap:+$('wgap').value,child_lots:+$('wlots').value,participation:(+$('wpart').value)/100,tail_blocks:+$('wtail').value,paths:+$('wp').value})});const d=await r.json();if(d.error)throw new Error(d.error);
-  const [x,w,h]=fit($('wi'));x.clearRect(0,0,w,h);const all=[...d.visible.lo,...d.visible.hi,...d.blind.lo,...d.blind.hi,0];const lo=Math.min(...all),hi=Math.max(...all);
+  const [x,w,h]=fit($('wi'));x.clearRect(0,0,w,h);const all=[...d.visible.lo,...d.visible.hi,...d.blind.lo,...d.blind.hi,0,...(d.truth?[...d.truth.lo,...d.truth.hi]:[])];const lo=Math.min(...all),hi=Math.max(...all);
   band(x,d.blind.lo,d.blind.hi,w,h,lo,hi,css('--band2'));band(x,d.visible.lo,d.visible.hi,w,h,lo,hi,css('--band'));
+  if(d.truth){band(x,d.truth.lo,d.truth.hi,w,h,lo,hi,css('--band3'));line(x,d.truth.mean,w,h,lo,hi,css('--tru'),2);}
   line(x,d.blind.mean,w,h,lo,hi,css('--mut'),1.2);line(x,d.visible.mean,w,h,lo,hi,css('--acc'),2);
   const X=d.children/d.blocks*(w-40)+4;x.strokeStyle=css('--line');x.setLineDash([3,3]);x.beginPath();x.moveTo(X,0);x.lineTo(X,h);x.stroke();x.setLineDash([]);axis(x,w,h,lo,hi);
   const u=d.units||'ticks',tt=(d.units==='bp')?` · horizon ≈ ${d.seconds[d.seconds.length-1].toFixed(1)} s market time`:'',cs=(d.compute_s!==undefined?d.compute_s:d.seconds);
-  $('wnote').textContent=`${d.paths} paired paths · peak ${d.peak.toFixed(2)} ${u} · end ${d.end.toFixed(2)} ${u} (end/peak ${(d.end/d.peak).toFixed(2)})${tt} · computed in ${cs.toFixed(1)} s${d.dev_only?' · DEV CHECKPOINT: not evaluated, do not use for decisions':''}. Blue = your order visible to the market; grey = blind (mechanical only). Dashed line = last child.`}
+  $('wnote').textContent=`${d.paths} paired paths · peak ${d.peak.toFixed(2)} ${u} · end ${d.end.toFixed(2)} ${u} (end/peak ${(d.end/d.peak).toFixed(2)})${tt} · computed in ${cs.toFixed(1)} s${d.dev_only?' · DEV CHECKPOINT: not evaluated, do not use for decisions':''}${d.truth?` · TRUTH peak ${d.truth.peak.toFixed(2)} end ${d.truth.end.toFixed(2)} (green)`:''}${d.impact_definition?' · directional impact (I_buy − I_sell)/2':''}. Blue = your order visible to the market; grey = blind (mechanical only). Dashed line = last child.`}
   catch(e){$('wnote').textContent='error: '+e.message}finally{$('wbtn').disabled=false;playing=was}}
 </script>
 </body>

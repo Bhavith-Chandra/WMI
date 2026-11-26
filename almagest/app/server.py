@@ -2,6 +2,8 @@
 
 usage: python -m almagest.app.server <checkpoint.pt> [port]
   v1 (synthetic) checkpoint -> 'sim' mode (model generates the market; you can trade in it)
+  ALMAGEST_MODE=truth + v1 checkpoint -> 'truth' mode (ground-truth World runs the market, model shadows it;
+      every what-if shows the model's directional impact next to the EXACT World counterfactual)
   v2-real checkpoint -> 'live' mode (read-only Coinbase feed, env ALMAGEST_PRODUCT=BTC-USD; what-if from live state)
 API (JSON):
   GET  /api/state?n=K        advance K model events, return book, recent mids, trades, status
@@ -17,6 +19,7 @@ sys.path.insert(0, __file__.rsplit('/almagest/', 1)[0])
 import torch  # noqa: E402
 from almagest.app.live import LiveModel  # noqa: E402
 from almagest.app.live_real import LiveReal  # noqa: E402
+from almagest.app.truth import TruthLive  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOCK = threading.Lock()
@@ -36,7 +39,7 @@ def snapshot(n_mid=600):
                     trades=[], status=st)
     b = LM.book()
     st = LM.status()
-    st['mode'] = 'sim'
+    st['mode'] = 'truth' if getattr(LM, 'mode', '') == 'truth' else 'sim'
     return dict(book=b, mids=LM.mid_hist[-n_mid:], trades=LM.trade_hist[-60:], status=st)
 
 
@@ -100,7 +103,8 @@ class H(BaseHTTPRequestHandler):
                     kw['child_size'] = max(1, min(kw.get('child_size', 2), 4))
                     return self._send(200, LM.whatif(**kw))
                 if u.path == '/api/reset':
-                    LM = LiveModel(CKPT, context_seed=int(req.get('seed', 7_000_001)))
+                    cls = TruthLive if getattr(LM, 'mode', '') == 'truth' else LiveModel
+                    LM = cls(CKPT, context_seed=int(req.get('seed', 7_000_001)))
                     return self._send(200, snapshot())
             except Exception as e:
                 return self._send(500, {'error': f'{type(e).__name__}: {e}'})
@@ -116,6 +120,8 @@ def main():
     if ver == 'v2-real':
         MODE = 'live'
         LM = LiveReal(CKPT, os.environ.get('ALMAGEST_PRODUCT', 'BTC-USD'))
+    elif os.environ.get('ALMAGEST_MODE') == 'truth':
+        LM = TruthLive(CKPT)          # ground-truth World runs the market; model shadows; what-if vs exact truth
     else:
         LM = LiveModel(CKPT)
     print(f'Almagest live: {CKPT} ({LM.n_params} params, arm={LM.arm}) on http://{host}:{port}', flush=True)
