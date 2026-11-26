@@ -3,7 +3,7 @@ operating point (eta=10%, N=100, aggressive children): delta~0.5, Y in [0.5,1], 
 diffusive price (H~0.5), persistent order flow (gamma in [0.3,0.8]).
 Calibration uses days 1000..1007 only; the confirmation run (e1_confirm) uses disjoint days 5000+.
 """
-import sys, json, time
+import sys, os, json, time
 import numpy as np
 sys.path.insert(0, __file__.rsplit('/almagest/', 1)[0])
 from almagest.sim import world as W, campaign as C
@@ -42,7 +42,9 @@ def main():
     for t in range(n_trials):
         theta = [rng.uniform(0.1, 3.0), rng.uniform(0.0, 1.0), rng.uniform(1.0, 12.0),
                  rng.uniform(-0.6, 1.0), rng.uniform(0.4, 0.95), rng.uniform(1.2, 1.9),
-                 rng.uniform(0.0, 0.6), rng.uniform(0.1, 2.0), rng.uniform(0.0, 0.6),
+                 rng.uniform(0.0, float(os.environ.get('SF_MAX', 0.6))),
+                 rng.uniform(float(os.environ.get('KF_MIN', 0.1)), float(os.environ.get('KF_MAX', 2.0))),
+                 rng.uniform(float(os.environ.get('PINF_MIN', 0.0)), float(os.environ.get('PINF_MAX', 0.6))),
                  rng.uniform(0.0, 1.0), rng.uniform(3.5, 6.5),
                  rng.uniform(0.0, 0.9), rng.uniform(2.0, 30.0)]
         p = make(theta)
