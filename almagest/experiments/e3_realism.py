@@ -86,8 +86,8 @@ class Gen:
     def step(self, u):
         m = self.m
         z = self._consume(np.ones(self.B, bool))
-        typ = L.inv_cdf(m.h_typ(z), u[:, 0])
-        sd = L.inv_cdf(m.side_logits(z, typ), u[:, 1])
+        typ = L.inv_cdf(m.gen_typ_logits(z), u[:, 0])
+        sd = L.inv_cdf(m.gen_side_logits(z, typ), u[:, 1])
         ll, lz = m.lvl_size_logits(z, typ, sd)
         cm = torch.stack([torch.tensor(self.cmb), torch.tensor(self.cma)], 1)
         lvl = L.inv_cdf(L.mask_lvl(ll, typ, sd, cm), u[:, 2])
@@ -138,22 +138,9 @@ def compare(g, r):
                 vol100_ratio=g['var'][1] / max(r['var'][1], 1e-12), vol1000_ratio=g['var'][2] / max(r['var'][2], 1e-12))
 
 
-def main():
-    cache, split, mp, out, which = sys.argv[1], json.load(open(sys.argv[2])), sys.argv[3], sys.argv[4], sys.argv[5]
-    nwin = int(sys.argv[6]) if len(sys.argv) > 6 else 64
-    assert which in ('select', 'report') and not os.path.exists(out)
-    ck = torch.load(mp, weights_only=False)
-    model, reset = arm_model(ck['arm'], cfg=ck.get('cfg')); model.load_state_dict(ck['state']); model.eval()
-    U = ck['arm'] == 'unified'
-    rows = [r for r in load_rows(cache, split[which], unified=U) if len(r['tgt']) >= 4 * WIN + GEN * 2]
-    rng = np.random.default_rng(0)
-    picks = []
-    for _ in range(nwin):
-        i = int(rng.integers(len(rows))); r = rows[i]
-        s = int(rng.integers(2, (len(r['tgt']) - GEN * 2) // WIN)) * WIN    # block-aligned start, >= 2 blocks of context
-        picks.append((i, s))
-    t0 = time.time()
-    # teacher-forced states at window starts
+def setup(model, rows, picks):
+    """Teacher-force the model on each window's real context; return batch(rep) -> (Gen, idx) and the seed books."""
+    nwin = len(picks)
     states, sbs, prevs, pfeats, pdmids, books = [], [], [], [], [], []
     with torch.no_grad():
         for i, s in picks:
@@ -164,7 +151,7 @@ def main():
                 x = model.embed(d['prev'][:, sl], d['feat'][:, sl], d['dmid'][:, sl], d['sb'][:, sl])
                 _, st = model.trunk_seq(x, st)
             states.append(st)
-            sb = L.SlowBank(1, tag=bool(getattr(model, 'tagch', False)))   # rebuild exactly from the row's history
+            sb = L.SlowBank(1, tag=bool(getattr(model, 'tagch', False)))
             pr = r['prev'][:s + 1]; lots = np.power(2.0, pr[:, 3])
             sv = np.where(pr[:, 0] == 2, np.where(pr[:, 1] == 0, 1, -1) * lots, 0.0)
             fv, dev = L.slowbank_offline(sv, r['dmid'][:s + 1].astype(float))
@@ -175,6 +162,7 @@ def main():
             sbs.append(sb); prevs.append(torch.tensor(r['prev'][s][None])); pfeats.append(torch.tensor(r['feat'][s][None]))
             pdmids.append(torch.tensor([float(r['dmid'][s])])); books.append(r['feat'][s])
     books = np.stack(books)
+    U = bool(getattr(model, 'ndom', 0))
 
     def batch(rep):
         idx = np.repeat(np.arange(nwin), rep)
@@ -185,14 +173,26 @@ def main():
         bid, ask, bb, ba = seed_book(books[idx])
         return Gen(model, st, sb, torch.cat([prevs[i] for i in idx]), torch.cat([pfeats[i] for i in idx]),
                    torch.cat([pdmids[i] for i in idx]), bid, ask, bb, ba, U), idx
+    return batch, books
 
-    res = dict(which=which, split=split, arm=ck['arm'], n_windows=nwin, gen_events=GEN)
-    # ---------------- B2/B3: free generation vs real continuation
+
+def pick_windows(rows, nwin, seed=0):
+    rng = np.random.default_rng(seed)
+    picks = []
+    for _ in range(nwin):
+        i = int(rng.integers(len(rows))); r = rows[i]
+        s = int(rng.integers(2, (len(r['tgt']) - GEN * 2) // WIN)) * WIN
+        picks.append((i, s))
+    return picks
+
+
+def b2(model, rows, picks, batch, gen_events=GEN, seed=1):
+    nwin = len(picks)
     with torch.no_grad():
         g, _ = batch(1)
         gen = []; mids = [g.mid()]; feats = []
-        gu = torch.Generator().manual_seed(1)
-        for t in range(GEN):
+        gu = torch.Generator().manual_seed(seed)
+        for t in range(gen_events):
             feats.append(g.feat.copy())
             gen.append(g.step(torch.rand(nwin, 5, generator=gu)))
             mids.append(g.mid())
@@ -200,18 +200,31 @@ def main():
     comps, floor = [], []
     for w, (i, s) in enumerate(picks):
         r = rows[i]
-        real = stats_from(r['tgt'][s:s + GEN], r['feat'][s:s + GEN], np.cumsum(r['dmid'][s:s + GEN]))
-        real2 = stats_from(r['tgt'][s + GEN:s + 2 * GEN], r['feat'][s + GEN:s + 2 * GEN],
-                           np.cumsum(r['dmid'][s + GEN:s + 2 * GEN]))
+        real = stats_from(r['tgt'][s:s + gen_events], r['feat'][s:s + gen_events], np.cumsum(r['dmid'][s:s + gen_events]))
+        real2 = stats_from(r['tgt'][s + gen_events:s + 2 * gen_events], r['feat'][s + gen_events:s + 2 * gen_events],
+                           np.cumsum(r['dmid'][s + gen_events:s + 2 * gen_events]))
         gs = stats_from(gen[w], feats[w], mids[w, 1:])
         comps.append(compare(gs, real)); floor.append(compare(real2, real))
+
     def agg(cs):
-        o = {}
-        for k in cs[0]:
-            v = np.array([c[k] for c in cs], float)
-            o[k] = np.nanmedian(v, 0).tolist()
-        return o
-    res['B2_model_vs_real'] = agg(comps); res['B2_noise_floor_real_vs_real'] = agg(floor)
+        return {k: np.nanmedian(np.array([c[k] for c in cs], float), 0).tolist() for k in cs[0]}
+    return agg(comps), agg(floor)
+
+
+def main():
+    cache, split, mp, out, which = sys.argv[1], json.load(open(sys.argv[2])), sys.argv[3], sys.argv[4], sys.argv[5]
+    nwin = int(sys.argv[6]) if len(sys.argv) > 6 else 64
+    assert which in ('select', 'report') and not os.path.exists(out)
+    ck = torch.load(mp, weights_only=False)
+    model, reset = arm_model(ck['arm'], cfg=ck.get('cfg')); model.load_state_dict(ck['state']); model.eval()
+    U = ck['arm'] == 'unified'
+    rows = [r for r in load_rows(cache, split[which], unified=U) if len(r['tgt']) >= 4 * WIN + GEN * 2]
+    picks = pick_windows(rows, nwin)
+    t0 = time.time()
+    batch, books = setup(model, rows, picks)
+    res = dict(which=which, split=split, arm=ck['arm'], n_windows=nwin, gen_events=GEN)
+    # ---------------- B2/B3: free generation vs real continuation
+    res['B2_model_vs_real'], res['B2_noise_floor_real_vs_real'] = b2(model, rows, picks, batch)
     print('B2 model', res['B2_model_vs_real'], '\nB2 floor', res['B2_noise_floor_real_vs_real'], flush=True)
     # ---------------- B5: directional impact of tagged own metaorders
     phi = float(np.median([np.mean(rows[i]['tgt'][s:s + GEN, 0] == 2) for i, s in picks]))

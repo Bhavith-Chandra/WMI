@@ -235,8 +235,8 @@ class LiveReal:
             for _ in range(gap):
                 z = consume(np.ones(B, bool))
                 u = torch.rand(paths, 5, generator=g)[torch.tensor(path)]
-                typ = L.inv_cdf(m.h_typ(z), u[:, 0])
-                sd = L.inv_cdf(m.side_logits(z, typ), u[:, 1])
+                typ = L.inv_cdf(m.gen_typ_logits(z), u[:, 0])
+                sd = L.inv_cdf(m.gen_side_logits(z, typ), u[:, 1])
                 zl = z + m.c_side(typ) + m.c_lvl(typ * 2 + sd)
                 cm = torch.stack([torch.tensor(cmb), torch.tensor(cma)], 1)
                 ll, lzz = m.lvl_size_logits(z, typ, sd)

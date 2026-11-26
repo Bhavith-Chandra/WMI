@@ -78,12 +78,16 @@ class DiagRec(nn.Module):
 
 class LMM(nn.Module):
     def __init__(self, d=64, h=128, layers=2, mode='learned', slowbank=False, nsize=NSIZE, ndt=0, size_all=False,
-                 src=False, cond_heads=False, tagch=False, ndom=0, tag_gain=1.0):
+                 src=False, cond_heads=False, tagch=False, ndom=0, tag_gain=1.0, gen_cal=None):
         """v1 (synthetic): nsize=4, ndt=0, size only for markets. v2 (real): nsize=12 for all types, ndt=11 (Dt head)."""
         super().__init__()
         self.cfg = dict(d=d, h=h, layers=layers, mode=mode, slowbank=slowbank, nsize=nsize, ndt=ndt, size_all=size_all,
                         src=src, cond_heads=cond_heads, tagch=tagch, ndom=ndom, tag_gain=tag_gain)
         self.tag_gain = float(tag_gain)   # Stage-3 post-training scalar: sensitivity to the own-order channel
+        # generation-time calibration (realism post-training on FIT data): side temperature, market-logit bias,
+        # type temperature. Teacher-forced likelihood is untouched (only sampling uses it).
+        self.gen_cal = dict(side_temp=1.0, mkt_bias=0.0, typ_temp=1.0, **(gen_cal or {}))
+        self.cfg['gen_cal'] = self.gen_cal
         # v2 token columns: 0 typ, 1 side, 2 lvl, 3 size bucket, 4 dt bucket, [5 src], [6 domain]
         self.ndom = ndom
         self.tagch = tagch
@@ -143,6 +147,13 @@ class LMM(nn.Module):
                 sb = torch.cat([sb[..., :2 * k], sb[..., 2 * k:] * self.tag_gain], -1)
             z.append(sb)
         return self.inproj(torch.cat(z, -1))
+
+    def gen_typ_logits(self, z):
+        lt = self.h_typ(z) / self.gen_cal['typ_temp']
+        return torch.cat([lt[..., :2], lt[..., 2:] + self.gen_cal['mkt_bias']], -1)
+
+    def gen_side_logits(self, z, typ):
+        return self.side_logits(z, typ) / self.gen_cal['side_temp']
 
     def init_state(self, B):
         return [torch.zeros(B, self.hdim) for _ in self.blocks]
