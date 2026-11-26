@@ -1,0 +1,96 @@
+{
+ "split": "heldout_test",
+ "n_tiles": 502,
+ "n_events": 31626,
+ "T": 64,
+ "models": {
+  "B0_zero_intelligence": {
+   "bits_per_event": 15.67028553381651,
+   "per_field": {
+    "act": 1.0024039025385783,
+    "side": 0.9757054150797907,
+    "px": 5.209590610242622,
+    "size": 4.584907913917219,
+    "dt": 3.897677692038497
+   },
+   "ci95": [
+    15.640400225096108,
+    15.719778135030726
+   ]
+  },
+  "B1_markov": {
+   "bits_per_event": 15.371474618938674,
+   "per_field": {
+    "act": 1.0107884250998105,
+    "side": 0.9585911402853768,
+    "px": 4.736111618084423,
+    "size": 4.797031589751424,
+    "dt": 3.8689518457172376
+   },
+   "ci95": [
+    15.305701426511867,
+    15.480400593698413
+   ]
+  },
+  "final_mmfm:MMFM": {
+   "bits_per_event": 13.44210433959961,
+   "per_field": {
+    "act": 1.0759531259536743,
+    "side": 0.9336275458335876,
+    "px": 4.321608543395996,
+    "size": 4.029773235321045,
+    "dt": 3.0811662673950195
+   },
+   "ci95": [
+    13.325932224741749,
+    13.51225341041635
+   ],
+   "vs_best_baseline": {
+    "baseline": "final_b2:FeatMLP",
+    "delta_bits": 0.2988128662109375,
+    "delta_ci95": [
+     0.2956864255286771,
+     0.3039900373729747
+    ]
+   }
+  },
+  "final_b2:FeatMLP": {
+   "bits_per_event": 13.143291473388672,
+   "per_field": {
+    "act": 1.0216623544692993,
+    "side": 0.9247357249259949,
+    "px": 4.21372652053833,
+    "size": 3.863433837890625,
+    "dt": 3.1197593212127686
+   },
+   "ci95": [
+    13.021942187368774,
+    13.216566984887672
+   ]
+  }
+ },
+ "model_hashes": {
+  "final_mmfm:MMFM": "0fd55e8ebc15825c9f7c7cf6e2c16875837516e8090345b241a83a2959eb56d3",
+  "final_b2:FeatMLP": "5e3f208352fcd0d4e9c719e258b7a028ac6be0de7ab9451753a84823712d7326"
+ },
+ "tokenizer_hash": "28c2725f8f8f0ad2489b06682714424535f546a7b1ce705aab42511a761d688c",
+ "splits_files_hash": "06cf74d60276ca788b90000c4e432677e68b764d0771b47fc8215d34625c6a9c",
+ "_provenance": {
+  "git_commit": "6e03be82afae72046c8b9c51d600b6257d319795",
+  "argv": [
+   "evaluate.py",
+   "--events",
+   "/home/user/data/mmfm_events",
+   "--runs",
+   "runs/final_mmfm",
+   "runs/final_b2",
+   "--split",
+   "heldout_test",
+   "--T",
+   "64",
+   "--out",
+   "results/m1_heldout_test.json"
+  ],
+  "utc": "2026-11-26T06:13:17Z"
+ }
+}
