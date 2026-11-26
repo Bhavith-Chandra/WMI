@@ -107,16 +107,21 @@ def run(model, data, opt=None, parts=False):
 
 
 def lot_table(rows):
-    """FIT-only within-class size quantiles: abs (3, NSZ, NQ) lots for limits/markets; frac (NSZ, NQ) queue fractions
-    for cancels (class NSZ-1 = whole queue)."""
-    ab = np.ones((3, X.NSZ, NQ), np.int64); fr = np.ones((X.NSZ, NQ))
-    ev = np.concatenate([r['tgt'] for r in rows]); lots = np.concatenate([r['lots'] for r in rows])
-    qv = np.concatenate([r['qv'] for r in rows])
+    """FIT-only within-class size quantiles. abs (3, NSZ, NQ): limits -> lots; markets -> fraction of the best
+    queue (classes < MKT_CLEAR) or lots in excess of it (classes > MKT_CLEAR). frac (NSZ, NQ): cancel fractions."""
+    ab = np.ones((3, X.NSZ, NQ)); fr = np.ones((X.NSZ, NQ))
+    ev = np.concatenate([r['tgt'] for r in rows]); lots = np.concatenate([r['lots'] for r in rows]).astype(float)
+    qv = np.concatenate([r['qv'] for r in rows]).astype(float)
     q = (np.arange(NQ) + 0.5) / NQ
-    for t in (0, 2):
-        for b in range(X.NSZ):
-            m = (ev[:, 0] == t) & (ev[:, 3] == b)
-            ab[t, b] = np.round(np.quantile(lots[m], q)) if m.sum() >= 20 else max(1, int(round(2 ** (b / 2 + 0.25))))
+    for b in range(X.NSZ):
+        m = (ev[:, 0] == 0) & (ev[:, 3] == b)
+        ab[0, b] = np.round(np.quantile(lots[m], q)) if m.sum() >= 20 else max(1, round(2 ** (b / 2 + 0.25)))
+        m = (ev[:, 0] == 2) & (ev[:, 3] == b)
+        val = np.where(b < X.MKT_CLEAR, lots / np.maximum(qv, 1), lots - qv)
+        if m.sum() >= 20:
+            ab[2, b] = np.quantile(val[m], q)
+        else:
+            ab[2, b] = 0.5 if b < X.MKT_CLEAR else max(1, round(2 ** ((b - 14) / 2 + 0.25)))
     for b in range(X.NSZ - 1):
         m = (ev[:, 0] == 1) & (ev[:, 3] == b)
         lo = 0.0 if b == 0 else X.FRAC_EDGES[b - 1]; hi = X.FRAC_EDGES[b] if b < len(X.FRAC_EDGES) else 1.0
@@ -125,12 +130,16 @@ def lot_table(rows):
 
 
 def draw_lots(tab, evn, qv, u):
-    """Generator size rule: cancels = fraction of the queue they hit (whole queue for the FULL class), others from
-    the within-class lot quantiles."""
+    """Generator size rule. cancels: fraction of the queue they hit (whole queue for FULL); markets: fraction of the
+    opposite best queue / exactly that queue / queue + excess; limits: within-class lot quantiles."""
     k = np.minimum((u * NQ).astype(int), NQ - 1)
-    a = tab['abs'][evn[:, 0], evn[:, 3], k]
-    c = np.where(evn[:, 3] == X.NSZ - 1, qv, np.maximum(1, np.round(tab['frac'][np.minimum(evn[:, 3], X.NSZ - 1), k] * qv)))
-    return np.where(evn[:, 0] == 1, np.minimum(c, np.maximum(qv, 1)), a).astype(np.int64)
+    q = np.maximum(qv, 1).astype(float)
+    v = tab['abs'][evn[:, 0], evn[:, 3], k]
+    lim = np.maximum(1, np.round(v))
+    mk = np.where(evn[:, 3] < X.MKT_CLEAR, np.clip(np.round(v * q), 1, np.maximum(q - 1, 1)),
+                  np.where(evn[:, 3] == X.MKT_CLEAR, q, q + np.maximum(1, np.round(v))))
+    c = np.where(evn[:, 3] == X.NSZ - 1, q, np.maximum(1, np.round(tab['frac'][np.minimum(evn[:, 3], X.NSZ - 1), k] * q)))
+    return np.where(evn[:, 0] == 1, np.minimum(c, q), np.where(evn[:, 0] == 2, mk, lim)).astype(np.int64)
 
 
 def train(cache, split, out, passes=4):
@@ -269,15 +278,17 @@ class Gen3:
 
     def inject(self, side, lots, vis, inj):
         """Our market order (child) of `lots`: hits REAL where inj, and VIEW (model sees it) where vis."""
+        side = np.broadcast_to(np.asarray(side, np.int64), (self.B,)).copy()
+        z0 = np.zeros(self.B, np.int64)
+        probe = np.stack([np.full(self.B, 2), side, z0, z0, z0], 1)
+        cls = X.size_class(probe[:, 0], np.full(self.B, lots), self.queue(probe))   # class w.r.t. the PRE-trade queue
         old = 0.5 * (self.vbb + self.vba).astype(float)
         if vis.any():
             self._consume(vis)
         E.inject(self.vb, self.va, self.rb, self.ra, self.vbb, self.vba, self.rbb, self.rba,
-                 np.asarray(side, np.int64), int(lots), vis.astype(np.int64), inj.astype(np.int64))
-        ev = torch.stack([torch.full((self.B,), 2), torch.as_tensor(np.asarray(side, np.int64)),
-                          torch.zeros(self.B, dtype=torch.long), torch.full((self.B,), int(X.size_class(2, lots, 0))),
-                          torch.zeros(self.B, dtype=torch.long)], 1)
-        self._pend(vis, ev, np.full(self.B, float(lots)), old)
+                 side, int(lots), vis.astype(np.int64), inj.astype(np.int64))
+        probe[:, 3] = cls
+        self._pend(vis, torch.as_tensor(probe), np.full(self.B, float(lots)), old)
 
     def mid(self):
         return 0.5 * (self.rbb + self.rba).astype(float)

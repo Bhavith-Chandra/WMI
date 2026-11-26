@@ -40,15 +40,24 @@ FRAC_EDGES = np.array([0.005, 0.01, 0.02, 0.03, 0.05, 0.075, 0.1, 0.15, 0.2, 0.2
                        0.675, 0.75, 0.825, 0.9, 0.95, 0.98, 0.995])   # 22 edges -> bins 0..22; bin 23 = FULL queue
 
 
+MKT_FRAC_EDGES = np.array([0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.45, 0.6, 0.75, 0.9, 0.97])  # bins 0..12 (<queue)
+MKT_CLEAR = 13                                                                                  # exactly the queue
+# 14..23: excess over the best queue, half-octaves of (lots - queue): 14 + min(9, floor(2 log2(excess)))
+
+
 def size_class(typ, lots, qv):
     """v3.1 (vectorised): limits/markets -> half-octave of lots (0..23); cancels -> fraction of the queue it hits
-    (bins 0..22 by FRAC_EDGES, 23 = the whole queue, exact). Cancel sizes relative to the queue are what keep
+    (bins 0..22 by FRAC_EDGES, 23 = the whole queue, exact); markets -> relative to the opposite best queue
+    (fraction bins / exactly clears it / half-octave excess = sweep depth). Cancel sizes relative to the queue are what keep
     generated queues from drifting (absolute within-bucket noise makes queues reflected random walks: depth x5)."""
     typ, lots, qv = np.asarray(typ), np.asarray(lots, float), np.asarray(qv, float)
     ab = np.minimum(NSZ - 1, np.floor(2 * np.log2(np.maximum(lots, 1)))).astype(np.int64)
     fr = lots / np.maximum(qv, 1)
     cb = np.where(lots >= qv, NSZ - 1, np.searchsorted(FRAC_EDGES, np.minimum(fr, 1.0), side='right'))
-    return np.where(typ == 1, cb, ab).astype(np.int64)
+    ex = np.maximum(lots - qv, 1)
+    mb = np.where(lots < qv, np.searchsorted(MKT_FRAC_EDGES, np.minimum(fr, 1.0), side='right'),
+                  np.where(lots == qv, MKT_CLEAR, 14 + np.minimum(9, np.floor(2 * np.log2(ex)))))
+    return np.where(typ == 1, cb, np.where(typ == 2, mb, ab)).astype(np.int64)
 
 
 def target_lots(v, q0):
