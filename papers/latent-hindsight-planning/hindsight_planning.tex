@@ -33,7 +33,9 @@ recovering \hiCapture{} of the possible improvement; the gain grows from \hkGain
 commits to longer open-loop segments, and it vanishes or reverses when the latent is redrawn, as the theory requires.
 Adding hindsight \emph{relabeling} (treating the past outcome closest to the current goal as a known example) to latent
 inference brings a repeated throwing task to within \vnHAOracleBoth--\vnHAOracleWind{} times the oracle's final error.
-\todo{v8 abstract sentence}
+On sealed test seeds with unmodelled physics, sensor noise, actuation delay and each planner's measured compute delay,
+forward planning nearly collapses (\dpFwdBoth{} success) while hindsight keeps \dpHindBoth{}, though it recovers only
+\dpCapture{} of the oracle's headroom there.
 Decisions take \latPostOne\,ms (95th percentile, one CPU thread), within a 500\,ms control budget. Every hypothesis
 was pre-registered; leakage, causality and simulator fidelity are checked by automated tests; failures are reported.
 \end{abstract}
@@ -357,7 +359,68 @@ about inferred latents should be made about identifiable combinations.
 prediction error to \rdTenStep{} of the frozen model's while last-residual reuse increases it to \rdResidTen; online
 fine-tuning is stronger here (\rdSgdFwdTen), and adding the posterior to it gives no further gain (\rdHybridSgd).
 
-%V8SECTION
+% ===============================================================================================================
+\section{Deployment realism and real time}
+\label{sec:deploy}
+
+Every result above assumes perfect sensing, instant actuation, free compute, and deployment physics that differ from
+training only through the latent. A deployed controller has none of these. We re-ran the hierarchical task on three
+\emph{sealed} seeds, never used for any design decision, with four realism factors fixed in advance:
+\textbf{unmodelled physics} (mass $\times U[0.8,1.25]$ and damping $\times U[0.7,1.4]$ per episode, which the world model never
+saw and which the oracle is not told); \textbf{sensor noise} (1\,cm on position, 5\,cm/s on velocity, on everything the
+planner sees); \textbf{actuation delay} of one control step (50\,ms); and \textbf{measured compute delay}. For the last,
+each planner's 95th-percentile decision time for one robot on one CPU thread was measured once on an idle machine and
+converted into control steps (\dpStepsHind{} for hindsight, \dpStepsFwd{} for forward planning); while a decision is being
+computed the robot keeps executing its previous plan, so a slower planner pays for its compute. Hazards and success are
+judged on the true state.
+
+\begin{table}[t]\centering\small
+\input{generated/tab_v8.tex}
+\caption{Main-goal success under deployment realism (sealed seeds, \dpEpisodes{} episodes per cell). ``Idealised'' is the
+persistent gain and wind regime of Table~\ref{tab:hier}; the deployment columns add unmodelled physics, sensor noise,
+actuation delay and measured compute delay.}
+\label{tab:v8}
+\end{table}
+
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{generated/v8_figure.png}
+\caption{(a) Success under deployment realism. (b) The realism factors one at a time (persistent gain and wind):
+delay, not noise or unmodelled physics, is what defeats forward planning.}
+\label{fig:v8}
+\end{figure}
+
+\paragraph{Results (Table~\ref{tab:v8}, Figure~\ref{fig:v8}).} All six pre-registered predictions held. Realism lowers
+every planner's success, and the drop is uneven. Under a persistent gain and wind, hierarchical forward planning nearly
+collapses (\dpFwdBoth), while the same planner with hindsight keeps \dpHindBoth{} (difference \dpDiffBoth, interval
+[\dpDiffLoBoth, \dpDiffHiBoth]); the particle posterior, which pays the same compute delay, reaches \dpPfBoth. The gain
+over forward planning is \dpGainRatio{} times its idealised size, but the absolute level is lower: hindsight recovers
+\dpCapture{} of the oracle's headroom here, against \hiCapture{} in the idealised task. Taken one at a time, unmodelled
+physics and sensor noise cost forward planning little (\abFwdMismatch{} and \abFwdNoise) and hindsight little
+(\abHindMismatch{} and \abHindNoise); delay is what matters, cutting forward planning to \abFwdDelay{} while hindsight
+keeps \abHindDelay. This is the commitment condition again: delay commits the robot to actions chosen on stale
+information, and a correct model of the world is what lets it act well on stale information.
+
+\paragraph{Controls.} With no latent, the Gaussian posterior is indistinguishable from forward planning (\dpHindNone{}
+vs \dpFwdNone), but the particle posterior costs success (\dpPfNone; difference \dpPfDiffNone). With a latent redrawn
+every second, every non-oracle planner fails (forward \dpFwdFresh, hindsight \dpHindFresh). Last-residual reuse, which
+was competitive in the idealised task, fails in every deployment condition including the one with no latent
+(\dpResidNone): under sensor noise it chases the noise, as Theorem~\ref{thm:residual} predicts.
+
+\begin{table}[t]\centering\small
+\input{generated/tab_latency.tex}
+\caption{Decision and belief-update latency for one robot, one CPU thread (\latCPU), production configuration
+(300 candidate plans, 3 CEM iterations, horizon 15, five-member ensemble).}
+\label{tab:latency}
+\end{table}
+
+\paragraph{Real time.} A decision with the Gaussian posterior takes \latPostOne\,ms at the 95th percentile on one thread
+(Table~\ref{tab:latency}), against \latFwdOne\,ms for forward planning; the belief update takes \latObsPost\,ms. With
+open-loop chunks of 0.5\,s, planning fits within the budget with room to spare. An interactive version of the task runs
+the same seed-0 models and planners in a web browser against a 20\,Hz control clock, with planning in background threads
+so that compute latency acts in real time (\texttt{demo/}); its physics, network outputs, belief update and plan costs
+match the Python and MuJoCo implementation to between $10^{-16}$ and $10^{-7}$. That browser implementation is
+unoptimised and slower than the Python one at the paper's population size.
+
 
 % ===============================================================================================================
 \section{Limitations and negative results}
