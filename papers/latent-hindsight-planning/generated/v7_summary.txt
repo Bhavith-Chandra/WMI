@@ -1,0 +1,44 @@
+main: seeds [0, 1, 2], commits ['484bf30', '5e36910', '789a0d5']
+K10/both {'flat:forward': 0.04, 'flat:hindsight_posterior': 0.0, 'hier:forward': 0.547, 'hier:hindsight_latent_pf_adapt': 0.833, 'hier:hindsight_posterior': 0.86, 'hier:online_sgd': 0.64, 'hier:oracle_latent': 0.893, 'hier:residual': 0.773}
+K10/fresh {'flat:forward': 0.013, 'flat:hindsight_posterior': 0.0, 'hier:forward': 0.36, 'hier:hindsight_latent_pf_adapt': 0.373, 'hier:hindsight_posterior': 0.253, 'hier:online_sgd': 0.373, 'hier:oracle_latent': 0.94, 'hier:residual': 0.393}
+K10/none {'flat:forward': 0.407, 'flat:hindsight_posterior': 0.0, 'hier:forward': 1.0, 'hier:hindsight_latent_pf_adapt': 1.0, 'hier:hindsight_posterior': 1.0, 'hier:online_sgd': 1.0, 'hier:oracle_latent': 1.0, 'hier:residual': 1.0}
+K10/wind {'flat:forward': 0.093, 'flat:hindsight_posterior': 0.0, 'hier:forward': 0.727, 'hier:hindsight_latent_pf_adapt': 0.947, 'hier:hindsight_posterior': 0.94, 'hier:online_sgd': 0.84, 'hier:oracle_latent': 0.98, 'hier:residual': 0.953}
+none flat:forward - hier:forward = -0.593 [-0.673, -0.513]
+none flat:hindsight_posterior - hier:forward = -1.000 [-1.0, -1.0]
+none hier:forward - hier:forward = +0.000 [0.0, 0.0]
+none hier:hindsight_latent_pf_adapt - hier:forward = +0.000 [0.0, 0.0]
+none hier:hindsight_posterior - hier:forward = +0.000 [0.0, 0.0]
+none hier:online_sgd - hier:forward = +0.000 [0.0, 0.0]
+none hier:oracle_latent - hier:forward = +0.000 [0.0, 0.0]
+none hier:residual - hier:forward = +0.000 [0.0, 0.0]
+wind flat:forward - hier:forward = -0.633 [-0.713, -0.547]
+wind flat:hindsight_posterior - hier:forward = -0.727 [-0.793, -0.653]
+wind hier:forward - hier:forward = +0.000 [0.0, 0.0]
+wind hier:hindsight_latent_pf_adapt - hier:forward = +0.220 [0.153, 0.293]
+wind hier:hindsight_posterior - hier:forward = +0.213 [0.147, 0.28]
+wind hier:online_sgd - hier:forward = +0.113 [0.06, 0.167]
+wind hier:oracle_latent - hier:forward = +0.253 [0.187, 0.32]
+wind hier:residual - hier:forward = +0.227 [0.16, 0.3]
+both flat:forward - hier:forward = -0.507 [-0.587, -0.427]
+both flat:hindsight_posterior - hier:forward = -0.547 [-0.627, -0.467]
+both hier:forward - hier:forward = +0.000 [0.0, 0.0]
+both hier:hindsight_latent_pf_adapt - hier:forward = +0.287 [0.213, 0.36]
+both hier:hindsight_posterior - hier:forward = +0.313 [0.24, 0.393]
+both hier:online_sgd - hier:forward = +0.093 [0.033, 0.153]
+both hier:oracle_latent - hier:forward = +0.347 [0.273, 0.427]
+both hier:residual - hier:forward = +0.227 [0.153, 0.3]
+fresh flat:forward - hier:forward = -0.347 [-0.42, -0.267]
+fresh flat:hindsight_posterior - hier:forward = -0.360 [-0.44, -0.287]
+fresh hier:forward - hier:forward = +0.000 [0.0, 0.0]
+fresh hier:hindsight_latent_pf_adapt - hier:forward = +0.013 [-0.08, 0.107]
+fresh hier:hindsight_posterior - hier:forward = -0.107 [-0.2, -0.013]
+fresh hier:online_sgd - hier:forward = +0.013 [-0.053, 0.087]
+fresh hier:oracle_latent - hier:forward = +0.580 [0.5, 0.66]
+fresh hier:residual - hier:forward = +0.033 [-0.053, 0.12]
+H6 capture = 0.904
+SUPPORTED H1 none: hier:forward > flat:forward
+SUPPORTED H2 wind/both: posterior and pf_adapt > hier:forward
+SUPPORTED H3 none/fresh: posterior not significantly > hier:forward
+SUPPORTED H4 wind/both: hier hindsight > flat hindsight
+SUPPORTED H5 both: posterior > residual and > online_sgd
+SUPPORTED H6 both: capture >= 0.5

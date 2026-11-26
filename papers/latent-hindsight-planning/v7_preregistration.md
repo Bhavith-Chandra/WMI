@@ -41,3 +41,23 @@ oracle - forward success in `both` >= 0.10 (the latent matters). If none passes,
 - H7 (commitment): `both`: success gain of hier:hindsight_posterior over hier:forward is larger at K=20 than at K=1,
   and Spearman(K, gain) over K in {1,5,10,20} > 0.
 Secondary (descriptive, no rule): subgoal index at failure; time to success; trajectories.
+
+## Outcome, main run (3 seeds x 50 episodes, K = 10; analysis rules from 675de01)
+Main-goal success (difference to hier:forward, 95% paired bootstrap):
+| regime | flat fwd | hier fwd | hier + residual | hier + online SGD | hier + hindsight | hier + hindsight (particles) | hier oracle |
+|---|---|---|---|---|---|---|---|
+| none | 0.407 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 |
+| wind | 0.093 | 0.727 | 0.953 | 0.840 | 0.940 (+0.213 [0.147, 0.280]) | 0.947 | 0.980 |
+| both | 0.040 | 0.547 | 0.773 | 0.640 | 0.860 (+0.313 [0.240, 0.393]) | 0.833 | 0.893 |
+| fresh | 0.013 | 0.360 | 0.393 | 0.373 | 0.253 (-0.107 [-0.200, -0.013]) | 0.373 | 0.940 |
+
+H1-H6 SUPPORTED (H6 capture 0.904). H7 pending the K-sweep.
+
+Unexpected, not pre-registered: flat + hindsight succeeds in 0% of episodes in every regime, including `none` (flat forward 0.407).
+Diagnosis (ad hoc, seed-0 models): failures are head-on impacts on the first wall near y = 0.1, about step 27; speeds
+are within the training distribution (max 1.2-1.7 m/s vs training p99 4.4 m/s), so it is not extrapolation. With no
+latent at all, the posterior acquires a spurious offset (w on vx about -0.025 per step, ~ -0.5 N; theta about +0.15):
+it absorbs the world model's own bias. The likely mechanism is that the biased belief predicts the puck stops short of
+the wall while it does not. The hierarchical planner's subgoals lie in the open gap row, so it does not depend on precise
+stopping in front of a wall. Status: likely, not proven. Lesson: hindsight can absorb model bias into the latent and
+hurt when the plan depends on exact stopping distances near hazards.
