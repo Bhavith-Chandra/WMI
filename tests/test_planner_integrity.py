@@ -73,8 +73,9 @@ def test_causality(planner):
 def test_rng_streams_disjoint():
     seeds = [0, 1, 2]
     train = set(seeds); test_sched = {10_000 + s for s in seeds}; planner = {20_000 + s for s in seeds}
-    gate = {99, 99_999}; sealed = {100_000 + s for s in (100, 101, 102)} | {200_000 + s for s in (100, 101, 102)} | {300_000 + s for s in (100, 101, 102)}
-    groups = [train, test_sched, planner, gate, sealed]
+    gate = {99, 99_999, 98, 99_998}; fork = {400_000 + s for s in seeds} | {410_000 + s for s in seeds} | {500_000 + s for s in seeds} | {600_000 + s for s in seeds}
+    sealed = {100_000 + s for s in (100, 101, 102)} | {200_000 + s for s in (100, 101, 102)} | {300_000 + s for s in (100, 101, 102)}
+    groups = [train, test_sched, planner, gate, sealed, fork]
     for i in range(len(groups)):
         for j in range(i + 1, len(groups)):
             assert not groups[i] & groups[j]
@@ -101,3 +102,27 @@ def test_realism_changes_outcome():
               {"act_delay": 2}, {"compute_steps": 2}):
         b = np.array(hier.run_hier("hier:forward", Mu, Mc, sch, dict(CFG), 11, world=w)["traj"])
         assert not np.allclose(a, b, equal_nan=True), w
+
+
+def test_fork_posterior_high_level_ignores_true_latent():
+    from wmi import fork
+    rng = np.random.default_rng(0); F = rng.normal(size=(40, 4)) * 0.05; Z = rng.normal(size=(40, 3))
+    succ = {"A": (F[:, 2] > 0).astype(float), "B": (F[:, 3] > 0).astype(float)}
+    models = {"belief": fork.RouteModel().fit(F, succ), "latent": fork.RouteModel().fit(Z, succ), "prior_choice": "A"}
+    a = fork.choose("post", 40, F, Z, models, 0.05); b = fork.choose("post", 40, F, Z * 0 + 7.0, models, 0.05)
+    assert np.array_equal(a, b)
+    assert not np.array_equal(fork.choose("oracle", 40, F, Z, models, 0.05), fork.choose("oracle", 40, F, -Z, models, 0.05))
+
+
+@pytest.mark.parametrize("ll,hl", [("forward", "post"), ("hindsight_posterior", "post"), ("hindsight_posterior", "prior")])
+def test_fork_causality(ll, hl):
+    from wmi import fork
+    Mu, Mc = tiny_models(); T, E, tstar = 30, 3, 14
+    s1 = hier.schedule("both", np.random.default_rng(5), E, T)
+    s2 = s1.copy(); s2[tstar:] = hier.schedule("both", np.random.default_rng(6), E, T)[tstar:]
+    rng = np.random.default_rng(0); F = rng.normal(size=(40, 4)) * 0.05
+    succ = {"A": (F[:, 2] > 0).astype(float), "B": (F[:, 3] > 0).astype(float)}
+    models = {"belief": fork.RouteModel().fit(F, succ), "latent": fork.RouteModel().fit(rng.normal(size=(40, 3)), succ), "prior_choice": "B"}
+    t1 = np.array(fork.run_fork(ll, hl, Mu, Mc, s1, dict(CFG), 11, models=models)["traj"])
+    t2 = np.array(fork.run_fork(ll, hl, Mu, Mc, s2, dict(CFG), 11, models=models)["traj"])
+    assert np.allclose(t1[:tstar + 1], t2[:tstar + 1], equal_nan=True)
