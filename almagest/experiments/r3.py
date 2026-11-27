@@ -185,7 +185,7 @@ def train(cache, split, out, passes=4):
         if os.environ.get('SAVE_EVERY') and (p + 1) % int(os.environ['SAVE_EVERY']) == 0:
             torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3.4-real-exact',
                             lot_table=lot_table(rows), DR=X.DR, KI=X.KI, NF=X.NF), out.replace('.pt', f'_p{p + 1}.pt'))
-    torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3.5-real-exact',
+    torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3.7-real-exact',
                     lot_table=lot_table(rows), DR=X.DR, KI=X.KI, NF=X.NF), out)
 
 

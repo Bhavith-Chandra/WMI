@@ -299,6 +299,11 @@ def mask_lvl(ll, typ, side, cmask, spread=None, nimp=0):
         k = torch.arange(2, nimp + 2, dtype=cm.dtype)                   # improvement sizes
         sp = spread.to(cm.dtype).unsqueeze(-1) if spread is not None else torch.zeros_like(cm[..., :1])
         lim = torch.cat([lim[..., :-nimp], (sp > k).to(cm.dtype)], -1)
+        if spread is not None:
+            # v3.7: 'improve by 1' (lvl 0) is impossible at spread 1 (it is the same price as joining the best,
+            # tokenised as lvl 1; real P = 0 exactly). Unmasked, the head learned lvl 0 as globally rare (87% of states
+            # have spread 1) and under-predicted book resiliency at spread 2 by half (0.038 vs 0.081 teacher-forced).
+            lim = torch.cat([(sp > 1).to(cm.dtype), lim[..., 1:]], -1)
     allow = torch.where(is_c, cm, lim)
     # if a cancel side has no volume (should not happen), allow everything to keep logits finite
     allow = torch.where(allow.sum(-1, keepdim=True) > 0, allow, torch.ones_like(allow))
