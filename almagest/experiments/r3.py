@@ -33,7 +33,7 @@ def arm_model(cfg=None):
     return L.LMM(mode='modebank', slowbank=True, cond_heads=True, nsize=X.NSZ, ndt=T.NDT, size_all=True,
                  nlvl=X.NLVL, nimp=X.KI, nfeat=X.NF, nsb_extra=L.NFB if FLOW else 0,
                  size_cond=os.environ.get('SIZE_COND', '1') == '1',
-                 side_skip=os.environ.get('SIDE_SKIP', '1') == '1', mkt_side_w=float(os.environ.get('MKT_SIDE_W', 5.0)),
+                 side_skip=os.environ.get('SIDE_SKIP', '1') == '1', lvl0_mask=os.environ.get('LVL0_MASK', '1') == '1', mkt_side_w=float(os.environ.get('MKT_SIDE_W', 5.0)),
                  d=int(os.environ.get('D_MODEL', 64)), h=int(os.environ.get('H_MODEL', 128)))
 
 
@@ -159,7 +159,7 @@ def train(cache, split, out, passes=4):
     vrows = load_rows(cache, split['select'])
     print('fit rows', len(rows), 'events', sum(len(r['tgt']) for r in rows), 'select events',
           sum(len(r['tgt']) for r in vrows), flush=True)
-    torch.manual_seed(0)
+    torch.manual_seed(int(os.environ.get('SEED', 0)))
     model = arm_model()
     print('params', model.n_params(), flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=float(os.environ.get('LR', 2e-3)), weight_decay=0.01)
@@ -275,7 +275,7 @@ class Gen3:
         ll, lz = m.lvl_size_logits(z, typ, sd)
         cm = torch.stack([torch.tensor(self.cmb), torch.tensor(self.cma)], 1)
         sp = torch.tensor(self.feat[:, 20], dtype=torch.long)
-        lvl = L.inv_cdf(L.mask_lvl(ll, typ, sd, cm, sp, m.nimp), u[:, 2])
+        lvl = L.inv_cdf(L.mask_lvl(ll, typ, sd, cm, sp, m.nimp, m.lvl0_mask), u[:, 2])
         lvl = torch.where(typ == 2, torch.zeros_like(lvl), lvl)
         qv = self.queue(torch.stack([typ, sd, lvl, lvl, lvl], 1).numpy().astype(np.int64))
         if m.size_cond:

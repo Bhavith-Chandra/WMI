@@ -68,7 +68,7 @@ def rollout_logp(model, g, T, gen):
         ll, lz = model.lvl_size_logits(z, typ, sd)
         cm = torch.stack([torch.tensor(g.cmb), torch.tensor(g.cma)], 1)
         sp = torch.tensor(g.feat[:, 20], dtype=torch.long)
-        llm = L.mask_lvl(ll, typ, sd, cm, sp, model.nimp)
+        llm = L.mask_lvl(ll, typ, sd, cm, sp, model.nimp, model.lvl0_mask)
         lvl = L.inv_cdf(llm.detach(), u[:, 2])
         lvl = torch.where(typ == 2, torch.zeros_like(lvl), lvl)
         qv = g.queue(torch.stack([typ, sd, lvl, lvl, lvl], 1).numpy().astype(np.int64))

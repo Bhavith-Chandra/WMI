@@ -82,13 +82,13 @@ class LMM(nn.Module):
     def __init__(self, d=64, h=128, layers=2, mode='learned', slowbank=False, nsize=NSIZE, ndt=0, size_all=False,
                  src=False, cond_heads=False, tagch=False, ndom=0, tag_gain=1.0, gen_cal=None, nlvl=NLVL, nimp=0,
                  nfeat=21, nsb_extra=0, size_cond=False, side_skip=False,
-                 mkt_side_w=1.0):
+                 mkt_side_w=1.0, lvl0_mask=False):
         """v1 (synthetic): nsize=4, ndt=0, size only for markets. v2 (real): nsize=12 for all types, ndt=11 (Dt head)."""
         super().__init__()
         self.cfg = dict(d=d, h=h, layers=layers, mode=mode, slowbank=slowbank, nsize=nsize, ndt=ndt, size_all=size_all,
                         src=src, cond_heads=cond_heads, tagch=tagch, ndom=ndom, tag_gain=tag_gain,
                         nlvl=nlvl, nimp=nimp, nfeat=nfeat, nsb_extra=nsb_extra, size_cond=size_cond,
-                        side_skip=side_skip, mkt_side_w=mkt_side_w)
+                        side_skip=side_skip, mkt_side_w=mkt_side_w, lvl0_mask=lvl0_mask)
         # v3 (replay-exact real data): nlvl = DR + 1 + nimp level classes; the last nimp limit classes mean 'improve
         # own best by k = 2..nimp+1 buckets' (valid only if spread > k); cancels use the first DR classes (book mask)
         self.nlvl, self.nimp, self.nfeat = nlvl, nimp, nfeat
@@ -139,6 +139,7 @@ class LMM(nn.Module):
         # path under-uses it (markets are 2.5% of events). mkt_side_w upweights the market-side CE term (its optimum
         # is still the true conditional, so calibration is preserved).
         self.side_skip, self.mkt_side_w, self._fb = side_skip, float(mkt_side_w), None
+        self.lvl0_mask = lvl0_mask
         if side_skip:
             self.skip_side = nn.Linear(nsb_extra, 2)
             nn.init.zeros_(self.skip_side.weight); nn.init.zeros_(self.skip_side.bias)
@@ -243,7 +244,7 @@ class LMM(nn.Module):
         """tgt (B,T,4); cmask (B,T,2,D) cancel validity of the book BEFORE the event; lq log1p queue volume."""
         typ, side, lvl, size = tgt[..., 0], tgt[..., 1], tgt[..., 2], tgt[..., 3]
         lt, ls, ll, lz = self.heads_logits(z, typ, side, lvl if self.size_cond else None, lq)
-        ll = mask_lvl(ll, typ, side, cmask, spread, self.nimp)
+        ll = mask_lvl(ll, typ, side, cmask, spread, self.nimp, self.lvl0_mask)
         nll = F.cross_entropy(lt.reshape(-1, 3), typ.reshape(-1), reduction='none')
         sw = 1.0 + (self.mkt_side_w - 1.0) * (typ == 2).reshape(-1).float() if self.training else 1.0
         nll = nll + sw * F.cross_entropy(ls.reshape(-1, 2), side.reshape(-1), reduction='none')
@@ -269,7 +270,7 @@ class LMM(nn.Module):
         """v2 per-field NLL (B*T, 5): typ, side, lvl (non-market), size, dt."""
         typ, side, lvl, size = tgt[..., 0], tgt[..., 1], tgt[..., 2], tgt[..., 3]
         lt, ls, ll, lz = self.heads_logits(z, typ, side, lvl if self.size_cond else None, lq)
-        ll = mask_lvl(ll, typ, side, cmask, spread, self.nimp)
+        ll = mask_lvl(ll, typ, side, cmask, spread, self.nimp, self.lvl0_mask)
         zl = z + self.c_side(typ) + self.c_lvl(typ * 2 + side)
         ld = self.h_dt(zl + self.c_size(size))
         p = [F.cross_entropy(lt.reshape(-1, 3), typ.reshape(-1), reduction='none'),
@@ -287,7 +288,7 @@ def _pick(flat, idx, k):
     return torch.gather(g, -2, idx.unsqueeze(-1).unsqueeze(-1).expand(*sh, 1, k)).squeeze(-2)
 
 
-def mask_lvl(ll, typ, side, cmask, spread=None, nimp=0):
+def mask_lvl(ll, typ, side, cmask, spread=None, nimp=0, lvl0_mask=False):
     """cancel: only levels with volume on that side (levels 0..D-1 -> logits 0..D-1, index D invalid).
     limit: all 0..D valid (lvl 0 means inside-spread; engine falls back if spread==1)."""
     neg = torch.finfo(ll.dtype).min / 4
@@ -299,7 +300,7 @@ def mask_lvl(ll, typ, side, cmask, spread=None, nimp=0):
         k = torch.arange(2, nimp + 2, dtype=cm.dtype)                   # improvement sizes
         sp = spread.to(cm.dtype).unsqueeze(-1) if spread is not None else torch.zeros_like(cm[..., :1])
         lim = torch.cat([lim[..., :-nimp], (sp > k).to(cm.dtype)], -1)
-        if spread is not None:
+        if spread is not None and lvl0_mask:
             # v3.7: 'improve by 1' (lvl 0) is impossible at spread 1 (it is the same price as joining the best,
             # tokenised as lvl 1; real P = 0 exactly). Unmasked, the head learned lvl 0 as globally rare (87% of states
             # have spread 1) and under-predicted book resiliency at spread 2 by half (0.038 vs 0.081 teacher-forced).
