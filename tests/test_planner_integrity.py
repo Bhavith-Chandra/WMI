@@ -73,7 +73,7 @@ def test_causality(planner):
 def test_rng_streams_disjoint():
     seeds = [0, 1, 2]
     train = set(seeds); test_sched = {10_000 + s for s in seeds}; planner = {20_000 + s for s in seeds}
-    gate = {99, 99_999, 98, 99_998, 97, 99_997, 99_996}; fork = {400_000 + s for s in seeds} | {410_000 + s for s in seeds} | {420_000 + s for s in seeds} | {500_000 + s for s in seeds} | {600_000 + s for s in seeds} | {700_000 + s for s in seeds}
+    gate = {99, 99_999, 98, 99_998, 97, 99_997, 99_996, 95, 99_995}; fork = {400_000 + s for s in seeds} | {410_000 + s for s in seeds} | {420_000 + s for s in seeds} | {500_000 + s for s in seeds} | {600_000 + s for s in seeds} | {700_000 + s for s in seeds} | {800_000 + s for s in seeds} | {810_000 + s for s in seeds} | {900_000 + s for s in seeds} | {910_000 + s for s in seeds}
     sealed = {100_000 + s for s in (100, 101, 102)} | {200_000 + s for s in (100, 101, 102)} | {300_000 + s for s in (100, 101, 102)}
     groups = [train, test_sched, planner, gate, sealed, fork]
     for i in range(len(groups)):
@@ -141,3 +141,32 @@ def test_fork_causality_with_realism():
     t2 = np.array(fork.run_fork("hindsight_posterior", "post", Mu, Mc, s2, dict(CFG), 11, models=models, world=dict(w))["traj"])
     assert np.allclose(t1[:tstar + 1], t2[:tstar + 1], equal_nan=True)
     assert not np.allclose(t1, t2, equal_nan=True)
+
+
+def test_ramp_force_is_physics_only_and_causal():
+    from wmi import ramp
+    Mu, Mc = tiny_models(); T, E, tstar = 30, 3, 14
+    s1 = hier.schedule("both", np.random.default_rng(5), E, T)
+    s2 = s1.copy(); s2[tstar:] = hier.schedule("both", np.random.default_rng(6), E, T)[tstar:]
+    rng = np.random.default_rng(0); F = rng.normal(size=(40, 4)) * 0.05
+    sc = {"A": rng.uniform(size=40), "B": rng.uniform(size=40)}
+    models = {"belief": ramp.RouteModel().fit(F, sc), "latent": ramp.RouteModel().fit(rng.normal(size=(40, 3)), sc), "prior_choice": "A"}
+    t1 = np.array(ramp.run_ramp("hindsight_posterior", "post", Mu, Mc, s1, dict(CFG), 11, models=models)["traj"])
+    t2 = np.array(ramp.run_ramp("hindsight_posterior", "post", Mu, Mc, s2, dict(CFG), 11, models=models)["traj"])
+    assert np.allclose(t1[:tstar + 1], t2[:tstar + 1], equal_nan=True)
+    a = ramp.choose("post", 40, F, rng.normal(size=(40, 3)), models); b = ramp.choose("post", 40, F, np.zeros((40, 3)) + 9, models)
+    assert np.array_equal(a, b)
+
+
+def test_ramp_pushes_back():
+    """The ramp must actually oppose motion in the corridor (and only there)."""
+    from wmi import ramp
+    from wmi.mujoco_exp import PuckBatch
+    env = PuckBatch(2); env.reset(np.array([[1.3, 0.0], [0.3, 0.0]])); xs = []
+    for _ in range(10):
+        env.set_phi(np.array([[1.0, 0, 0], [1.0, 0, 0]]))
+        rf = ramp.ramp_force(env.state()[:, :2])
+        for e in np.flatnonzero(rf != 0):
+            env.d[e].xfrc_applied[env.body, 0] += rf[e]
+        xs.append(env.step(np.zeros((2, 2)))[:, 0])
+    xs = np.array(xs); assert xs[-1, 0] < 1.3 - 0.05 and abs(xs[-1, 1] - 0.3) < 1e-9
