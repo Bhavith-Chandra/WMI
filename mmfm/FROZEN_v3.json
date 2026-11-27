@@ -1,0 +1,63 @@
+{
+ "freeze_utc": "2026-11-27T04:20:32Z",
+ "freeze_ns": 1795753232649725577,
+ "run": "runs/v3_ss",
+ "files": {
+  "runs/v3_ss/model.pt": "053d9911ffc9c1a4aa433a72bbe933c6889f0ac04441a9c6efb69148a46dd453",
+  "runs/v3_ss/tokenizer.json": "681770559f15c8095892062fddc82ec693b6bbc39c5991a0bc7b0e9dde1aa045",
+  "runs/v3_ss/sim_calibration.json": "c85b3a5e3da73b4042c3ddb1bbd77f4f3a1a5085c3c2bff694af27cfe4a909f0",
+  "runs/v3_ss/selection_log.json": "8e1a80e2de34f62d66ba52cc89fc0abb8443c39998e623bba86d9ac9a1c84c55",
+  "runs/v3_b2/model.pt": "7dded7bd5533a57bd983a85d4943ee18df5529c93eb0bfaad820493bab4ef3c2",
+  "runs/v3_b2/tokenizer.json": "681770559f15c8095892062fddc82ec693b6bbc39c5991a0bc7b0e9dde1aa045",
+  "runs/v3_b2/selection_log.json": "72fb6947895a0ebd4f20e29f9e5e906266a3c012f1d75c081b6f69a2c6642cce"
+ },
+ "calib": {
+  "dt_scale": 1.0,
+  "temp": 0.7,
+  "clock": "anchored",
+  "recal": true,
+  "loss": 1.9233626475622805
+ },
+ "selection": {
+  "reason": "min val calib loss",
+  "candidates": [
+   {
+    "run": "runs/v3",
+    "loss": 2.0782663767188887,
+    "calib": {
+     "dt_scale": 1.0,
+     "temp": 0.6,
+     "clock": "anchored",
+     "recal": true,
+     "loss": 2.0782663767188887
+    },
+    "nll_delta": -0.5968996738224348,
+    "nll_ci": [
+     -0.6257329328385692,
+     -0.5717432479542008
+    ],
+    "beats_b2": true,
+    "bits": 8.829112081711887
+   },
+   {
+    "run": "runs/v3_ss",
+    "loss": 1.9233626475622805,
+    "calib": {
+     "dt_scale": 1.0,
+     "temp": 0.7,
+     "clock": "anchored",
+     "recal": true,
+     "loss": 1.9233626475622805
+    },
+    "nll_delta": -0.5433453909334425,
+    "nll_ci": [
+     -0.578542252795565,
+     -0.5130299512717584
+    ],
+    "beats_b2": true,
+    "bits": 8.88266636460088
+   }
+  ]
+ },
+ "note": "EVAL_v3 forward test: window = [freeze+10 min, +90 min]; data built only after the window ends."
+}

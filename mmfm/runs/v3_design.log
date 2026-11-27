@@ -1,0 +1,33 @@
+=== b2 (01:14:09)
+=== ss (02:14:54)
+=== m1 v3 (02:55:40)
+B0         14.1486 [14.1031, 14.1981]
+B1         12.1635 [11.9203, 12.4484]
+MMFM-v2    8.8291 [8.3445, 9.3811]
+B2-v2      9.4260 [8.9268, 9.9962]
+MMFM-v2 - B2-v2: {'delta': -0.5968996738224348, 'ci95': [-0.6257329328385692, -0.5717432479542008]} blocks 91
+=== calib v3 (02:58:41)
+dt_scale 1.0 temp 0.6 loss 2.078
+dt_scale 1.0 temp 0.7 loss 2.182
+dt_scale 1.0 temp 0.85 loss 2.362
+chosen 1.0 0.6 2.0782663767188887
+=== freeclock v3 (03:28:32)
+ethusd MMFM-sim 1.0s ev0.83 cov0.60 pit0.38 crps0.341 | 5.0s ev1.59 cov0.70 pit0.42 crps0.578 | 10.0s ev1.64 cov0.60 pit0.63 crps1.674 rt 0.50
+xrpusd MMFM-sim 1.0s ev2.45 cov0.70 pit0.28 crps0.595 | 5.0s ev2.28 cov0.70 pit0.24 crps1.429 | 10.0s ev2.04 cov0.70 pit0.25 crps1.771 rt 0.63
+dogeusd MMFM-sim 1.0s ev8.25 cov0.90 pit0.65 crps0.200 | 5.0s ev6.09 cov1.00 pit0.48 crps0.381 | 10.0s ev4.53 cov0.70 pit0.27 crps1.058 rt 0.75
+=== m1 v3_ss (03:36:51)
+B0         14.1486 [14.1037, 14.1970]
+B1         12.1635 [11.9059, 12.4567]
+MMFM-v2    8.8827 [8.3865, 9.4429]
+B2-v2      9.4260 [8.9088, 10.0162]
+MMFM-v2 - B2-v2: {'delta': -0.5433453909334425, 'ci95': [-0.578542252795565, -0.5130299512717584]} blocks 91
+=== calib v3_ss (03:40:00)
+dt_scale 1.0 temp 0.6 loss 2.309
+dt_scale 1.0 temp 0.7 loss 1.923
+dt_scale 1.0 temp 0.85 loss 2.082
+chosen 1.0 0.7 1.9233626475622805
+=== freeclock v3_ss (04:10:02)
+ethusd MMFM-sim 1.0s ev1.06 cov0.80 pit0.43 crps0.356 | 5.0s ev2.49 cov0.90 pit0.48 crps0.669 | 10.0s ev2.84 cov0.60 pit0.69 crps2.561 rt 0.39
+xrpusd MMFM-sim 1.0s ev2.95 cov0.80 pit0.35 crps0.586 | 5.0s ev3.08 cov0.70 pit0.27 crps1.284 | 10.0s ev2.97 cov0.90 pit0.40 crps1.624 rt 0.50
+dogeusd MMFM-sim 1.0s ev5.58 cov0.90 pit0.67 crps0.234 | 5.0s ev3.99 cov0.90 pit0.55 crps0.389 | 10.0s ev2.12 cov0.70 pit0.44 crps1.105 rt 0.80
+=== done (04:19:53)
