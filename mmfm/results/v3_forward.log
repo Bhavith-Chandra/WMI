@@ -1,1 +1,41 @@
 === window 04:30:32 - 06:00:32 run runs/v3_ss (04:20:46)
+=== build (06:01:46)
+btcusd 22 0 530461 kept 530461 parts 1
+btcusd 23 0 1208822 kept 1123204 parts 1
+btcusd 23 1 78317 kept 78317 parts 1
+ethusd 22 0 310352 kept 310352 parts 1
+ethusd 23 0 737947 kept 693344 parts 1
+ethusd 23 1 37563 kept 37563 parts 1
+solusd 22 0 215977 kept 215977 parts 1
+solusd 23 0 555479 kept 430901 parts 2
+solusd 23 1 30852 kept 30852 parts 1
+xrpusd 22 0 205908 kept 205908 parts 1
+xrpusd 23 0 539584 kept 501341 parts 1
+xrpusd 23 1 30011 kept 30011 parts 1
+btceur 22 0 142703 kept 142703 parts 1
+btceur 23 0 316816 kept 296071 parts 1
+btceur 23 1 21036 kept 21036 parts 1
+ltcusd 22 0 28009 kept 28009 parts 1
+ltcusd 23 0 75091 kept 70792 parts 1
+ltcusd 23 1 5533 kept 5533 parts 1
+dogeusd 22 0 108609 kept 108609 parts 1
+dogeusd 23 0 287583 kept 269481 parts 1
+dogeusd 23 1 17266 kept 17266 parts 1
+linkusd 22 0 53689 kept 53689 parts 1
+linkusd 23 0 130229 kept 130229 parts 1
+linkusd 23 1 7853 kept 7853 parts 1
+=== splits (06:08:21)
+{'forward': [1795753832649725, 1795759232649725], 'train': [0, 0], 'val': [0, 0], 'heldout_pair': 'linkusd', 'files_hash': '885c6f3ae1f93f60aa7b7e37b8374c9ee0281c114a9f6737f160db05aff18c7a', 'rule': 'EVAL_v2.md forward test'}
+=== m1 (06:08:21)
+B0         13.9783 [13.9279, 14.0323]
+B1         12.3672 [12.2082, 12.5318]
+MMFM-v2    9.7277 [9.3962, 10.0667]
+B2-v2      10.2493 [9.9142, 10.5860]
+MMFM-v2 - B2-v2: {'delta': -0.5216009927174401, 'ci95': [-0.5424459438983421, -0.5015973358537318]} blocks 129
+=== m1-heldout (06:11:32)
+B0         13.9975 [13.9786, 14.0142]
+B1         13.0525 [13.0167, 13.0854]
+MMFM-v2    11.8831 [11.7026, 12.0356]
+B2-v2      11.9867 [11.8144, 12.1380]
+MMFM-v2 - B2-v2: {'delta': -0.10357838022739863, 'ci95': [-0.11488207820534799, -0.09253276289311906]} blocks 19
+=== sim-recal (06:14:44)
