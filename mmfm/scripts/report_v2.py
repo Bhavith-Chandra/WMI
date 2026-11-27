@@ -42,8 +42,11 @@ def criteria(sim, m1, m1h, m5):
         tot = 0
         for p, s in sim["per_pair"].items():
             for h in ("1.0", "5.0", "10.0"):
+                bs = [s[g][h]["crps_bp"] for g in ("B1p", "B0p") if g in s]
+                if not bs:
+                    continue
                 tot += 1
-                best_b = min(s[g][h]["crps_bp"] for g in ("B1p", "B0p") if g in s)
+                best_b = min(bs)
                 wins += s["MMFM-sim"][h]["crps_bp"] <= best_b
         C.append(("4 MMFM-sim CRPS <= best count baseline", f"{wins}/{tot} cells", wins > tot / 2))
         if all("MMFM-direct" in s for s in sim["per_pair"].values()):
