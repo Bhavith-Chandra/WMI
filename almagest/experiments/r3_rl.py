@@ -25,6 +25,7 @@ K = int(os.environ.get('K', 3))
 LR = float(os.environ.get('LR', 1e-4))
 LAM_NLL = float(os.environ.get('LAM_NLL', 1.0))
 EVAL_EVERY = int(os.environ.get('EVAL_EVERY', 10))
+W_ACF = float(os.environ.get('W_ACF', 1.0))
 
 
 def window_stats(ev, feat, mid):
@@ -36,7 +37,8 @@ def window_stats(ev, feat, mid):
     msh = mk.mean()
     s = np.where(ev[mk, 1] == 0, 1.0, -1.0)
     acf = float(np.mean(s[:-1] * s[1:])) if len(s) > 6 else 0.0
-    dm = mid[100:] - mid[:-100]
+    hv = int(os.environ.get('VOL_H', 100))
+    dm = mid[hv:] - mid[:-hv]
     vol = float(np.var(dm)) if len(dm) > 5 else 0.0
     lim = (ev[:, 0] == 0).mean()
     return np.array([dep, band, spread, msh, acf, vol, lim])
@@ -44,7 +46,7 @@ def window_stats(ev, feat, mid):
 
 def reward(g, r):
     return -(abs(g[0] - r[0]) + abs(g[1] - r[1]) + 0.5 * abs(g[2] - r[2])
-             + abs(np.log((g[3] + 1e-3) / (r[3] + 1e-3))) + abs(g[4] - r[4])
+             + abs(np.log((g[3] + 1e-3) / (r[3] + 1e-3))) + W_ACF * abs(g[4] - r[4])
              + 0.5 * min(3.0, abs(np.log((g[5] + 1e-3) / (r[5] + 1e-3)))) + 10 * abs(g[6] - r[6]))
 
 
