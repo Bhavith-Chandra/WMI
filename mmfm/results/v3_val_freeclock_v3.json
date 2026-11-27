@@ -1,0 +1,144 @@
+{
+ "model_hash": "790cf81f2b9085ab1f7988348563646601e6378d3cd97e17e8e93cd13460c58a",
+ "split": "val",
+ "heldout": false,
+ "horizons": [
+  1.0,
+  5.0,
+  10.0
+ ],
+ "dt_scale": 1.0,
+ "temp": 1.0,
+ "clock": "model",
+ "recal": false,
+ "per_pair": {
+  "ethusd": {
+   "MMFM-sim": {
+    "1.0": {
+     "n": 10,
+     "coverage80": 0.6,
+     "pit_mean": 0.38364233746429083,
+     "crps_bp": 0.3412619539009009,
+     "brier_up_given_move": 0.25887345679012347,
+     "real_abs_med": 1.6653345369377346e-12,
+     "sim_abs_med": 0.11748954553503005,
+     "event_ratio_median": 0.8335390946502057
+    },
+    "5.0": {
+     "n": 10,
+     "coverage80": 0.7,
+     "pit_mean": 0.41648101054575903,
+     "crps_bp": 0.577808864461687,
+     "brier_up_given_move": 0.3051215277777778,
+     "real_abs_med": 0.41203187459566215,
+     "sim_abs_med": 0.6176532439166951,
+     "event_ratio_median": 1.585230887115429
+    },
+    "10.0": {
+     "n": 10,
+     "coverage80": 0.6,
+     "pit_mean": 0.63125,
+     "crps_bp": 1.6743860736959608,
+     "brier_up_given_move": 0.38187181122448977,
+     "real_abs_med": 1.468507741196969,
+     "sim_abs_med": 1.2345207329926802,
+     "event_ratio_median": 1.6371019112816612
+    },
+    "sim_seconds_per_wall_second": 0.49985112602762377
+   }
+  },
+  "xrpusd": {
+   "MMFM-sim": {
+    "1.0": {
+     "n": 10,
+     "coverage80": 0.7,
+     "pit_mean": 0.2807752636439772,
+     "crps_bp": 0.59453225819129,
+     "brier_up_given_move": 0.38565146222486923,
+     "real_abs_med": 1.1102230246251565e-12,
+     "sim_abs_med": 0.10547132745064869,
+     "event_ratio_median": 2.4529411764705884
+    },
+    "5.0": {
+     "n": 10,
+     "coverage80": 0.7,
+     "pit_mean": 0.23981010545759088,
+     "crps_bp": 1.4286695875666848,
+     "brier_up_given_move": 0.47793269335594196,
+     "real_abs_med": 0.1586848202230488,
+     "sim_abs_med": 0.7655376203949571,
+     "event_ratio_median": 2.276168653782328
+    },
+    "10.0": {
+     "n": 10,
+     "coverage80": 0.7,
+     "pit_mean": 0.24773101054575908,
+     "crps_bp": 1.770713042904901,
+     "brier_up_given_move": 0.4132727820294784,
+     "real_abs_med": 1.6600888975761334,
+     "sim_abs_med": 1.3733071370182703,
+     "event_ratio_median": 2.039939802858022
+    },
+    "sim_seconds_per_wall_second": 0.6344512983198805
+   }
+  },
+  "dogeusd": {
+   "MMFM-sim": {
+    "1.0": {
+     "n": 10,
+     "coverage80": 0.9,
+     "pit_mean": 0.6496486116540272,
+     "crps_bp": 0.19991492175294995,
+     "brier_up_given_move": 0.2927604166666667,
+     "real_abs_med": 0.0,
+     "sim_abs_med": 2.2204460492503127e-12,
+     "event_ratio_median": 8.25
+    },
+    "5.0": {
+     "n": 10,
+     "coverage80": 1.0,
+     "pit_mean": 0.4841170738203136,
+     "crps_bp": 0.38111818324162094,
+     "brier_up_given_move": 0.1976166025983396,
+     "real_abs_med": 1.1102230246251563e-12,
+     "sim_abs_med": 0.7060090567286537,
+     "event_ratio_median": 6.089774297558728
+    },
+    "10.0": {
+     "n": 10,
+     "coverage80": 0.7,
+     "pit_mean": 0.26648101054575907,
+     "crps_bp": 1.0583970467234718,
+     "brier_up_given_move": 0.36254598068579014,
+     "real_abs_med": 0.26501643010326914,
+     "sim_abs_med": 1.3236326488500838,
+     "event_ratio_median": 4.526378435863874
+    },
+    "sim_seconds_per_wall_second": 0.74531329761785
+   }
+  }
+ },
+ "_provenance": {
+  "git_commit": "575d53aa0d90f22814ac27ddb27a2123bd886f33",
+  "argv": [
+   "sim_eval_v2.py",
+   "--events",
+   "/home/user/data/mmfm_v3",
+   "--run",
+   "runs/v3",
+   "--split",
+   "val",
+   "--clock",
+   "model",
+   "--gens",
+   "MMFM-sim",
+   "--starts",
+   "10",
+   "--paths",
+   "16",
+   "--out",
+   "results/v3_val_freeclock_v3.json"
+  ],
+  "utc": "2026-11-27T03:36:51Z"
+ }
+}
