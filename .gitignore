@@ -13,3 +13,4 @@ almagest/results/real/*.log
 almagest/results/real3/*.log
 almagest/results/real3/*.pt
 almagest/results/real3/*_gate*.txt
+almagest/results/real3/*_log.json
