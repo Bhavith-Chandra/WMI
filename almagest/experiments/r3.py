@@ -166,8 +166,13 @@ def train(cache, split, out, passes=4):
     sched = None
     hist = []
     t0 = time.time()
+    lr0 = opt.param_groups[0]['lr']
     for p in range(passes):
-        if p == passes - 1:
+        if os.environ.get('SCHED') == 'cos':
+            import math
+            for g in opt.param_groups:
+                g['lr'] = lr0 * (0.05 + 0.95 * 0.5 * (1 + math.cos(math.pi * p / max(passes - 1, 1))))
+        elif p == passes - 1:
             for g in opt.param_groups:
                 g['lr'] *= 0.3
         model.train()
@@ -177,6 +182,9 @@ def train(cache, split, out, passes=4):
             val = np.mean([run(model, b) for b in batches(vrows, 16)]) if vrows else float('nan')
         hist.append((float(trl), float(val)))
         print(f'pass {p} fit {trl:.4f} select {val:.4f} t {time.time()-t0:.0f}s', flush=True)
+        if os.environ.get('SAVE_EVERY') and (p + 1) % int(os.environ['SAVE_EVERY']) == 0:
+            torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3.4-real-exact',
+                            lot_table=lot_table(rows), DR=X.DR, KI=X.KI, NF=X.NF), out.replace('.pt', f'_p{p + 1}.pt'))
     torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3.5-real-exact',
                     lot_table=lot_table(rows), DR=X.DR, KI=X.KI, NF=X.NF), out)
 
@@ -433,7 +441,7 @@ def b2_run(model, rows, picks, batch, gen, seed=1, oracle=False, sampled=False):
 
 
 def b2(cache, split, mp, out, which, nwin=64, gen=4000):
-    assert which in ('select', 'report') and not os.path.exists(out)
+    assert which in ('select', 'report', 'fit') and not os.path.exists(out)
     ck = torch.load(mp, weights_only=False)
     model = arm_model(ck['cfg']); model.load_state_dict(ck['state']); model.eval()
     rows = load_rows(cache, split[which], with_meta=True)
