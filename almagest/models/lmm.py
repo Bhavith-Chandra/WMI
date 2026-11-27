@@ -180,7 +180,11 @@ class LMM(nn.Module):
         return torch.cat([lt[..., :1] + self.gen_cal.get('lim_bias', 0.0), lt[..., 1:2], lt[..., 2:] + self.gen_cal['mkt_bias']], -1)
 
     def gen_side_logits(self, z, typ):
-        return self.side_logits(z, typ) / self.gen_cal['side_temp']
+        ls = self.side_logits(z, typ) / self.gen_cal['side_temp']
+        mt = self.gen_cal.get('mkt_side_temp', 1.0)     # market-order side only (trade-sign persistence)
+        if mt != 1.0:
+            ls = torch.where((typ == 2).unsqueeze(-1), ls / mt, ls)
+        return ls
 
     def init_state(self, B):
         return [torch.zeros(B, self.hdim) for _ in self.blocks]
