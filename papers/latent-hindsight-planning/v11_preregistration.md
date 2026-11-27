@@ -49,3 +49,9 @@ weak). Correction: the ramp is known map terrain, like the walls, and enters the
 increment (`wmi.ramp.terrain_t`, exact for the nominal mass and damping; checked against the simulator to 1e-8). The
 world model still does not know the motor gain or the wind. The failed gate file is kept in
 results/_superseded/ramp_gate_v11_before_terrain_fix.json. The gate is rerun with the same ladder and rule.
+
+## Outcome of the corrected gate: FAILED on all 6 rungs -> stopped, as committed (no further task changes)
+Ceiling of a perfect per-episode route choice over the best fixed route (score), oracle low level: +0.04 to +0.09
+(threshold 0.10); forward low level: +0.03 to +0.11. Making route A physically impossible for weak motors raised the
+value of route choice from exactly 0 (fork task, oracle low level) to up to 9 points, but not to the pre-registered
+10. Calibration and test were not run. Subgoal redrawing from the posterior remains untested.
