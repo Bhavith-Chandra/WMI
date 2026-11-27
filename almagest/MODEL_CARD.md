@@ -67,7 +67,11 @@ All numbers below are tagged with their split. "dev" = selection split. **No tes
   | 200 events | **0.798** | 0.782 |
   | 1000 events | **0.666** | 0.657 |
 
-  B2 closed-loop realism: **NOT yet realistic.**
+  B2 closed-loop realism — **superseded section** (v2 tokens were not replayable; see research/05 and 06). Current
+  (v3.8 replay-exact representation, shuffled training, RL rollout fine-tuning, FIT-chosen market-side temperature):
+  select-hour B2 **11/12** (seed 0; depth W1 0.387 vs threshold 0.385) and **10/12** (seed 1; vol1000, trade-sign
+  ACF1 fail). Oracle and sampled-size ceilings 12/12. B2 not yet passed; split_v2 (more fit hours, future select/report)
+  in progress. Old v2 numbers below kept for the record:
 
   | metric | generated | real | real-vs-real floor |
   |---|---|---|---|
