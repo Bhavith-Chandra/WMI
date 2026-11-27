@@ -39,3 +39,13 @@ oracle|oracle.
 - S5 none: hindsight|post - hindsight|prior lower CI > -0.05.
 - S6 fresh: hindsight|post - hindsight|prior NOT significantly > 0.
 Reported alongside: success rates, route shares, agreement with the oracle high level.
+
+## Pre-test correction (gate failed because of a task bug; no hindsight result existed)
+First gate: the oracle low level succeeded on route A in 0% of episodes at every ramp force, including F_s = 3 N
+with gain 1 and no wind, which is physically climbable. Diagnosis (oracle and forward runs only): the planners did not
+know the ramp, planned "accelerate, then brake for the subgoal", and the ramp turned the braking phase into backsliding,
+so every planner stalled at x ~ 1.65. That contradicts the stated design (route A impossible only when the motor is too
+weak). Correction: the ramp is known map terrain, like the walls, and enters the low level's rollouts as a state
+increment (`wmi.ramp.terrain_t`, exact for the nominal mass and damping; checked against the simulator to 1e-8). The
+world model still does not know the motor gain or the wind. The failed gate file is kept in
+results/_superseded/ramp_gate_v11_before_terrain_fix.json. The gate is rerun with the same ladder and rule.

@@ -45,7 +45,9 @@ def hazard_t(p):
 
 
 @torch.no_grad()
-def act_hazard(pl, s, goal, hz=50.0, haz=None):
+def act_hazard(pl, s, goal, hz=50.0, haz=None, terrain=None):
+    """terrain(p) -> (E,P,4) known state increment from map features (e.g. a ramp) at positions p, added to the
+    learned model's prediction; None for flat ground."""
     """Planner3.act with a hazard penalty on predicted positions (and segment midpoints, against tunnelling)."""
     c = pl.cfg; E, H, P = pl.E, c["H"], c["pop"]
     std = np.full((E, H, 2), 0.6); g = torch.tensor(goal, dtype=torch.float32)
@@ -56,6 +58,8 @@ def act_hazard(pl, s, goal, hz=50.0, haz=None):
         cost = torch.zeros(E, P); prev = st[..., :2]; dead = torch.zeros(E, P, dtype=torch.bool)
         for t in range(H):
             d, dsd = pl.predict(st[..., 2:], At[:, :, t])
+            if terrain is not None:
+                d = d + terrain(st[..., :2])
             st = st + d; p = st[..., :2]
             hzf = haz or hazard_t
             dead = dead | hzf(p) | hzf(0.5 * (p + prev)); prev = p

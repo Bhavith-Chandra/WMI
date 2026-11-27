@@ -1,0 +1,159 @@
+{
+  "provenance": {
+    "config": {
+      "experiment": "ramp_gate",
+      "seed": 0,
+      "ladder": [
+        [
+          3.5,
+          160
+        ],
+        [
+          3.5,
+          120
+        ],
+        [
+          3.0,
+          160
+        ],
+        [
+          4.0,
+          160
+        ],
+        [
+          3.0,
+          120
+        ],
+        [
+          4.0,
+          120
+        ]
+      ]
+    },
+    "config_hash": "08b8374936",
+    "git_commit": "0237d584196bc857211adc14bd33a72e8c5bd3c5",
+    "git_dirty": false,
+    "timestamp_utc": "2026-11-27T02:00:15.816435+00:00",
+    "python": "3.13.18",
+    "numpy": "2.5.5",
+    "torch": "2.15.0+cpu",
+    "machine": "x86_64"
+  },
+  "ladder": [
+    {
+      "F_s": 3.5,
+      "T": 160,
+      "forward": {
+        "score_A": 0.09395833333333334,
+        "score_B": 0.32249999999999995,
+        "succ_A": 0.15,
+        "succ_B": 0.7666666666666667,
+        "headroom": 0.04041666666666671
+      },
+      "oracle_latent": {
+        "score_A": 0.0,
+        "score_B": 0.4297916666666667,
+        "succ_A": 0.0,
+        "succ_B": 0.9333333333333333,
+        "headroom": 0.0
+      },
+      "pass": false
+    },
+    {
+      "F_s": 3.5,
+      "T": 120,
+      "forward": {
+        "score_A": 0.07527778333333333,
+        "score_B": 0.18125001666666662,
+        "succ_A": 0.15,
+        "succ_B": 0.7166666666666667,
+        "headroom": 0.04277778333333332
+      },
+      "oracle_latent": {
+        "score_A": 0.0,
+        "score_B": 0.2681945,
+        "succ_A": 0.0,
+        "succ_B": 0.8666666666666667,
+        "headroom": 0.0
+      },
+      "pass": false
+    },
+    {
+      "F_s": 3.0,
+      "T": 160,
+      "forward": {
+        "score_A": 0.1509375,
+        "score_B": 0.3230208333333333,
+        "succ_A": 0.3,
+        "succ_B": 0.7666666666666667,
+        "headroom": 0.04885416666666664
+      },
+      "oracle_latent": {
+        "score_A": 0.0,
+        "score_B": 0.43,
+        "succ_A": 0.0,
+        "succ_B": 0.9333333333333333,
+        "headroom": 0.0
+      },
+      "pass": false
+    },
+    {
+      "F_s": 4.0,
+      "T": 160,
+      "forward": {
+        "score_A": 0.05260416666666667,
+        "score_B": 0.3228125,
+        "succ_A": 0.08333333333333333,
+        "succ_B": 0.7666666666666667,
+        "headroom": 0.03302083333333333
+      },
+      "oracle_latent": {
+        "score_A": 0.0,
+        "score_B": 0.4301041666666666,
+        "succ_A": 0.0,
+        "succ_B": 0.9333333333333333,
+        "headroom": 0.0
+      },
+      "pass": false
+    },
+    {
+      "F_s": 3.0,
+      "T": 120,
+      "forward": {
+        "score_A": 0.1098611,
+        "score_B": 0.18194444999999998,
+        "succ_A": 0.25,
+        "succ_B": 0.7166666666666667,
+        "headroom": 0.05402779999999999
+      },
+      "oracle_latent": {
+        "score_A": 0.0,
+        "score_B": 0.2684723,
+        "succ_A": 0.0,
+        "succ_B": 0.8666666666666667,
+        "headroom": 0.0
+      },
+      "pass": false
+    },
+    {
+      "F_s": 4.0,
+      "T": 120,
+      "forward": {
+        "score_A": 0.0423611,
+        "score_B": 0.1816666833333333,
+        "succ_A": 0.08333333333333333,
+        "succ_B": 0.7166666666666667,
+        "headroom": 0.03291666666666665
+      },
+      "oracle_latent": {
+        "score_A": 0.0,
+        "score_B": 0.26861119999999994,
+        "succ_A": 0.0,
+        "succ_B": 0.8666666666666667,
+        "headroom": 0.0
+      },
+      "pass": false
+    }
+  ],
+  "choice": null
+}

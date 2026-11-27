@@ -61,6 +61,25 @@ def ramp_force(pos):
     return np.where(on, -TASK["F_s"], 0.0)
 
 
+def _unit_response(F=1.0, m=1.0, b=1.0, h=0.01, n=5):
+    """State increment (dx, dv) over one 50 ms control step from a constant force F starting at rest, for the nominal
+    puck (Euler with implicit damping). The system is linear, so this is exactly the force's contribution."""
+    x = v = 0.0
+    for _ in range(n):
+        v = v + h * (F - b * v) / (m + h * b); x = x + h * v
+    return x, v
+
+
+def terrain_t(p):
+    """Known map terrain for the planner's rollouts: the ramp's force -F_s inside the corridor (nominal mass/damping)."""
+    dx, dv = _unit_response(-TASK["F_s"])
+    x, y = p[..., 0], p[..., 1]
+    on = ((x > BLOCK[0]) & (x < BLOCK[1]) & (y.abs() < CORR)).float()
+    z = torch.zeros(p.shape[:-1] + (4,), dtype=p.dtype)
+    z[..., 0] = on * dx; z[..., 2] = on * dv
+    return z
+
+
 def belief_features(post):
     """Hindsight belief at the fork: posterior mean of the multiplicative (theta) and additive (w) corrections on the
     two velocity dimensions, the identifiable quantities (Section 'what the latent represents')."""
@@ -151,7 +170,7 @@ def run_ramp(ll, hl, Mu, Mc, sched, cfg, seed, models=None, b_penalty=0.0, n_tra
             for e in np.flatnonzero(ready):
                 routes[e] = ch[e]; sgs[e] = route_subgoals(ch[e]); goal[e] = sgs[e][0]; decided[e] = True
         if t % K == 0:
-            new = hier.act_hazard(pl, o, goal, haz=hazard_t)
+            new = hier.act_hazard(pl, o, goal, haz=hazard_t, terrain=terrain_t)
             if L == 0:
                 plan, k0 = new, t
             else:
