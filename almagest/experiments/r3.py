@@ -83,12 +83,24 @@ def load_rows(cache, hours, with_meta=False):
 TK = ('prev', 'feat', 'dmid', 'sb', 'tgt', 'cm', 'spread', 'lq')
 
 
-def batches(rows, bsz):
+def batches(rows, bsz, rng=None):
+    """Length-grouped batches. With rng (training): rows shuffled within length groups and batch ORDER shuffled every
+    pass. Without shuffling (the v3.0-3.7 bug, found 2026-11-27) every pass ended on the same shortest segments, so
+    Adam left the model biased toward their statistics: P(market) 0.024 vs 0.042 on its own training batch."""
     rows = sorted(rows, key=lambda r: -len(r['tgt']))
-    for i in range(0, len(rows), bsz):
-        grp = rows[i:i + bsz]
+    groups = [rows[i:i + bsz] for i in range(0, len(rows), bsz)]
+    if rng is not None:
+        order = rng.permutation(len(rows))
+        rows = [rows[i] for i in order]
+        rows = sorted(rows, key=lambda r: -(len(r['tgt']) // (r3_LEN_BUCKET)))     # keep similar lengths together
+        groups = [rows[i:i + bsz] for i in range(0, len(rows), bsz)]
+        groups = [groups[i] for i in rng.permutation(len(groups))]
+    for grp in groups:
         n = min(len(r['tgt']) for r in grp)
         yield {k: torch.tensor(np.stack([r[k][:n] for r in grp])) for k in TK}
+
+
+r3_LEN_BUCKET = 8192
 
 
 def sbx(model, sb):
@@ -176,7 +188,7 @@ def train(cache, split, out, passes=4):
             for g in opt.param_groups:
                 g['lr'] *= 0.3
         model.train()
-        trl = np.mean([run(model, b, opt) for b in batches(rows, 16)])
+        trl = np.mean([run(model, b, opt) for b in batches(rows, 16, rng=np.random.default_rng(1000 * int(os.environ.get('SEED', 0)) + p))])
         model.eval()
         with torch.no_grad():
             val = np.mean([run(model, b) for b in batches(vrows, 16)]) if vrows else float('nan')
@@ -185,7 +197,7 @@ def train(cache, split, out, passes=4):
         if os.environ.get('SAVE_EVERY') and (p + 1) % int(os.environ['SAVE_EVERY']) == 0:
             torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3.4-real-exact',
                             lot_table=lot_table(rows), DR=X.DR, KI=X.KI, NF=X.NF), out.replace('.pt', f'_p{p + 1}.pt'))
-    torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3.7-real-exact',
+    torch.save(dict(state=model.state_dict(), cfg=model.cfg, hist=hist, split=split, version='v3.8-real-exact',
                     lot_table=lot_table(rows), DR=X.DR, KI=X.KI, NF=X.NF), out)
 
 
