@@ -339,13 +339,17 @@ def setup(model, rows, picks, tab):
                                                     sbx(model, d['sb'][:, sl])), st)
             states.append(st)
             fbs.append(torch.tensor(r['sb'][s, 2 * len(L.SB_TAUS):][None]))
+            # slow bank initialised EXACTLY from the training features at s (computed over the whole contiguous
+            # run, not just this row): fv from the scaled signed-volume EMAs, and (p, ep) = (0, -dev); dev evolves
+            # shift-invariantly, so the future recursion is identical to the offline one.
+            k = len(L.SB_TAUS)
+            sc = np.sqrt(L.SB_TAUS) / 4.0
             sb = L.SlowBank(1)
-            pr = r['prev'][:s + 1]; pl = np.concatenate([[0], r['lots'][:s]]).astype(float)
-            sv = np.where(pr[:, 0] == 2, np.where(pr[:, 1] == 0, 1, -1) * pl, 0.0)
-            fv, _ = L.slowbank_offline(sv, r['dmid'][:s + 1].astype(float))
-            pc = np.cumsum(r['dmid'][:s + 1].astype(float))
-            sb.fv[0] = torch.tensor(fv[s], dtype=torch.float32); sb.p[0] = float(pc[s])
-            sb.ep[0] = torch.tensor(np.stack([lfilter([1 - l], [1, -l], pc) for l in lam], -1)[s], dtype=torch.float32)
+            sb.fv[0] = torch.tensor(r['sb'][s, :k] / sc, dtype=torch.float32)
+            sb.p[0] = 0.0
+            sb.ep[0] = torch.tensor(-r['sb'][s, k:2 * k] * 5.0, dtype=torch.float32)
+            assert np.allclose(sb.feat()[0].numpy(), r['sb'][s, :2 * k], atol=1e-3), 'generator slow bank != training'
+            assert np.allclose(fbs[-1][0].numpy(), r['sb'][s, 2 * k:], atol=1e-4), 'generator flow bank != training'
             sbs.append(sb); prevs.append(torch.tensor(r['prev'][s][None])); pfeats.append(torch.tensor(r['feat'][s][None]))
             pdmids.append(torch.tensor([float(r['dmid'][s])]))
             f = r['_file']
